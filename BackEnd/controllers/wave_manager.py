@@ -1,130 +1,158 @@
-from BackEnd.models.enums import EstadoWave, EstadoPedido
-from BackEnd.models import Wave
+from typing import List, Optional, Tuple
+from BackEnd.data_structures.max_heap_pedidos import MaxHeapPedidos
+from BackEnd.models.warehouse_models import Warehouse, ZonaDespacho
+from BackEnd.models.catalog_manager import CatalogManager
+from BackEnd.models.entities import Order, Picker, Wave
+from BackEnd.enums.enums import EstadoPedido, EstadoWave
 
 
 class WaveManager:
-    def __init__(self, inventory_manager, pathfinding_service):
-        """
-        Inyectamos las dependencias necesarias para acceder a las ubicaciones en O(1)
-        y calcular las distancias en el grafo.
-        """
-        self.inventory_manager = inventory_manager
-        self.pathfinding = pathfinding_service
+    def __init__(self, wave_max_pedidos: int = 3, wave_max_productos: int = 15):
+        self.cola_prioridad = MaxHeapPedidos()
+        self.wave_max_pedidos = wave_max_pedidos
+        self.wave_max_productos = wave_max_productos
 
-    def ordenar_por_prioridad(self, pedidos):
-        """
-        Ordena la lista de pedidos descendente: de mayor (5) a menor (1) prioridad.
-        """
-        return sorted(pedidos, key=lambda p: p.prioridad, reverse=True)
+    def obtener_zonas_habilitadas(self, warehouse: Warehouse) -> List[ZonaDespacho]:
+        zonas_validas = []
+        for zona in warehouse.zonas_despacho.values():
+            puerta = warehouse.puertas.get(zona.puerta_id)
+            if puerta and puerta.permite_despacho_salida():
+                zonas_validas.append(zona)
+        return zonas_validas
 
-    def _calcular_distancia_minima_a_pedido(self, nodo_origen, pedido):
-        """
-        Evalúa la dispersión de stock: Busca en qué estantes (múltiples) está el producto
-        y calcula la distancia real por los pasillos desde la posición del operario
-        hasta la estantería más cercana que contenga el ítem.
-        """
-        distancia_mas_corta = float("inf")
+    def seleccionar_zona_despacho_optima(
+        self, warehouse: Warehouse, picker: Picker, peso_requerido: float
+    ) -> Optional[ZonaDespacho]:
+        zonas_candidatas = self.obtener_zonas_habilitadas(warehouse)
+        mejor_zona = None
+        menor_distancia = float("inf")
+        px, py = picker.posicion_actual
 
-        # Iteramos sobre los detalles (productos) que componen este pedido
-        for detalle in pedido.detalles:
-            # Búsqueda O(1) de todas las ubicaciones donde hay stock de este producto
-            ubicaciones_stock = self.inventory_manager.buscar_producto_O1(
-                detalle.id_producto
+        for zona in zonas_candidatas:
+            if not zona.puede_recibir_carga(peso_requerido):
+                continue
+
+            celda_acceso = warehouse.obtener_celda_acceso_despacho(zona.id_zona)
+            if not celda_acceso:
+                continue
+
+            dist = abs(px - celda_acceso[0]) + abs(py - celda_acceso[1])
+            if dist < menor_distancia:
+                menor_distancia = dist
+                mejor_zona = zona
+
+        return mejor_zona
+
+    def evaluar_cercania_mst_kruskal_prim(
+        self, pedidos_candidatos: List[Order], catalogo: CatalogManager
+    ) -> float:
+        puntos: List[Tuple[int, int]] = []
+        for ped in pedidos_candidatos:
+            for item in ped.items:
+                prod = catalogo.buscar_producto_O1(item.producto_id)
+                if prod:
+                    coord = (prod.ubicacion_x, prod.ubicacion_y)
+                    if coord not in puntos:
+                        puntos.append(coord)
+
+        n = len(puntos)
+        if n <= 1:
+            return 0.0
+
+        # Algoritmo de Prim sobre las coordenadas de recolección
+        visitados = [False] * n
+        dist_min = [float("inf")] * n
+        dist_min[0] = 0.0
+        costo_mst = 0.0
+
+        for _ in range(n):
+            u = -1
+            for i in range(n):
+                if not visitados[i] and (u == -1 or dist_min[i] < dist_min[u]):
+                    u = i
+
+            visitados[u] = True
+            costo_mst += dist_min[u]
+
+            for v in range(n):
+                if not visitados[v]:
+                    d = abs(puntos[u][0] - puntos[v][0]) + abs(
+                        puntos[u][1] - puntos[v][1]
+                    )
+                    if d < dist_min[v]:
+                        dist_min[v] = d
+
+        return costo_mst
+
+    def generar_waves(
+        self, warehouse: Warehouse, catalogo: CatalogManager, pickers: List[Picker]
+    ) -> List[Wave]:
+        for ped in catalogo.obtener_todos_los_pedidos():
+            if ped.estado == EstadoPedido.PENDIENTE:
+                self.cola_prioridad.insertar(ped)
+
+        waves_generadas: List[Wave] = []
+        if not pickers:
+            return waves_generadas
+
+        contador_wave = 1
+        idx_picker = 0
+        pedidos_extraidos: List[Order] = []
+
+        while not self.cola_prioridad.esta_vacio():
+            p = self.cola_prioridad.extraer_maximo()
+            if p:
+                pedidos_extraidos.append(p)
+
+        visitados = set()
+
+        for i, pedido_ancla in enumerate(pedidos_extraidos):
+            if pedido_ancla.id_pedido in visitados:
+                continue
+
+            picker_actual = pickers[idx_picker % len(pickers)]
+            peso_ancla = pedido_ancla.obtener_peso_total(catalogo)
+
+            zona_optima = self.seleccionar_zona_despacho_optima(
+                warehouse, picker_actual, peso_ancla
+            )
+            if not zona_optima:
+                continue
+
+            nueva_wave = Wave(
+                id_wave=f"WAVE_{contador_wave:02d}",
+                estado=EstadoWave.PENDIENTE,
+                id_picker_asignado=picker_actual.id_picker,
+                id_zona_despacho=zona_optima.id_zona,
+                wave_max_pedidos=self.wave_max_pedidos,
+                wave_max_productos=self.wave_max_productos,
             )
 
-            for stock in ubicaciones_stock:
-                # Nodo físico de la estantería para esta ubicación específica
-                nodo_destino = self.pathfinding.grafo.obtener_nodo(stock.id_nodo)
+            if nueva_wave.agregar_pedido(
+                pedido_ancla, picker_actual.capacidad_carga_kg, zona_optima, catalogo
+            ):
+                visitados.add(pedido_ancla.id_pedido)
 
-                if not nodo_destino:
-                    continue
-
-                # Usamos el servicio de Pathfinding (Dijkstra/BFS) para trazar la ruta transitable
-                ruta = self.pathfinding.calcular_ruta_dijkstra(
-                    nodo_origen, nodo_destino
+                # Ordenar candidatos restantes por menor incremento en el MST (cercanía geográfica)
+                candidatos = [
+                    p
+                    for p in pedidos_extraidos[i + 1 :]
+                    if p.id_pedido not in visitados
+                ]
+                candidatos.sort(
+                    key=lambda cand: self.evaluar_cercania_mst_kruskal_prim(
+                        nueva_wave.pedidos + [cand], catalogo
+                    )
                 )
 
-                # Si existe un camino y es más corto que los evaluados anteriormente, lo guardamos
-                if ruta and len(ruta) < distancia_mas_corta:
-                    distancia_mas_corta = len(ruta)
+                for cand in candidatos:
+                    if nueva_wave.agregar_pedido(
+                        cand, picker_actual.capacidad_carga_kg, zona_optima, catalogo
+                    ):
+                        visitados.add(cand.id_pedido)
 
-        return distancia_mas_corta
+                waves_generadas.append(nueva_wave)
+                contador_wave += 1
+                idx_picker += 1
 
-    def crear_wave_greedy(
-        self, pedidos_pendientes, limite_peso, id_nodo_inicio="0,0,0"
-    ):
-        """
-        Implementación de la heurística Voraz (Greedy) para agrupar pedidos.
-        """
-        if not pedidos_pendientes:
-            return None
-
-        # 1. Ordenamiento estricto por prioridad
-        pedidos_ordenados = self.ordenar_por_prioridad(pedidos_pendientes)
-
-        # 2. Inicialización de la nueva Wave
-        # Se genera con la restricción de límite de peso del picker
-        nueva_wave = Wave(
-            id_wave="W-" + str(id(self))[-4:],  # ID auto-generado simple
-            capacidad_max_peso=limite_peso,
-            estado=EstadoWave.PENDIENTE,
-        )
-        peso_acumulado = 0.0
-
-        # 3. Anclaje: Tomar el pedido de mayor prioridad como inicio de la Wave
-        pedido_ancla = pedidos_ordenados.pop(0)
-        peso_ancla = pedido_ancla.obtener_peso_total()
-
-        # Validamos que el pedido inicial no supere por sí solo la capacidad del operario
-        if peso_ancla <= limite_peso:
-            nueva_wave.agregar_pedido(pedido_ancla)
-            peso_acumulado += peso_ancla
-            pedido_ancla.estado = EstadoPedido.EN_WAVE
-        else:
-            print(
-                f"Error: El pedido {pedido_ancla.id_pedido} excede el límite de peso físico."
-            )
-            return None
-
-        # Obtenemos el nodo donde arranca el operario (usualmente la ZONA_DESPACHO)
-        nodo_actual = self.pathfinding.grafo.obtener_nodo(id_nodo_inicio)
-
-        # 4. Búsqueda Voraz por Cercanía y Stock Disperso
-        # Mientras queden pedidos y el picker siga teniendo capacidad de carga en kg.
-        while pedidos_ordenados and peso_acumulado < limite_peso:
-            pedido_candidato_elegido = None
-            menor_distancia_encontrada = float("inf")
-
-            # Escaneamos los pedidos restantes para encontrar el más cercano geográficamente
-            for pedido in pedidos_ordenados:
-                peso_pedido = pedido.obtener_peso_total()
-
-                # Condición 1: ¿Soporta el peso restante del carro?
-                if peso_acumulado + peso_pedido <= limite_peso:
-
-                    # Condición 2: Evaluar la dispersión de ubicaciones y medir distancia
-                    distancia_calculada = self._calcular_distancia_minima_a_pedido(
-                        nodo_actual, pedido
-                    )
-
-                    # Selección Greedy: Nos quedamos con el que represente menor esfuerzo de traslado
-                    if distancia_calculada < menor_distancia_encontrada:
-                        menor_distancia_encontrada = distancia_calculada
-                        pedido_candidato_elegido = pedido
-
-            # 5. Adhesión del candidato ganador a la Wave
-            if pedido_candidato_elegido:
-                nueva_wave.agregar_pedido(pedido_candidato_elegido)
-                peso_acumulado += pedido_candidato_elegido.obtener_peso_total()
-                pedido_candidato_elegido.estado = EstadoPedido.EN_WAVE
-
-                # Lo removemos de los pendientes para no volver a evaluarlo
-                pedidos_ordenados.remove(pedido_candidato_elegido)
-            else:
-                # Si ningún pedido restante cabe por peso (o todos son inalcanzables),
-                # cortamos el ciclo y cerramos la Wave actual.
-                break
-
-        # Seteamos la carga total final antes de retornar
-        nueva_wave.capacidad_max_peso = peso_acumulado
-        return nueva_wave
+        return waves_generadas
