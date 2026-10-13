@@ -1,42 +1,13 @@
-from enum import Enum
 from dataclasses import dataclass, field
 from typing import List, Optional, Tuple
 
-
-class EstadoPedido(Enum):
-    PENDIENTE = "PENDIENTE"
-    EN_WAVE = "EN_WAVE"
-    EN_PREPARACION = "EN_PREPARACION"
-    PREPARADO = "PREPARADO"
-
-
-class EstadoWave(Enum):
-    PENDIENTE = "PENDIENTE"
-    EN_EJECUCION = "EN_EJECUCION"
-    FINALIZADA = "FINALIZADA"
-    CANCELADA = "CANCELADA"
-
-
-class EstadoSimulacion(Enum):
-    DETENIDO = "DETENIDO"
-    EJECUTANDO = "EJECUTANDO"
-    PAUSADO = "PAUSADO"
-    FINALIZADO = "FINALIZADO"
-
-
-class TipoNodo(Enum):
-    CALLE = "CALLE"
-    RACK = "RACK"
-    PUERTA = "PUERTA"
-    DESPACHO = "DESPACHO"
-    PARED = "PARED"
-    OFICINA = "OFICINA"
-
-
-class EstrategiaRuteo(Enum):
-    ORDEN_PEDIDO = "ORDEN_PEDIDO"
-    GREEDY_CERCANIA = "GREEDY_CERCANIA"
-    DIJKSTRA_OPTIMO = "DIJKSTRA_OPTIMO"
+from BackEnd.models.enums import (
+    EstadoPedido,
+    EstadoWave,
+    EstadoSimulacion,
+    TipoNodo,
+    EstrategiaRuteo,
+)
 
 
 @dataclass
@@ -50,7 +21,6 @@ class WarehouseNode:
             partes = self.id_nodo.replace("_", "-", ",", ";").split("-")
             return int(partes[0]), int(partes[1]), int(partes[2])
         except (IndexError, ValueError):
-            # Retorno por defecto si el ID no tiene formato de coordenadas
             return 0, 0, 0
 
 
