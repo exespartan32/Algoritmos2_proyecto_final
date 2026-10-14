@@ -61,3 +61,47 @@ class Warehouse:
         if not prod:
             return None
         return self.acceso_rack_a_pasillo.get((prod.x, prod.y))
+    def imprimir_mapa(self, camino_bfs: Optional[List[Coord]] = None):
+        """Imprime la matriz en la terminal (y crece hacia arriba, x hacia la derecha)."""
+        from BackEnd.models.entity import TipoCelda, Sentido, CeldaPasillo
+        camino_set = set(camino_bfs) if camino_bfs else set()
+
+        simbolos_sentido = {
+            Sentido.N: "^",
+            Sentido.S: "v",
+            Sentido.E: ">",
+            Sentido.O: "<",
+            Sentido.AMBOS: "+"
+        }
+
+        print("\n=== MAPA DEL WAREHOUSE ===")
+        # Recorremos Y de arriba hacia abajo para que el (0,0) quede abajo a la izquierda
+        for y in range(self.largo_y - 1, -1, -1):
+            fila_str = f"y={y:02d} | "
+            for x in range(self.ancho_x):
+                if (x, y) in camino_set:
+                    fila_str += "*"  # Camino recorrido por el BFS
+                    continue
+
+                celda = self.matriz[x][y]
+                if celda.tipo == TipoCelda.RACK:
+                    fila_str += "#"
+                elif celda.tipo == TipoCelda.PUERTA:
+                    fila_str += "P"
+                elif celda.tipo == TipoCelda.ZONA_DESPACHO:
+                    fila_str += "D"
+                elif isinstance(celda, CeldaPasillo):
+                    # Si no tiene pasillo_id declarado es '.' (AMBOS), si fue declarado usa su símbolo
+                    if celda.elemento_id is None:
+                        fila_str += "."
+                    else:
+                        fila_str += simbolos_sentido.get(celda.sentido, "+")
+            print(fila_str)
+
+        # Eje X abajo
+        print("     +" + "-" * self.ancho_x)
+        decenas = "       " + "".join(str((x // 10) % 10) for x in range(self.ancho_x))
+        unidades = "       " + "".join(str(x % 10) for x in range(self.ancho_x))
+        print(decenas)
+        print(unidades)
+        print("Referencias: [#] Rack | [D] Despacho | [P] Puerta | [^ v > < + .] Pasillos | [*] Camino BFS\n")
