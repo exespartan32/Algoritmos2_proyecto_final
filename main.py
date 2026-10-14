@@ -1,52 +1,27 @@
-import os
-from BackEnd.controllers.persistence_generator import PersistenceAndGenerator
-from BackEnd.controllers.simulator_controller import SimulatorController
-
-
-def main():
-    ruta_entrada = os.path.join("BackEnd", "data", "escenario.json")
-    ruta_salida = os.path.join("BackEnd", "data", "estado_guardado.json")
-
-    persistencia = PersistenceAndGenerator()
-    warehouse, catalogo, pickers = persistencia.cargar_escenario_json(ruta_entrada)
-
-    print("=== 1. ESCENARIO CARGADO EN TABLAS HASH O(1) ===")
-    print(f"Dimensiones Warehouse: {warehouse.ancho_x}x{warehouse.largo_y}")
-    print(f"Zonas de despacho totales: {list(warehouse.zonas_despacho.keys())}")
-    prod_test = catalogo.buscar_producto_O1("P001")
-    if prod_test:
-        print(
-            f"Stock inicial de {prod_test.id_producto} ({prod_test.nombre}): {prod_test.cantidad_disponible}"
-        )
-
-    simulador = SimulatorController(warehouse, catalogo, pickers, ruta_salida)
-    simulador.iniciar()
-
-    print("\n=== 2. WAVES GENERADAS Y COMPARACIÓN DE ESTRATEGIAS ===")
-    for wave in simulador.waves_activas:
-        print(
-            f"Wave: {wave.id_wave} | Picker: {wave.id_picker_asignado} | "
-            f"Zona Despacho: {wave.id_zona_despacho} | Peso Total: {wave.peso_total_kg} kg"
-        )
-        metricas = simulador.metrics_manager.comparar_estrategias(wave.id_wave)
-        for est, met in metricas.items():
-            print(
-                f"  -> {est.value}: Distancia={met.distancia_total}m, "
-                f"Nodos Explorados={met.nodos_visitados}, Tiempo={met.tiempo_ms} ms"
-            )
-
-    # Simulamos pasos hasta finalizar o pausar para volcar la Tabla Hash a JSON
-    while simulador.estado_actual.value != "FINALIZADO":
-        simulador.avanzar_paso_a_paso()
-
-    print("\n=== 3. STOCK ACTUALIZADO EN TABLA HASH Y GUARDADO EN JSON ===")
-    prod_post = catalogo.buscar_producto_O1("P001")
-    if prod_post:
-        print(
-            f"Stock final de {prod_post.id_producto} tras simulación: {prod_post.cantidad_disponible}"
-        )
-    print(f"Archivo JSON exportado exitosamente en: {ruta_salida}")
-
+from BackEnd.utils.file_parser import FileParser
+from BackEnd.controllers.bfs import BuscadorBFS
 
 if __name__ == "__main__":
-    main()
+    # 1. Cargar escenario y construir Matriz + Digrafo
+    ruta = "BackEnd/data/escenario_grande.json"
+    wh = FileParser.cargar_warehouse_desde_json(ruta)
+
+    print(f"Warehouse creado: {wh.ancho_x}x{wh.largo_y}")
+    print(f"Total nodos de pasillo en el Digrafo: {len(wh.grafo_pasillos.nodos)}")
+    print(f"Total productos cargados en Racks: {len(wh.catalogo_productos)}")
+
+    # 2. Probar que el producto P001 (en rack x=50, y=14) nos da el nodo de pasillo de al lado
+    origen_picker = (5, 4)  # Posición inicial de PK_01 en escenario_grande.json
+    destino_pasillo = wh.obtener_nodo_acceso_producto("P001")
+    print(f"\nProducto P001 está en Rack (50, 14) -> Se accede desde Pasillo: {destino_pasillo}")
+
+    # 3. Correr BFS desde el Picker hasta el nodo de acceso del Rack
+    resultado = BuscadorBFS.buscar_camino(wh.grafo_pasillos, origen_picker, destino_pasillo)
+
+    if resultado:
+        print(f"¡Camino encontrado con BFS!")
+        print(f" - Distancia total: {resultado.distancia_total} pasos")
+        print(f" - Nodos visitados por BFS: {resultado.cantidad_nodos_visitados}")
+        print(f" - Aristas recorridas: {resultado.cantidad_aristas_recorridas}")
+        print(f" - Tiempo: {resultado.tiempo_ejecucion_ms:.3f} ms")
+        print(f" - Primeros 5 pasos: {resultado.secuencia_pasos[:5]} ... Últimos 3: {resultado.secuencia_pasos[-3:]}")
