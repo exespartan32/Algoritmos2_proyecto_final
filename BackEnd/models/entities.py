@@ -1,10 +1,9 @@
 from dataclasses import dataclass, field
-from typing import List, Tuple, Dict, Any, TYPE_CHECKING
+from typing import List, Tuple, Dict, Any, Optional, TYPE_CHECKING
 from BackEnd.enums.enums import EstadoPedido, EstadoWave
 
 if TYPE_CHECKING:
     from BackEnd.models.catalog_manager import CatalogManager
-    from BackEnd.models.warehouse_models import ZonaDespacho
 
 
 @dataclass
@@ -48,14 +47,42 @@ class Order:
     prioridad: int
     estado: EstadoPedido
     items: List[DetallePedido] = field(default_factory=list)
+    _peso_cache: Optional[float] = field(default=None, init=False, repr=False)
+    _unidades_cache: Optional[int] = field(default=None, init=False, repr=False)
+    _coordenadas_cache: Optional[List[Tuple[int, int]]] = field(
+        default=None, init=False, repr=False
+    )
+
+    def obtener_cantidad_unidades(self) -> int:
+        if self._unidades_cache is None:
+            self._unidades_cache = sum(item.cantidad for item in self.items)
+        return self._unidades_cache
 
     def obtener_peso_total(self, catalogo: "CatalogManager") -> float:
-        peso_total = 0.0
-        for item in self.items:
-            prod = catalogo.buscar_producto_O1(item.producto_id)
-            if prod:
-                peso_total += prod.peso_kg * item.cantidad
-        return round(peso_total, 4)
+        if self._peso_cache is None:
+            peso_total = 0.0
+            for item in self.items:
+                prod = catalogo.buscar_producto_O1(item.producto_id)
+                if prod is not None:
+                    peso_total += prod.peso_kg * item.cantidad
+            self._peso_cache = round(peso_total, 4)
+        return self._peso_cache
+
+    def obtener_coordenadas_unicas(
+        self, catalogo: "CatalogManager"
+    ) -> List[Tuple[int, int]]:
+        if self._coordenadas_cache is None:
+            coords: List[Tuple[int, int]] = []
+            vistos = set()
+            for item in self.items:
+                prod = catalogo.buscar_producto_O1(item.producto_id)
+                if prod is not None:
+                    pt = (prod.ubicacion_x, prod.ubicacion_y)
+                    if pt not in vistos:
+                        vistos.add(pt)
+                        coords.append(pt)
+            self._coordenadas_cache = coords
+        return self._coordenadas_cache
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -96,36 +123,62 @@ class Wave:
     estado: EstadoWave
     id_picker_asignado: str
     id_zona_despacho: str
-    wave_max_pedidos: int
-    wave_max_productos: int
+    wave_max_pedidos: float
+    wave_max_productos: float
     peso_total_kg: float = 0.0
+    unidades_totales: int = 0
     pedidos: List[Order] = field(default_factory=list)
     recorrido_calculado: List[Tuple[int, int]] = field(default_factory=list)
 
-    def agregar_pedido(
+    def puede_agregar_pedido(
         self,
         pedido: Order,
         max_peso_picker: float,
-        zona_despacho: "ZonaDespacho",
         catalogo: "CatalogManager",
+        peso_disponible_zona: Optional[float] = None,
     ) -> bool:
         if len(self.pedidos) >= self.wave_max_pedidos:
             return False
 
-        unidades_actuales = sum(sum(i.cantidad for i in p.items) for p in self.pedidos)
-        unidades_nuevas = sum(i.cantidad for i in pedido.items)
-        if (unidades_actuales + unidades_nuevas) > self.wave_max_productos:
+        if (
+            self.unidades_totales + pedido.obtener_cantidad_unidades()
+        ) > self.wave_max_productos:
             return False
 
         peso_pedido = pedido.obtener_peso_total(catalogo)
         if (self.peso_total_kg + peso_pedido) > max_peso_picker:
             return False
 
-        if not zona_despacho.puede_recibir_carga(peso_pedido):
+        if peso_disponible_zona is not None and peso_pedido > peso_disponible_zona:
             return False
 
+        return True
+
+    def agregar_pedido(
+        self,
+        pedido: Order,
+        max_peso_picker: float,
+        catalogo: "CatalogManager",
+        zona_despacho: Any = None,
+    ) -> bool:
+        peso_disp_zona = None
+        if zona_despacho is not None and hasattr(zona_despacho, "peso_max_kg"):
+            peso_disp_zona = zona_despacho.peso_max_kg - getattr(
+                zona_despacho, "peso_actual_kg", 0.0
+            )
+
+        if not self.puede_agregar_pedido(
+            pedido, max_peso_picker, catalogo, peso_disp_zona
+        ):
+            return False
+
+        peso_pedido = pedido.obtener_peso_total(catalogo)
         self.pedidos.append(pedido)
+        self.unidades_totales += pedido.obtener_cantidad_unidades()
         self.peso_total_kg = round(self.peso_total_kg + peso_pedido, 4)
-        zona_despacho.registrar_carga(peso_pedido)
-        pedido.estado = EstadoPedido.EN_WAVE
+
+        if zona_despacho is not None and hasattr(zona_despacho, "registrar_carga"):
+            zona_despacho.registrar_carga(peso_pedido)
+
+        catalogo.actualizar_estado_pedido_O1(pedido.id_pedido, EstadoPedido.EN_WAVE)
         return True
