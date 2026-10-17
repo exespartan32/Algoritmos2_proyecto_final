@@ -1,26 +1,28 @@
-from BackEnd.utils.file_parser import FileParser
+from BackEnd.utils.scenario_generator import ScenarioGenerator
 from BackEnd.controllers.bfs import BuscadorBFS
 
 if __name__ == "__main__":
-    ruta = "BackEnd/data/escenario_grande.json"
-    wh = FileParser.cargar_warehouse_desde_json(ruta)
+    print("=== GENERANDO ESCENARIO AUTOMÁTICO (SECCIÓN 16) ===")
+    wh_auto, valido = ScenarioGenerator.generar_y_validar_warehouse(
+        ruta_guardado_json="BackEnd/data/escenario_generado.json",
+        cantidad_estantes=5,          # Probá cambiar la cantidad de racks (ej: 3, 5, 8)
+        cantidad_pasillos=8,
+        cantidad_productos=20,
+        modo_localizacion="ALEATORIO", # "ALEATORIO", "CERCA_DESPACHO" o "DISPERSO"
+        cantidad_pedidos=8,
+        max_productos_por_pedido=3,
+        wave_max_pedidos=3
+    )
 
-    print(f"Warehouse creado: {wh.ancho_x}x{wh.largo_y}")
-    print(f"Total nodos de pasillo en el Digrafo: {len(wh.grafo_pasillos.nodos)}")
-    print(f"Total productos cargados en Racks: {len(wh.catalogo_productos)}")
+    print(f"¿Escenario 100% válido y conexo (ida/vuelta con BFS)?: {valido}")
+    print(f"Dimensiones generadas: {wh_auto.ancho_x}x{wh_auto.largo_y}")
+    print(f"Total Racks: {len(wh_auto.racks)} | Total Productos: {len(wh_auto.catalogo_productos)}")
 
-    origen_picker = (5, 4)  # Posición inicial de PK_01
-    destino_pasillo = wh.obtener_nodo_acceso_producto("P001")
-    print(f"\nProducto P001 está en Rack (50, 14) -> Se accede desde Pasillo: {destino_pasillo}")
+    # Probar un camino BFS hasta el primer producto generado (P001)
+    origen = (1, 3)
+    destino = wh_auto.obtener_nodo_acceso_producto("P001")
+    res = BuscadorBFS.buscar_camino(wh_auto.grafo_pasillos, origen, destino)
 
-    resultado = BuscadorBFS.buscar_camino(wh.grafo_pasillos, origen_picker, destino_pasillo)
-
-    if resultado:
-        # Imprime la matriz con el camino del BFS marcado con '*'
-        wh.imprimir_mapa(camino_bfs=resultado.secuencia_pasos)
-
-        print(f"¡Camino encontrado con BFS!")
-        print(f" - Distancia total: {resultado.distancia_total} pasos")
-        print(f" - Nodos visitados por BFS: {resultado.cantidad_nodos_visitados}")
-        print(f" - Aristas recorridas: {resultado.cantidad_aristas_recorridas}")
-        print(f" - Tiempo: {resultado.tiempo_ejecucion_ms:.3f} ms")
+    if res:
+        wh_auto.imprimir_mapa(camino_bfs=res.secuencia_pasos)
+        print(f"Camino a P001 en {destino} -> Distancia: {res.distancia_total} pasos | Tiempo: {res.tiempo_ejecucion_ms:.3f} ms")
