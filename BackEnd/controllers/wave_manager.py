@@ -1,6 +1,6 @@
 from typing import List, Optional, Tuple, Dict, Any
 from BackEnd.models.catalog_manager import CatalogManager
-from BackEnd.models.entities import Order, Picker, Wave
+from BackEnd.models.entity import Order, Picker, Wave
 from BackEnd.enums.enums import EstadoWave, EstadoPedido
 from BackEnd.data_structures.disjoint_set import DisjointSet
 from BackEnd.data_structures.max_heap_pedidos import MaxHeapPedidos

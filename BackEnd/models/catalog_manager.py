@@ -2,7 +2,7 @@ import os
 import json
 import random
 from typing import List, Optional, Dict, Any
-from BackEnd.models.entities import Product, Order, DetallePedido, Picker
+from BackEnd.models.entity import Product, Order, DetallePedido, Picker
 from BackEnd.enums.enums import EstadoPedido
 from BackEnd.data_structures.linkedlist import LinkedList, add
 

@@ -5,6 +5,9 @@ from BackEnd.enums.enums import (
     TipoCelda, SentidoCirculacion, TipoPuerta, EstadoPedido, EstadoWave
 )
 
+# Alias para compatibilidad con código que importa 'Sentido'
+Sentido = SentidoCirculacion
+
 if TYPE_CHECKING:
     from BackEnd.models.catalog_manager import CatalogManager
 
@@ -78,6 +81,23 @@ class Product:
     altura_z: int
     cantidad_disponible: int
     peso_kg: float
+
+    # Propiedades de compatibilidad para que funcione con tu código (x, y, z, id)
+    @property
+    def id(self) -> str:
+        return self.id_producto
+
+    @property
+    def x(self) -> int:
+        return self.ubicacion_x
+
+    @property
+    def y(self) -> int:
+        return self.ubicacion_y
+
+    @property
+    def z(self) -> int:
+        return self.altura_z
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -244,3 +264,6 @@ class Wave:
 
         catalogo.actualizar_estado_pedido_O1(pedido.id_pedido, EstadoPedido.EN_WAVE)
         return True
+
+Sentido = SentidoCirculacion
+Producto = Product
