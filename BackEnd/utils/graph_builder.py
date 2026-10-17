@@ -1,6 +1,7 @@
 from typing import Dict, Any, List, Tuple
+from BackEnd.enums.enums import TipoCelda, SentidoCirculacion
 from BackEnd.models.entity import (
-    TipoCelda, Sentido, CeldaPasillo, CeldaRack, Rack, ZonaDespacho, Puerta, Producto
+    Celda, CeldaPasillo, CeldaRack, Rack, ZonaDespacho, Puerta, Product
 )
 from BackEnd.models.warehouse import Warehouse
 
@@ -16,12 +17,12 @@ class GraphBuilder:
         # 1. Inicializar toda la matriz como PASILLO con sentido AMBOS por defecto
         for x in range(ancho_x):
             for y in range(largo_y):
-                wh.matriz[x][y] = CeldaPasillo(x, y, Sentido.AMBOS)
+                wh.matriz[x][y] = CeldaPasillo(x, y, SentidoCirculacion.AMBOS)
 
         # 2. Pintar Pasillos Declarados (con su sentido N, S, E, O, AMBOS)
         for pas in wh_data.get("pasillos", []):
             px, py = pas["ubicacion"]["x"], pas["ubicacion"]["y"]
-            sentido_enum = Sentido(pas["sentido"])
+            sentido_enum = SentidoCirculacion(pas["sentido"])
             for x in range(px, px + pas["ancho"]):
                 for y in range(py, py + pas["alto"]):
                     wh.matriz[x][y] = CeldaPasillo(x, y, sentido_enum, pas["id"])
@@ -31,7 +32,6 @@ class GraphBuilder:
             px, py = p["ubicacion"]["x"], p["ubicacion"]["y"]
             puerta_obj = Puerta(p["id"], p["tipo"], px, py)
             wh.puertas[p["id"]] = puerta_obj
-            from BackEnd.models.entity import Celda
             wh.matriz[px][py] = Celda(px, py, TipoCelda.PUERTA, p["id"])
 
         # 4. Pintar Zonas de Despacho
@@ -41,7 +41,6 @@ class GraphBuilder:
                 zd["id"], zd["puerta_id"], zx, zy, zd["ancho"], zd["alto"], zd["peso_max_kg"]
             )
             wh.zonas_despacho[zd["id"]] = zona_obj
-            from BackEnd.models.entity import Celda
             for x in range(zx, zx + zd["ancho"]):
                 for y in range(zy, zy + zd["alto"]):
                     wh.matriz[x][y] = Celda(x, y, TipoCelda.ZONA_DESPACHO, zd["id"])
@@ -59,11 +58,17 @@ class GraphBuilder:
         for prod in data.get("productos", []):
             ub = prod["ubicacion"]
             px, py, pz = ub["x"], ub["y"], ub["z"]
-            prod_obj = Producto(
-                prod["id"], prod["nombre"], prod["rack_id"],
-                px, py, pz, prod["cantidad_disponible"], prod["peso_kg"]
+            prod_obj = Product(
+                id_producto=prod["id"],
+                nombre=prod["nombre"],
+                rack_id=prod["rack_id"],
+                ubicacion_x=px,
+                ubicacion_y=py,
+                altura_z=pz,
+                cantidad_disponible=prod["cantidad_disponible"],
+                peso_kg=prod["peso_kg"]
             )
-            wh.catalogo_productos[prod_obj.id] = prod_obj
+            wh.catalogo_productos[prod_obj.id_producto] = prod_obj
             celda_actual = wh.matriz[px][py]
             if isinstance(celda_actual, CeldaRack):
                 celda_actual.apilar_producto(pz, prod_obj)
@@ -109,21 +114,20 @@ class GraphBuilder:
                         wh.grafo_pasillos.agregar_arista_dirigida((x, y), (nx, ny))
 
     @staticmethod
-    def _direcciones_segun_sentido(sentido: Sentido) -> List[Tuple[int, int]]:
+    def _direcciones_segun_sentido(sentido: SentidoCirculacion) -> List[Tuple[int, int]]:
         """
         Regla 3.5 del PDF:
         - En N o S puede avanzar en su sentido (+y o -y) y desplazarse lateralmente en x (+x, -x).
         - En E u O puede avanzar en su sentido (+x o -x) y desplazarse lateralmente en y (+y, -y).
         - En AMBOS puede ir en las 4 direcciones.
         """
-        if sentido == Sentido.N:
+        if sentido == SentidoCirculacion.N:
             return [(0, 1), (-1, 0), (1, 0)]   # Norte (+y) y laterales (Oeste, Este)
-        elif sentido == Sentido.S:
+        elif sentido == SentidoCirculacion.S:
             return [(0, -1), (-1, 0), (1, 0)]  # Sur (-y) y laterales (Oeste, Este)
-        elif sentido == Sentido.E:
+        elif sentido == SentidoCirculacion.E:
             return [(1, 0), (0, 1), (0, -1)]   # Este (+x) y laterales (Norte, Sur)
-        elif sentido == Sentido.O:
+        elif sentido == SentidoCirculacion.O:
             return [(-1, 0), (0, 1), (0, -1)]  # Oeste (-x) y laterales (Norte, Sur)
-        else:  # Sentido.AMBOS
+        else:  # SentidoCirculacion.AMBOS
             return [(0, 1), (0, -1), (1, 0), (-1, 0)]
-            
