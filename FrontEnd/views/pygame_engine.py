@@ -28,9 +28,7 @@ class App(UIElements):
     def __init__(self, library=None):
         pygame.init()
         pygame.display.set_caption("Wave Picking - Algoritmos II")
-        self.screen = pygame.display.set_mode(
-            (1520, 960), pygame.SCALED | pygame.RESIZABLE
-        )
+        self.screen = pygame.display.set_mode((1024, 768), pygame.RESIZABLE)
         self.fonts = {}
         self.buttons = []
         self.running = True
