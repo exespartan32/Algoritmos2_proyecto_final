@@ -1,4 +1,4 @@
-from typing import Dict, List, Tuple, TYPE_CHECKING
+from typing import Dict, List, Tuple, Set, TYPE_CHECKING
 from BackEnd.enums.enums import TipoCelda, SentidoCirculacion
 
 if TYPE_CHECKING:
@@ -9,12 +9,12 @@ class GrafoWarehouse:
     def __init__(self):
         self.lista_adyacencia: Dict[Tuple[int, int], List[Tuple[int, int]]] = {}
         self.aristas_bloqueadas: Dict[Tuple[Tuple[int, int], int], str] = {}
+        self.cruces_bloqueados: Set[Tuple[Tuple[int, int], Tuple[int, int], int]] = set()
 
     def construir_desde_grilla(self, warehouse: "Warehouse") -> None:
         self.lista_adyacencia.clear()
 
-        # En el sistema de coordenadas del JSON (PAS_H_INF en y=3, PAS_H_SUP en y=11):
-        # Norte incrementa Y, Sur decrementa Y, Este incrementa X, Oeste decrementa X.
+        # Norte incrementa Y (+y), Sur decrementa Y (-y), Este incrementa X (+x), Oeste decrementa X (-x)
         desplazamientos = {
             SentidoCirculacion.N: [(0, 1), (1, 0), (-1, 0)],
             SentidoCirculacion.S: [(0, -1), (1, 0), (-1, 0)],
@@ -36,18 +36,35 @@ class GrafoWarehouse:
                 vecino_coord = (coord[0] + dx, coord[1] + dy)
                 celda_vecina = warehouse.grilla_hash.get(vecino_coord)
 
-                if celda_vecina and celda_vecina.tipo == TipoCelda.PASILLO:
-                    # Evitar entrar en contramano a un pasillo unidireccional
-                    if dy == 1 and celda_vecina.sentido == SentidoCirculacion.S:
-                        continue
-                    if dy == -1 and celda_vecina.sentido == SentidoCirculacion.N:
-                        continue
-                    if dx == 1 and celda_vecina.sentido == SentidoCirculacion.O:
-                        continue
-                    if dx == -1 and celda_vecina.sentido == SentidoCirculacion.E:
+                if not celda_vecina or celda_vecina.tipo != TipoCelda.PASILLO:
+                    continue
+
+                # 1. Evitar entrar en contramano a un pasillo unidireccional
+                if dy == 1 and celda_vecina.sentido == SentidoCirculacion.S:
+                    continue
+                if dy == -1 and celda_vecina.sentido == SentidoCirculacion.N:
+                    continue
+                if dx == 1 and celda_vecina.sentido == SentidoCirculacion.O:
+                    continue
+                if dx == -1 and celda_vecina.sentido == SentidoCirculacion.E:
+                    continue
+
+                # 2. Restringir desplazamiento lateral a celdas del mismo pasillo o intersecciones AMBOS
+                if celda.sentido in (SentidoCirculacion.N, SentidoCirculacion.S) and dx != 0:
+                    if (
+                        celda_vecina.id_elemento_asociado != celda.id_elemento_asociado
+                        and celda_vecina.sentido != SentidoCirculacion.AMBOS
+                    ):
                         continue
 
-                    self.lista_adyacencia[coord].append(vecino_coord)
+                if celda.sentido in (SentidoCirculacion.E, SentidoCirculacion.O) and dy != 0:
+                    if (
+                        celda_vecina.id_elemento_asociado != celda.id_elemento_asociado
+                        and celda_vecina.sentido != SentidoCirculacion.AMBOS
+                    ):
+                        continue
+
+                self.lista_adyacencia[coord].append(vecino_coord)
 
     def obtener_vecinos_validos(
         self, coord: Tuple[int, int], paso_tiempo: int = -1
@@ -55,12 +72,24 @@ class GrafoWarehouse:
         vecinos = self.lista_adyacencia.get(coord, [])
         if paso_tiempo < 0:
             return list(vecinos)
-        return [v for v in vecinos if (v, paso_tiempo) not in self.aristas_bloqueadas]
+        return [
+            v
+            for v in vecinos
+            if (v, paso_tiempo) not in self.aristas_bloqueadas
+            and (coord, v, paso_tiempo) not in self.cruces_bloqueados
+        ]
 
     def bloquear_celda_temporal(
         self, coord: Tuple[int, int], paso: int, id_picker: str
     ) -> None:
         self.aristas_bloqueadas[(coord, paso)] = id_picker
 
+    def bloquear_cruce_temporal(
+        self, origen: Tuple[int, int], destino: Tuple[int, int], paso: int
+    ) -> None:
+        """Bloquea el movimiento directo origen -> destino en 'paso' para evitar cruces frontales."""
+        self.cruces_bloqueados.add((origen, destino, paso))
+
     def limpiar_bloqueos(self) -> None:
         self.aristas_bloqueadas.clear()
+        self.cruces_bloqueados.clear()
