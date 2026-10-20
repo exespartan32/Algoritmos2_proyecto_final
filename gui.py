@@ -2,6 +2,7 @@
 
 import argparse
 from pathlib import Path
+import pygame
 
 
 def main():
@@ -14,7 +15,6 @@ def main():
         "--frames", type=int, help="Cerrar tras N cuadros (prueba de arranque)"
     )
     args = parser.parse_args()
-    import pygame
     from FrontEnd.views.pygame_engine import App
 
     try:
