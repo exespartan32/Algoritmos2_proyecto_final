@@ -1,6 +1,7 @@
 from typing import Dict, List, Tuple, Optional
+from BackEnd.enums.enums import TipoCelda, SentidoCirculacion as Sentido
 from BackEnd.models.entity import (
-    Celda, CeldaRack, TipoCelda, Sentido, Rack, ZonaDespacho, Puerta, Producto
+    Celda, CeldaPasillo, CeldaRack, Rack, ZonaDespacho, Puerta, Product
 )
 
 Coord = Tuple[int, int]
@@ -69,7 +70,7 @@ class Warehouse:
         self.racks: Dict[str, Rack] = {}
         self.zonas_despacho: Dict[str, ZonaDespacho] = {}
         self.puertas: Dict[str, Puerta] = {}
-        self.catalogo_productos: Dict[str, Producto] = {}
+        self.catalogo_productos: Dict[str, Product] = {}
 
         # Compatibilidad: celda de RACK -> PRIMER nodo de PASILLO desde el que se la recoge
         self.acceso_rack_a_pasillo: Dict[Coord, Coord] = {}
@@ -82,6 +83,21 @@ class Warehouse:
 
     def dentro(self, x: int, y: int) -> bool:
         return 0 <= x < self.ancho_x and 0 <= y < self.largo_y
+
+    def obtener_celda(self, x: int, y: int) -> Optional[Celda]:
+        """Devuelve qué hay en (x, y), como si hubiera una matriz, pero sin guardarla.
+
+        - Obstáculo: devuelve la celda real guardada (CeldaRack, zona o puerta).
+        - Pasillo: arma en el momento una CeldaPasillo con el sentido del nodo.
+        - Fuera del almacén: None.
+        """
+        celda = self.obstaculos.get((x, y))
+        if celda is not None:
+            return celda
+        nodo = self.grafo_pasillos.nodos.get((x, y))
+        if nodo is None:
+            return None
+        return CeldaPasillo(x, y, nodo.sentido_permitido, nodo.pasillo_id)
 
     def obtener_nodo_acceso_producto(self, prod_id: str) -> Optional[Coord]:
         """Devuelve la coordenada del nodo de PASILLO donde debe frenar el picker para recoger el producto."""

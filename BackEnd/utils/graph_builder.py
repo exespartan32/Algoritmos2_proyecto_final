@@ -1,7 +1,6 @@
 from typing import Dict, Any, List, Tuple, Optional
-from BackEnd.models.entity import (
-    Celda, TipoCelda, Sentido, CeldaRack, Rack, ZonaDespacho, Puerta, Producto
-)
+from BackEnd.enums.enums import TipoCelda, SentidoCirculacion as Sentido
+from BackEnd.models.entity import Celda, CeldaRack, Rack, ZonaDespacho, Puerta, Product
 from BackEnd.models.warehouse import Warehouse, Coord
 
 # Las 4 direcciones ortogonales (sin diagonales): Norte, Sur, Este, Oeste
@@ -97,9 +96,15 @@ class GraphBuilder:
                 raise ValueError(
                     f"El producto {prod['id']} está en ({px},{py}), fuera del almacén ({ancho_x}x{largo_y})."
                 )
-            prod_obj = Producto(
-                prod["id"], prod["nombre"], prod["rack_id"],
-                px, py, pz, prod["cantidad_disponible"], prod["peso_kg"]
+            prod_obj = Product(
+                id_producto=prod["id"],
+                nombre=prod["nombre"],
+                rack_id=prod["rack_id"],
+                ubicacion_x=px,
+                ubicacion_y=py,
+                altura_z=pz,
+                cantidad_disponible=prod["cantidad_disponible"],
+                peso_kg=prod["peso_kg"],
             )
             wh.catalogo_productos[prod_obj.id] = prod_obj
             celda = wh.obstaculos.get((px, py))

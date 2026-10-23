@@ -225,4 +225,4 @@ class ScenarioGenerator:
             with open(ruta_guardado_json, "w", encoding="utf-8") as f:
                 json.dump(datos, f, indent=2, ensure_ascii=False)
 
-        return wh, es_valido
+        return wh, es_valido

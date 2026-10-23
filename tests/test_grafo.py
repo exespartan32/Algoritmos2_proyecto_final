@@ -83,9 +83,22 @@ def alcanzables(grafo, origen):
     return vistos
 
 
+def llega(grafo, origen, destino, bloqueados=()):
+    """True si hay camino de origen a destino sin pasar por las celdas bloqueadas."""
+    vistos = {origen}
+    cola = deque([origen])
+    while cola:
+        actual = cola.popleft()
+        for v in grafo.lista_adyacencia.get(actual, []):
+            if v not in vistos and v not in bloqueados:
+                vistos.add(v)
+                cola.append(v)
+    return destino in vistos
+
+
 def ruta_escenario_grande():
     for carpeta in (RAIZ, os.path.join(RAIZ, "BackEnd", "data"), os.path.join(RAIZ, "tests", "data")):
-        ruta = os.path.join(carpeta, "escenario_grande_corregido.json")
+        ruta = os.path.join(carpeta, "escenario_grande.json")
         if os.path.isfile(ruta):
             return ruta
     return None
@@ -198,19 +211,31 @@ class TestErroresYAdvertencias(unittest.TestCase):
         self.assertTrue(any("no pertenecen a la red principal" in a for a in wh.advertencias))
 
 
-@unittest.skipIf(ruta_escenario_grande() is None, "No se encontró escenario_grande_corregido.json")
+@unittest.skipIf(ruta_escenario_grande() is None, "No se encontró escenario_grande.json")
 class TestEscenarioGrande(unittest.TestCase):
     def setUp(self):
         with open(ruta_escenario_grande(), encoding="utf-8") as f:
             self.data = json.load(f)
 
-    def test_corregido(self):
+    def test_escenario_grande_sin_trampas(self):
         wh = GraphBuilder.construir_warehouse_desde_dict(self.data)
         self.assertEqual(wh.advertencias, [])
         self.assertEqual(len(GraphBuilder.componentes_fuertemente_conexas(wh)), 1)
         self.assertEqual(len(wh.grafo_pasillos.nodos), 1898)
         for prod_id in wh.catalogo_productos:
             self.assertEqual(len(wh.obtener_nodos_acceso_producto(prod_id)), 1, prod_id)
+
+    def test_rincon_sin_salida_con_pas_va00_en_n(self):
+        # Con PAS_VA00 en N, el rincón x=0..3, y=15..17 sólo sale por (3,16).
+        buscar(self.data["warehouse"]["pasillos"], "PAS_VA00")["sentido"] = "N"
+        wh = GraphBuilder.construir_warehouse_desde_dict(self.data)
+        g = wh.grafo_pasillos
+        self.assertTrue(llega(g, (3, 15), (5, 4)))
+        self.assertFalse(llega(g, (3, 15), (5, 4), {(3, 16)}))
+
+    def test_rincon_con_salida_alternativa_con_pas_va00_ambos(self):
+        wh = GraphBuilder.construir_warehouse_desde_dict(self.data)
+        self.assertTrue(llega(wh.grafo_pasillos, (3, 15), (5, 4), {(3, 16)}))
 
     def test_trampa_con_pas_vb00_en_s(self):
         buscar(self.data["warehouse"]["pasillos"], "PAS_VB00")["sentido"] = "S"

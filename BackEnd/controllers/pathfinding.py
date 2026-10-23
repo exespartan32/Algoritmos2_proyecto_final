@@ -1,159 +1,182 @@
 import time
-from dataclasses import dataclass, field
-from typing import List, Tuple, Dict, Optional
-from BackEnd.data_structures.grafo_warehouse import GrafoWarehouse
-from BackEnd.models.entities import Picker
+import heapq
 
-
-@dataclass
 class RutaResultado:
-    camino_completo: List[Tuple[int, int]] = field(default_factory=list)
-    nodos_explorados: List[Tuple[int, int]] = field(default_factory=list)
-    distancia_total: int = 0
-    aristas_recorridas: int = 0
-    tiempo_ejecucion_ms: float = 0.0
+    """
+    Objeto de retorno esperado por SimulatorController.
+    Centraliza las métricas y el camino trazado por el algoritmo.
+    """
+    def __init__(self, camino_completo, nodos_explorados, tiempo_ejecucion_ms):
+        self.camino_completo = camino_completo
+        self.nodos_explorados = nodos_explorados  # Lista o set de tuplas (x, y)
+        self.distancia_total = len(camino_completo) - 1 if camino_completo else 0
+        self.aristas_recorridas = self.distancia_total
+        self.tiempo_ejecucion_ms = tiempo_ejecucion_ms
 
 
 class Pathfinding:
-    def _dijkstra_punto_a_punto(
-        self,
-        grafo: GrafoWarehouse,
-        origen: Tuple[int, int],
-        destino: Tuple[int, int],
-        paso_inicial: int = -1,
-    ) -> Tuple[List[Tuple[int, int]], List[Tuple[int, int]]]:
-        if origen == destino:
-            return [origen], [origen]
+    """
+    Motor de búsqueda y ruteo espacial del Warehouse.
+    Utiliza Dijkstra y heurísticas voraces sobre grafos de celdas unitarias.
+    """
 
-        distancias: Dict[Tuple[int, int], float] = {origen: 0.0}
-        padres: Dict[Tuple[int, int], Optional[Tuple[int, int]]] = {origen: None}
-        no_visitados: List[Tuple[int, int]] = [origen]
-        explorados: List[Tuple[int, int]] = []
-        visitados_set = set()
+    # ==========================================
+    # FUNCIONES ENVOLTORIO PARA EL SIMULADOR
+    # ==========================================
 
-        while no_visitados:
-            no_visitados.sort(key=lambda n: distancias.get(n, float("inf")))
-            actual = no_visitados.pop(0)
+    @staticmethod
+    def calcular_estrategia_orden_pedidos(grafo, origen, destinos):
+        """
+        ESTRATEGIA A: Visita los destinos en el orden estricto de la lista
+        y luego regresa a la zona de despacho.
+        """
+        tiempo_inicio = time.perf_counter()
+        nodos_explorados_totales = set()
+        
+        ruta_total = []
+        posicion_actual = origen
+        
+        # 1. Viajar a cada destino en el orden exacto de la lista
+        for destino in destinos:
+            ruta_tramo, explorados_tramo = Pathfinding.calcular_ruta_dijkstra(posicion_actual, destino, grafo)
+            nodos_explorados_totales.update(explorados_tramo)
+            
+            if ruta_total:
+                ruta_total.extend(ruta_tramo[1:])
+            else:
+                ruta_total.extend(ruta_tramo)
+                
+            posicion_actual = destino
+            
+        # 2. Regresar al origen (Zona de Despacho)
+        ruta_regreso, explorados_regreso = Pathfinding.calcular_ruta_dijkstra(posicion_actual, origen, grafo)
+        nodos_explorados_totales.update(explorados_regreso)
+        
+        if ruta_total:
+            ruta_total.extend(ruta_regreso[1:])
+        else:
+            ruta_total.extend(ruta_regreso)
+            
+        tiempo_fin = time.perf_counter()
+        tiempo_ms = (tiempo_fin - tiempo_inicio) * 1000
+        
+        return RutaResultado(ruta_total, list(nodos_explorados_totales), tiempo_ms)
 
-            if actual in visitados_set:
-                continue
-            visitados_set.add(actual)
-            explorados.append(actual)
-
-            if actual == destino:
-                break
-
-            paso_eval = (
-                (paso_inicial + int(distancias[actual]) + 1)
-                if paso_inicial >= 0
-                else -1
-            )
-            for vecino in grafo.obtener_vecinos_validos(actual, paso_eval):
-                nueva_dist = distancias[actual] + 1.0
-                if nueva_dist < distancias.get(vecino, float("inf")):
-                    distancias[vecino] = nueva_dist
-                    padres[vecino] = actual
-                    no_visitados.append(vecino)
-
-        if destino not in padres:
-            return [], explorados
-
-        camino = []
-        curr: Optional[Tuple[int, int]] = destino
-        while curr is not None:
-            camino.append(curr)
-            curr = padres[curr]
-        camino.reverse()
-        return camino, explorados
-
-    def calcular_estrategia_orden_pedidos(
-        self,
-        grafo: GrafoWarehouse,
-        origen: Tuple[int, int],
-        destinos: List[Tuple[int, int]],
-    ) -> RutaResultado:
-        t0 = time.perf_counter()
-        camino_total: List[Tuple[int, int]] = [origen]
-        explorados_total: List[Tuple[int, int]] = []
-        actual = origen
-
-        for dest in destinos:
-            tramo, exp = self._dijkstra_punto_a_punto(grafo, actual, dest)
-            explorados_total.extend(exp)
-            if tramo:
-                camino_total.extend(tramo[1:])
-                actual = dest
-
-        # Regreso al punto de despacho
-        tramo_retorno, exp_ret = self._dijkstra_punto_a_punto(grafo, actual, origen)
-        explorados_total.extend(exp_ret)
-        if tramo_retorno:
-            camino_total.extend(tramo_retorno[1:])
-
-        t_ms = (time.perf_counter() - t0) * 1000.0
-        aristas = max(0, len(camino_total) - 1)
-        return RutaResultado(
-            camino_completo=camino_total,
-            nodos_explorados=explorados_total,
-            distancia_total=aristas,
-            aristas_recorridas=aristas,
-            tiempo_ejecucion_ms=round(t_ms, 4),
-        )
-
-    def calcular_estrategia_cercania_multidestino(
-        self,
-        grafo: GrafoWarehouse,
-        origen: Tuple[int, int],
-        destinos: List[Tuple[int, int]],
-    ) -> RutaResultado:
-        t0 = time.perf_counter()
-        pendientes = list(destinos)
-        camino_total: List[Tuple[int, int]] = [origen]
-        explorados_total: List[Tuple[int, int]] = []
-        actual = origen
-
+    @staticmethod
+    def calcular_estrategia_cercania_multidestino(grafo, origen, destinos_pendientes):
+        """
+        ESTRATEGIA B: Greedy multidestino. Desde el punto actual, encuentra 
+        el destino no visitado más cercano, viaja allí y repite.
+        """
+        tiempo_inicio = time.perf_counter()
+        nodos_explorados_totales = set()
+        
+        ruta_total = []
+        posicion_actual = origen
+        pendientes = destinos_pendientes.copy()
+        
         while pendientes:
-            mejor_dest = None
-            mejor_tramo: List[Tuple[int, int]] = []
-            menor_costo = float("inf")
+            ruta_tramo, destino_alcanzado, explorados_tramo = Pathfinding.calcular_ruta_greedy(posicion_actual, pendientes, grafo)
+            nodos_explorados_totales.update(explorados_tramo)
+            
+            if not destino_alcanzado:
+                break 
+                
+            if ruta_total:
+                ruta_total.extend(ruta_tramo[1:])
+            else:
+                ruta_total.extend(ruta_tramo)
+                
+            posicion_actual = destino_alcanzado
+            pendientes.remove(destino_alcanzado)
+            
+        # Regresar al origen (Zona de Despacho)
+        ruta_regreso, explorados_regreso = Pathfinding.calcular_ruta_dijkstra(posicion_actual, origen, grafo)
+        nodos_explorados_totales.update(explorados_regreso)
+        
+        if ruta_total:
+            ruta_total.extend(ruta_regreso[1:])
+        else:
+            ruta_total.extend(ruta_regreso)
+            
+        tiempo_fin = time.perf_counter()
+        tiempo_ms = (tiempo_fin - tiempo_inicio) * 1000
+        
+        return RutaResultado(ruta_total, list(nodos_explorados_totales), tiempo_ms)
 
-            for candidato in pendientes:
-                tramo, exp = self._dijkstra_punto_a_punto(grafo, actual, candidato)
-                explorados_total.extend(exp)
-                if tramo and len(tramo) < menor_costo:
-                    menor_costo = len(tramo)
-                    mejor_dest = candidato
-                    mejor_tramo = tramo
+    # ==========================================
+    # ALGORITMOS CORE MATEMÁTICOS
+    # ==========================================
 
-            if mejor_dest is None:
-                break
+    @staticmethod
+    def calcular_ruta_dijkstra(origen, destino, grafo):
+        cola = [(0, origen)]
+        distancias = {origen: 0}
+        padres = {origen: None}
+        nodos_explorados = set()
+        
+        while cola:
+            dist_actual, nodo_actual = heapq.heappop(cola)
+            nodos_explorados.add(nodo_actual)
+            
+            if nodo_actual == destino:
+                ruta = Pathfinding._reconstruir_ruta(padres, destino)
+                return ruta, nodos_explorados
+            
+            if dist_actual > distancias.get(nodo_actual, float('inf')):
+                continue
+                
+            vecinos = grafo.obtener_vecinos_validos(nodo_actual, paso_tiempo=0) if hasattr(grafo, 'obtener_vecinos_validos') else []
+            
+            for vecino in vecinos:
+                peso = 1 
+                nueva_distancia = dist_actual + peso
+                
+                if nueva_distancia < distancias.get(vecino, float('inf')):
+                    distancias[vecino] = nueva_distancia
+                    padres[vecino] = nodo_actual
+                    heapq.heappush(cola, (nueva_distancia, vecino))
+                    
+        return [], nodos_explorados
 
-            camino_total.extend(mejor_tramo[1:])
-            actual = mejor_dest
-            pendientes.remove(mejor_dest)
+    @staticmethod
+    def calcular_ruta_greedy(origen, destinos_pendientes, grafo):
+        set_destinos = set(destinos_pendientes)
+        cola = [(0, origen)]
+        distancias = {origen: 0}
+        padres = {origen: None}
+        nodos_explorados = set()
+        
+        while cola:
+            dist_actual, nodo_actual = heapq.heappop(cola)
+            nodos_explorados.add(nodo_actual)
+            
+            if nodo_actual in set_destinos:
+                ruta = Pathfinding._reconstruir_ruta(padres, nodo_actual)
+                return ruta, nodo_actual, nodos_explorados
+                
+            if dist_actual > distancias.get(nodo_actual, float('inf')):
+                continue
+                
+            vecinos = grafo.obtener_vecinos_validos(nodo_actual, paso_tiempo=0) if hasattr(grafo, 'obtener_vecinos_validos') else []
+            
+            for vecino in vecinos:
+                peso = 1 
+                nueva_distancia = dist_actual + peso
+                
+                if nueva_distancia < distancias.get(vecino, float('inf')):
+                    distancias[vecino] = nueva_distancia
+                    padres[vecino] = nodo_actual
+                    heapq.heappush(cola, (nueva_distancia, vecino))
+                    
+        return [], None, nodos_explorados
 
-        tramo_retorno, exp_ret = self._dijkstra_punto_a_punto(grafo, actual, origen)
-        explorados_total.extend(exp_ret)
-        if tramo_retorno:
-            camino_total.extend(tramo_retorno[1:])
-
-        t_ms = (time.perf_counter() - t0) * 1000.0
-        aristas = max(0, len(camino_total) - 1)
-        return RutaResultado(
-            camino_completo=camino_total,
-            nodos_explorados=explorados_total,
-            distancia_total=aristas,
-            aristas_recorridas=aristas,
-            tiempo_ejecucion_ms=round(t_ms, 4),
-        )
-
-    def recalcular_evitando_obstaculo(
-        self, grafo: GrafoWarehouse, picker: Picker, paso_actual: int
-    ) -> List[Tuple[int, int]]:
-        if not picker.ruta_asignada:
-            return []
-        destino_final = picker.ruta_asignada[-1]
-        nuevo_camino, _ = self._dijkstra_punto_a_punto(
-            grafo, picker.posicion_actual, destino_final, paso_inicial=paso_actual
-        )
-        return nuevo_camino
+    @staticmethod
+    def _reconstruir_ruta(padres, destino_id):
+        ruta = []
+        actual = destino_id
+        while actual is not None:
+            ruta.append(actual)
+            actual = padres.get(actual)
+        ruta.reverse()
+        return ruta

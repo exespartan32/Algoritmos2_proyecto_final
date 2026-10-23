@@ -1,6 +1,6 @@
 # Cómo está implementado el grafo del almacén
 
-Este documento explica el código de `BackEnd/models/entity.py`, `BackEnd/models/warehouse.py` y `BackEnd/utils/graph_builder.py`. Todo lo que se describe acá está en ese código y está probado en `tests/test_grafo.py`.
+Este documento explica el código de `BackEnd/models/warehouse.py` y `BackEnd/utils/graph_builder.py`, que usan las clases de celdas y elementos de `BackEnd/models/entity.py` y los enums `TipoCelda` y `SentidoCirculacion` (alias `Sentido`) de `BackEnd/enums/enums.py`. Todo lo que se describe acá está en ese código y está probado en `tests/test_grafo.py`.
 
 **Mi parte del trabajo** es la estructura que modela el almacén: leer el JSON, armar el dígrafo de pasillos, calcular dónde se recoge cada producto y validar que el mapa sea transitable. Los algoritmos de recorrido (BFS, Dijkstra), las waves y la simulación los hacen mis compañeros, usando esta estructura.
 
@@ -39,10 +39,12 @@ Además, `Warehouse` guarda índices de acceso ya calculados:
 
 **¿Por qué sin matriz?** La primera versión creaba una matriz `ancho_x × largo_y` con todas las celdas y después recorría esa matriz para armar el dígrafo. Eso guardaba **dos veces** la información de los pasillos: como celda en la matriz y como nodo en el grafo. Ahora el pasillo existe una sola vez, como `NodoGrafo`, y la matriz no hace falta: para saber qué hay en `(x, y)` alcanza con mirar si está en `obstaculos` o en `nodos`, en O(1).
 
+Para el código que antes leía `matriz[x][y]` (por ejemplo, la interfaz), `Warehouse.obtener_celda(x, y)` devuelve lo mismo sin guardar una matriz: si es obstáculo, la celda real (una `CeldaRack` con su pila de productos, una zona o una puerta); si es pasillo, arma en el momento una `CeldaPasillo` con el sentido del nodo; si está fuera del almacén, `None`. Cuesta O(1).
+
 ### 2.2 ¿Por qué lista de adyacencia y no matriz de adyacencia?
 
 - El grafo es **ralo**. Como los movimientos son solo ortogonales, cada nodo tiene **como máximo 4 vecinos**, así que **E ≤ 4N**.
-- Una matriz de adyacencia ocuparía **N²**. En el escenario grande (N = 1898) son unas 3,6 millones de celdas, casi todas en 0, cuando las aristas reales son 6004.
+- Una matriz de adyacencia ocuparía **N²**. En el escenario grande (N = 1898) son unas 3,6 millones de celdas, casi todas en 0, cuando las aristas reales son 6048.
 - La lista de adyacencia ocupa **O(N + E) = O(N)**. Recorrer los vecinos de un nodo cuesta O(grado) ≤ 4, que es la operación central de cualquier recorrido (BFS, Dijkstra). Con una matriz habría que barrer toda una fila: O(N).
 
 ### 2.3 ¿Por qué un `dict` indexado por coordenadas?
@@ -362,7 +364,12 @@ Con el código real:
 - Además, P001, P003 y P006 quedan sin acceso en la red principal, ZONA_A y ZONA_B también, y los dos pickers (1,3) y (16,3) arrancan fuera de la red principal.
 - Las aristas bajan de 692 a 660.
 
-El caso real equivalente es el **escenario grande**: PAS_VB00 (x 0..3, y 20..29) con sentido S desemboca contra ZONA_D y deja **41 celdas** atrapadas (x=0..3, y=19..29). Poniéndolo en AMBOS (`escenario_grande_corregido.json`) se pasa de 5963 a 6004 aristas y queda una sola CFC.
+El caso real equivalente es el **escenario grande** (`escenario_grande.json`), que tenía dos problemas de diseño en la esquina izquierda, al lado de ZONA_D:
+
+- **Trampa:** PAS_VB00 (x 0..3, y 20..29) con sentido S desemboca contra ZONA_D y deja **41 celdas** atrapadas (x=0..3, y=19..29). Kosaraju la detecta: 12 CFC y la advertencia de 41 celdas fuera de la red principal.
+- **Rincón con una sola salida:** PAS_VA00 (x 0..3, y 6..15) con sentido N termina en un rincón (x=0..3, y=15..17) cuya **única salida** es la celda (3,16), que además es el acceso a ZONA_D. El grafo es fuertemente conexo, así que Kosaraju no lo marca. Pero si un picker queda estacionado en (3,16), cualquier otro picker que entre al rincón (por ejemplo, para recoger un producto en (3,15)) queda encerrado. La simulación de la interfaz lo encontró al ejecutar todas las waves.
+
+Con el grafo anterior ninguno de los dos se notaba, porque permitía entrar en contramano. Se corrigieron en el archivo poniendo **PAS_VA00 y PAS_VB00 en AMBOS**. Resultado: 1898 nodos, **6048 aristas**, una sola CFC y ninguna advertencia. Los tests simulan en memoria las dos versiones viejas para mostrar cada problema.
 
 ---
 
@@ -441,6 +448,28 @@ Notación: W = ancho_x, H = largo_y, N = nodos (pasillos), B = celdas de obstác
 >
 > Para los productos, cada pasillo mira si tiene un rack al costado y si ese costado es accesible. Los racks se acceden por el lado largo, nunca por los extremos. Eso queda en un diccionario rack→pasillo, así que saber dónde frenar es O(1). Por ejemplo, P001 en (3,5) se recoge desde (2,5).
 >
-> Al final validamos con **Kosaraju iterativo**: si el grafo no es una sola componente fuertemente conexa, hay pasillos de los que no se puede volver, y lo informamos como advertencia junto con productos, zonas y pickers que quedan afuera. Así encontramos una trampa de 41 celdas en el escenario grande y la corregimos.
+> Al final validamos con **Kosaraju iterativo**: si el grafo no es una sola componente fuertemente conexa, hay pasillos de los que no se puede volver, y lo informamos como advertencia junto con productos, zonas y pickers que quedan afuera. Así encontramos una trampa de 41 celdas en el escenario grande y la corregimos, junto con un rincón que tenía una sola salida.
 >
 > Todo es lineal en el tamaño del almacén: O(ancho × largo + productos). Los recorridos, como BFS, los hacen mis compañeros sobre este grafo."
+
+---
+
+## 9. Integración con el resto del proyecto
+
+El grafo vive en la misma rama que el trabajo de mis compañeros: waves (`wave_manager`), búsqueda de caminos (`pathfinding`), catálogo (`catalog_manager`) e interfaz (`FrontEnd/`). Esto es lo que ellos usan del grafo, y se mantuvo igual:
+
+| Lo usa | Qué usa |
+|---|---|
+| Interfaz (`FrontEnd/services/session.py`) | `GraphBuilder.construir_warehouse_desde_dict`, `obtener_nodo_acceso_producto`, `grafo_pasillos.nodos[...].zonas_despacho_adyacentes`, `grafo_pasillos.obtener_vecinos` y `obtener_celda(x, y)` (antes `matriz[x][y]`). |
+| Búsqueda de caminos (`pathfinding`, a través de `AdaptadorGrafo`) | `grafo_pasillos.obtener_vecinos`. |
+| Generador (`scenario_generator.py`) | `construir_warehouse_desde_dict` y `wh.advertencias` para decidir si un escenario es válido. |
+
+Los productos del catálogo son el modelo del equipo `Product` (en `entity.py`): tiene `id_producto`, `ubicacion_x`, `ubicacion_y` y `altura_z`, y además las propiedades `id`, `x`, `y`, `z`, que son las que usa el grafo.
+
+Cambios mínimos que hizo falta hacer fuera del grafo:
+
+- `enums.py`: se agregó `NINGUNO` a `SentidoCirculacion`.
+- `FrontEnd/services/session.py`: las 2 lecturas de `matriz[x][y]` pasaron a `obtener_celda(x, y)`.
+- `main.py` y `scenario_generator.py`: se quitó el import de `BackEnd.controllers.bfs`, que ya no existe.
+- `escenario_grande.json`: PAS_VA00 y PAS_VB00 en AMBOS (sección 4.4).
+

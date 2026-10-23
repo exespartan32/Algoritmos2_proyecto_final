@@ -27,6 +27,7 @@ class SentidoCirculacion(Enum):
     E = "E"
     O = "O"
     AMBOS = "AMBOS"
+    NINGUNO = "NINGUNO"
 
 
 class TipoPuerta(Enum):
@@ -40,9 +41,11 @@ class EstadoPedido(Enum):
     EN_WAVE = "EN_WAVE"
     EN_PREPARACION = "EN_PREPARACION"
     PREPARADO = "PREPARADO"
+    IRREALIZABLE = "IRREALIZABLE"
 
 
 class EstadoWave(Enum):
     PENDIENTE = "PENDIENTE"
     EN_EJECUCION = "EN_EJECUCION"
     FINALIZADA = "FINALIZADA"
+    CANCELADA = "CANCELADA"
