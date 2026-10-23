@@ -4,7 +4,6 @@ import random
 from typing import Dict, Any, List, Tuple
 from BackEnd.models.warehouse import Warehouse
 from BackEnd.utils.graph_builder import GraphBuilder
-from BackEnd.controllers.bfs import BuscadorBFS
 
 
 class ScenarioGenerator:
@@ -217,22 +216,10 @@ class ScenarioGenerator:
         datos = ScenarioGenerator.generar_escenario_dict(**kwargs)
         wh = GraphBuilder.construir_warehouse_desde_dict(datos)
 
-        punto_despacho = (
-            datos["pickers"][0]["posicion_inicial"]["x"],
-            datos["pickers"][0]["posicion_inicial"]["y"]
-        )
-
-        es_valido = True
-        for prod_id in wh.catalogo_productos:
-            nodo_acceso = wh.obtener_nodo_acceso_producto(prod_id)
-            if not nodo_acceso:
-                es_valido = False
-                break
-            ida = BuscadorBFS.buscar_camino(wh.grafo_pasillos, punto_despacho, nodo_acceso)
-            vuelta = BuscadorBFS.buscar_camino(wh.grafo_pasillos, nodo_acceso, punto_despacho)
-            if ida is None or vuelta is None:
-                es_valido = False
-                break
+        # El escenario es válido si la construcción no dejó advertencias: eso implica
+        # una sola componente fuertemente conexa (ida y vuelta entre cualquier par de
+        # pasillos), y que todos los productos, zonas y pickers estén en esa red.
+        es_valido = not wh.advertencias
 
         if ruta_guardado_json and es_valido:
             with open(ruta_guardado_json, "w", encoding="utf-8") as f:

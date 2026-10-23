@@ -1,9 +1,10 @@
 from enum import Enum
 from typing import Dict, Optional
-#Clases base y enumeraciones (TipoCelda, Sentido, Celda, CeldaPasillo, 
-# CeldaRack, Producto, Rack, ZonaDespacho, Puerta).
+# Clases base y enumeraciones (TipoCelda, Sentido, Celda, CeldaRack,
+# Producto, Rack, ZonaDespacho, Puerta).
+# Los pasillos no tienen clase de celda: cada pasillo es directamente un NodoGrafo.
 class TipoCelda(Enum):
-    PASILLO = "PASILLO"
+    # Tipos de celda que son OBSTÁCULOS (no son nodos del grafo)
     RACK = "RACK"
     ZONA_DESPACHO = "ZONA_DESPACHO"
     PUERTA = "PUERTA"
@@ -33,11 +34,6 @@ class Celda:
         self.y = y
         self.tipo = tipo
         self.elemento_id = elemento_id
-
-class CeldaPasillo(Celda):
-    def __init__(self, x: int, y: int, sentido: Sentido = Sentido.AMBOS, pasillo_id: Optional[str] = None):
-        super().__init__(x, y, TipoCelda.PASILLO, pasillo_id)
-        self.sentido = sentido
 
 class CeldaRack(Celda):
     def __init__(self, x: int, y: int, rack_id: str):
