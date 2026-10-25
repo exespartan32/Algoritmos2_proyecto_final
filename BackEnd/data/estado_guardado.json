@@ -569,24 +569,24 @@
     {
       "id": "PK_02",
       "posicion_inicial": {
-        "x": 45,
-        "y": 4
+        "x": 36,
+        "y": 1
       },
       "capacidad_carga_kg": 120.0
     },
     {
       "id": "PK_03",
       "posicion_inicial": {
-        "x": 30,
-        "y": 32
+        "x": 36,
+        "y": 1
       },
       "capacidad_carga_kg": 100.0
     },
     {
       "id": "PK_04",
       "posicion_inicial": {
-        "x": 5,
-        "y": 17
+        "x": 36,
+        "y": 1
       },
       "capacidad_carga_kg": 80.0
     }
@@ -733,7 +733,7 @@
         "y": 29,
         "z": 2
       },
-      "cantidad_disponible": 31,
+      "cantidad_disponible": 30,
       "peso_kg": 7.23
     },
     {
@@ -745,7 +745,7 @@
         "y": 9,
         "z": 1
       },
-      "cantidad_disponible": 27,
+      "cantidad_disponible": 23,
       "peso_kg": 0.26
     },
     {
@@ -793,7 +793,7 @@
         "y": 22,
         "z": 1
       },
-      "cantidad_disponible": 51,
+      "cantidad_disponible": 49,
       "peso_kg": 0.9
     },
     {
@@ -925,7 +925,7 @@
         "y": 22,
         "z": 1
       },
-      "cantidad_disponible": 23,
+      "cantidad_disponible": 19,
       "peso_kg": 0.21
     },
     {
@@ -1021,7 +1021,7 @@
         "y": 7,
         "z": 2
       },
-      "cantidad_disponible": 6,
+      "cantidad_disponible": 2,
       "peso_kg": 5.13
     },
     {
@@ -1261,7 +1261,7 @@
         "y": 10,
         "z": 2
       },
-      "cantidad_disponible": 51,
+      "cantidad_disponible": 50,
       "peso_kg": 0.49
     },
     {
@@ -1345,7 +1345,7 @@
         "y": 23,
         "z": 2
       },
-      "cantidad_disponible": 33,
+      "cantidad_disponible": 31,
       "peso_kg": 0.25
     },
     {
@@ -1381,7 +1381,7 @@
         "y": 26,
         "z": 2
       },
-      "cantidad_disponible": 12,
+      "cantidad_disponible": 11,
       "peso_kg": 23.2
     },
     {
@@ -1429,7 +1429,7 @@
         "y": 12,
         "z": 2
       },
-      "cantidad_disponible": 12,
+      "cantidad_disponible": 10,
       "peso_kg": 3.17
     },
     {
@@ -1561,7 +1561,7 @@
         "y": 6,
         "z": 2
       },
-      "cantidad_disponible": 46,
+      "cantidad_disponible": 45,
       "peso_kg": 10.89
     },
     {
@@ -1597,7 +1597,7 @@
         "y": 29,
         "z": 1
       },
-      "cantidad_disponible": 45,
+      "cantidad_disponible": 42,
       "peso_kg": 0.12
     },
     {
@@ -1681,7 +1681,7 @@
         "y": 20,
         "z": 1
       },
-      "cantidad_disponible": 34,
+      "cantidad_disponible": 32,
       "peso_kg": 0.22
     },
     {
@@ -1765,7 +1765,7 @@
         "y": 25,
         "z": 1
       },
-      "cantidad_disponible": 35,
+      "cantidad_disponible": 33,
       "peso_kg": 0.23
     },
     {
@@ -2005,7 +2005,7 @@
         "y": 10,
         "z": 1
       },
-      "cantidad_disponible": 53,
+      "cantidad_disponible": 49,
       "peso_kg": 0.15
     },
     {
@@ -2053,7 +2053,7 @@
         "y": 14,
         "z": 1
       },
-      "cantidad_disponible": 34,
+      "cantidad_disponible": 33,
       "peso_kg": 0.86
     },
     {
@@ -2077,7 +2077,7 @@
         "y": 14,
         "z": 2
       },
-      "cantidad_disponible": 13,
+      "cantidad_disponible": 9,
       "peso_kg": 0.71
     },
     {
@@ -2089,7 +2089,7 @@
         "y": 14,
         "z": 1
       },
-      "cantidad_disponible": 54,
+      "cantidad_disponible": 51,
       "peso_kg": 0.62
     },
     {
@@ -2173,7 +2173,7 @@
         "y": 22,
         "z": 1
       },
-      "cantidad_disponible": 56,
+      "cantidad_disponible": 52,
       "peso_kg": 0.36
     },
     {
@@ -2221,7 +2221,7 @@
         "y": 21,
         "z": 1
       },
-      "cantidad_disponible": 13,
+      "cantidad_disponible": 12,
       "peso_kg": 22.68
     },
     {
@@ -2233,7 +2233,7 @@
         "y": 8,
         "z": 1
       },
-      "cantidad_disponible": 49,
+      "cantidad_disponible": 48,
       "peso_kg": 0.75
     },
     {
@@ -2317,7 +2317,7 @@
         "y": 28,
         "z": 1
       },
-      "cantidad_disponible": 10,
+      "cantidad_disponible": 6,
       "peso_kg": 0.97
     },
     {
@@ -2413,7 +2413,7 @@
         "y": 29,
         "z": 1
       },
-      "cantidad_disponible": 32,
+      "cantidad_disponible": 27,
       "peso_kg": 11.31
     },
     {
@@ -2473,7 +2473,7 @@
         "y": 22,
         "z": 1
       },
-      "cantidad_disponible": 51,
+      "cantidad_disponible": 50,
       "peso_kg": 1.13
     },
     {
@@ -2497,7 +2497,7 @@
         "y": 27,
         "z": 1
       },
-      "cantidad_disponible": 24,
+      "cantidad_disponible": 20,
       "peso_kg": 0.78
     },
     {
@@ -2545,7 +2545,7 @@
         "y": 10,
         "z": 1
       },
-      "cantidad_disponible": 27,
+      "cantidad_disponible": 24,
       "peso_kg": 2.21
     },
     {
@@ -2581,7 +2581,7 @@
         "y": 7,
         "z": 3
       },
-      "cantidad_disponible": 32,
+      "cantidad_disponible": 29,
       "peso_kg": 0.46
     },
     {
@@ -2593,7 +2593,7 @@
         "y": 24,
         "z": 1
       },
-      "cantidad_disponible": 6,
+      "cantidad_disponible": 3,
       "peso_kg": 0.31
     },
     {
@@ -2637,7 +2637,7 @@
     {
       "id": "PED_01",
       "prioridad": 4,
-      "estado": "EN_WAVE",
+      "estado": "PREPARADO",
       "items": [
         {
           "producto_id": "P118",
@@ -2664,7 +2664,7 @@
     {
       "id": "PED_02",
       "prioridad": 5,
-      "estado": "EN_WAVE",
+      "estado": "PREPARADO",
       "items": [
         {
           "producto_id": "P163",
@@ -2749,7 +2749,7 @@
     {
       "id": "PED_05",
       "prioridad": 1,
-      "estado": "EN_WAVE",
+      "estado": "PREPARADO",
       "items": [
         {
           "producto_id": "P137",
@@ -2791,7 +2791,7 @@
     {
       "id": "PED_07",
       "prioridad": 4,
-      "estado": "EN_WAVE",
+      "estado": "PREPARADO",
       "items": [
         {
           "producto_id": "P132",
@@ -2821,7 +2821,7 @@
     {
       "id": "PED_09",
       "prioridad": 5,
-      "estado": "EN_WAVE",
+      "estado": "PREPARADO",
       "items": [
         {
           "producto_id": "P122",
@@ -2898,7 +2898,7 @@
     {
       "id": "PED_12",
       "prioridad": 4,
-      "estado": "EN_WAVE",
+      "estado": "PREPARADO",
       "items": [
         {
           "producto_id": "P028",
@@ -2909,7 +2909,7 @@
     {
       "id": "PED_13",
       "prioridad": 1,
-      "estado": "EN_WAVE",
+      "estado": "PREPARADO",
       "items": [
         {
           "producto_id": "P063",
@@ -2939,7 +2939,7 @@
     {
       "id": "PED_15",
       "prioridad": 4,
-      "estado": "EN_WAVE",
+      "estado": "PREPARADO",
       "items": [
         {
           "producto_id": "P056",
@@ -2977,7 +2977,7 @@
     {
       "id": "PED_17",
       "prioridad": 1,
-      "estado": "EN_WAVE",
+      "estado": "PREPARADO",
       "items": [
         {
           "producto_id": "P167",
@@ -2992,7 +2992,7 @@
     {
       "id": "PED_18",
       "prioridad": 5,
-      "estado": "EN_WAVE",
+      "estado": "PREPARADO",
       "items": [
         {
           "producto_id": "P159",
@@ -3280,7 +3280,7 @@
     {
       "id": "PED_30",
       "prioridad": 2,
-      "estado": "EN_WAVE",
+      "estado": "PREPARADO",
       "items": [
         {
           "producto_id": "P157",
@@ -3478,7 +3478,7 @@
     {
       "id": "PED_40",
       "prioridad": 5,
-      "estado": "EN_WAVE",
+      "estado": "PREPARADO",
       "items": [
         {
           "producto_id": "P118",

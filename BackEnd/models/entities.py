@@ -133,16 +133,15 @@ class Producto:
         self.rack_id = str(rack_id)
         self.ubicacion_x = int(ubicacion_x)
         self.ubicacion_y = int(ubicacion_y)
-        z_final = (
+        z_val = (
             ubicacion_z
             if ubicacion_z is not None
             else (altura_z if altura_z is not None else 1)
         )
-        self.ubicacion_z = int(z_final)
+        self.ubicacion_z = int(z_val)
         self.cantidad_disponible = int(cantidad_disponible)
         self.peso_kg = float(peso_kg)
 
-    # Propiedades de compatibilidad con el código de Laureano (prod.id, prod.x, prod.y, prod.z)
     @property
     def id(self) -> str:
         return self.id_producto
@@ -193,19 +192,17 @@ class Pedido:
     )
 
     @staticmethod
-    def _buscar_producto(tabla_o_catalogo: Any, producto_id: str) -> Optional[Producto]:
-        if tabla_o_catalogo is None:
+    def _buscar_producto(fuente_productos: Any, producto_id: str) -> Optional[Producto]:
+        if fuente_productos is None:
             return None
-        if hasattr(tabla_o_catalogo, "buscar_producto_O1"):
-            return tabla_o_catalogo.buscar_producto_O1(producto_id)
-        if hasattr(tabla_o_catalogo, "buscar"):
-            return tabla_o_catalogo.buscar(producto_id)
-        if hasattr(tabla_o_catalogo, "catalogo_productos") and isinstance(
-            tabla_o_catalogo.catalogo_productos, dict
+        if hasattr(fuente_productos, "buscar_producto_O1"):
+            return fuente_productos.buscar_producto_O1(producto_id)
+        if hasattr(fuente_productos, "catalogo_productos") and isinstance(
+            fuente_productos.catalogo_productos, dict
         ):
-            return tabla_o_catalogo.catalogo_productos.get(producto_id)
-        if isinstance(tabla_o_catalogo, dict):
-            return tabla_o_catalogo.get(producto_id)
+            return fuente_productos.catalogo_productos.get(producto_id)
+        if isinstance(fuente_productos, dict):
+            return fuente_productos.get(producto_id)
         return None
 
     def obtener_cantidad_productos(self) -> int:
@@ -213,15 +210,15 @@ class Pedido:
             self._cache_unidades = sum(item.cantidad for item in self.items)
         return self._cache_unidades
 
-    def obtener_peso_total(self, tabla_o_catalogo: Any = None) -> float:
+    def obtener_peso_total(self, fuente_productos: Any = None) -> float:
         if self._cache_peso is not None:
             return self._cache_peso
-        if tabla_o_catalogo is None:
+        if fuente_productos is None:
             return 0.0
 
         peso_acumulado = 0.0
         for item in self.items:
-            prod = self._buscar_producto(tabla_o_catalogo, item.producto_id)
+            prod = self._buscar_producto(fuente_productos, item.producto_id)
             if prod is not None:
                 peso_acumulado += prod.peso_kg * item.cantidad
 
@@ -229,16 +226,16 @@ class Pedido:
         return self._cache_peso
 
     def obtener_ubicaciones_xyz(
-        self, tabla_o_catalogo: Any
+        self, fuente_productos: Any
     ) -> Set[Tuple[int, int, int]]:
         if self._cache_xyz is not None:
             return self._cache_xyz
-        if tabla_o_catalogo is None:
+        if fuente_productos is None:
             return set()
 
         ubicaciones: Set[Tuple[int, int, int]] = set()
         for item in self.items:
-            prod = self._buscar_producto(tabla_o_catalogo, item.producto_id)
+            prod = self._buscar_producto(fuente_productos, item.producto_id)
             if prod is None:
                 return set()
             ubicaciones.add((prod.ubicacion_x, prod.ubicacion_y, prod.ubicacion_z))
@@ -249,12 +246,6 @@ class Pedido:
 
 @dataclass
 class TareaWavePicker:
-    """
-    Representa la asignación de una Wave (o sub-lote geográfico de una Wave) a un Picker.
-    Garantiza que el Picker NUNCA mezcle dos Waves en el mismo viaje: ejecuta esta tarea,
-    regresa a la Zona de Despacho, descarga a 0 kg y recién entonces toma la siguiente.
-    """
-
     id_wave: str
     id_zona_despacho: str
     destino_despacho_pasillo: Tuple[int, int]
@@ -283,10 +274,6 @@ class Picker:
         return (self.peso_actual_kg + peso_adicional) <= self.capacidad_carga_kg
 
     def iniciar_siguiente_tarea_en_cola(self) -> Optional[TareaWavePicker]:
-        """
-        Si el Picker está libre (peso 0 y sin Wave activa), extrae la siguiente
-        Wave de su cola de trabajo sin mezclar jamás dos Waves en un mismo viaje.
-        """
         if self.id_wave_actual is not None or not self.cola_waves_asignadas:
             return None
 
@@ -334,13 +321,8 @@ class Wave:
     ubicaciones_xyz: Set[Tuple[int, int, int]] = field(default_factory=set)
 
     def asignar_equipo_pickers(
-        self, pickers_equipo: List[Picker], tabla_o_catalogo: Any = None
+        self, pickers_equipo: List[Picker], warehouse_o_tabla: Any = None
     ) -> None:
-        """
-        Divide la Wave en sub-lotes geográficos entre los pickers asignados a ella
-        cuando el peso de la Wave supera la capacidad de un único picker.
-        Ordena los pedidos espacialmente para que cada picker reciba un sector contiguo.
-        """
         self.ids_pickers_asignados = [p.id_picker for p in pickers_equipo]
         self.id_picker_asignado = (
             self.ids_pickers_asignados[0] if self.ids_pickers_asignados else None
@@ -357,11 +339,10 @@ class Wave:
         if not pickers_equipo or not self.pedidos:
             return
 
-        # Ordenar pedidos por su centroide X para particionar en sub-lotes geográficos contiguos
         def _centroide_x(ped: Pedido) -> float:
             ubics = (
-                ped.obtener_ubicaciones_xyz(tabla_o_catalogo)
-                if tabla_o_catalogo
+                ped.obtener_ubicaciones_xyz(warehouse_o_tabla)
+                if warehouse_o_tabla
                 else set()
             )
             if not ubics:
@@ -372,8 +353,8 @@ class Wave:
 
         for ped in pedidos_ordenados_geo:
             peso_ped = (
-                ped.obtener_peso_total(tabla_o_catalogo)
-                if tabla_o_catalogo is not None
+                ped.obtener_peso_total(warehouse_o_tabla)
+                if warehouse_o_tabla is not None
                 else 0.0
             )
             pickers_validos = [
@@ -396,8 +377,8 @@ class Wave:
                 self.peso_por_picker[mejor_pid] + peso_ped, 4
             )
 
-            if tabla_o_catalogo is not None:
-                for x, y, _ in ped.obtener_ubicaciones_xyz(tabla_o_catalogo):
+            if warehouse_o_tabla is not None:
+                for x, y, _ in ped.obtener_ubicaciones_xyz(warehouse_o_tabla):
                     if (x, y) not in self.destinos_xy_por_picker[mejor_pid]:
                         self.destinos_xy_por_picker[mejor_pid].append((x, y))
 
@@ -405,7 +386,7 @@ class Wave:
         self,
         pedido: Pedido,
         max_peso_wave: Optional[float] = None,
-        tabla_o_catalogo: Any = None,
+        warehouse_o_tabla: Any = None,
         peso_disponible_zona: Optional[float] = None,
     ) -> bool:
         if pedido.id_pedido in self.ids_pedidos:
@@ -424,10 +405,10 @@ class Wave:
             max_peso_wave if max_peso_wave is not None else self.capacidad_peso_wave_kg
         )
 
-        if tabla_o_catalogo is not None and (
+        if warehouse_o_tabla is not None and (
             limite_peso < float("inf") or peso_disponible_zona is not None
         ):
-            peso_pedido = pedido.obtener_peso_total(tabla_o_catalogo)
+            peso_pedido = pedido.obtener_peso_total(warehouse_o_tabla)
             if (self.peso_total_kg + peso_pedido) > limite_peso:
                 return False
             if (
@@ -441,13 +422,11 @@ class Wave:
     def agregar_pedido(
         self,
         pedido: Pedido,
-        tabla_o_catalogo: Any = None,
-        catalogo: Any = None,
+        warehouse_o_tabla: Any = None,
         max_peso_wave: Optional[float] = None,
     ) -> bool:
-        fuente_datos = tabla_o_catalogo if tabla_o_catalogo is not None else catalogo
         if not self.puede_agregar_pedido(
-            pedido, max_peso_wave=max_peso_wave, tabla_o_catalogo=fuente_datos
+            pedido, max_peso_wave=max_peso_wave, warehouse_o_tabla=warehouse_o_tabla
         ):
             return False
 
@@ -458,14 +437,18 @@ class Wave:
         pedido.estado = EstadoPedido.EN_WAVE
         pedido.waves_asignadas.add(self.id_wave)
 
-        if catalogo is not None and hasattr(catalogo, "actualizar_estado_pedido_O1"):
-            catalogo.actualizar_estado_pedido_O1(pedido.id_pedido, EstadoPedido.EN_WAVE)
-
-        if fuente_datos is not None:
-            self.peso_total_kg = round(
-                self.peso_total_kg + pedido.obtener_peso_total(fuente_datos), 4
+        if warehouse_o_tabla is not None and hasattr(
+            warehouse_o_tabla, "actualizar_estado_pedido_O1"
+        ):
+            warehouse_o_tabla.actualizar_estado_pedido_O1(
+                pedido.id_pedido, EstadoPedido.EN_WAVE
             )
-            for x, y, z in pedido.obtener_ubicaciones_xyz(fuente_datos):
+
+        if warehouse_o_tabla is not None:
+            self.peso_total_kg = round(
+                self.peso_total_kg + pedido.obtener_peso_total(warehouse_o_tabla), 4
+            )
+            for x, y, z in pedido.obtener_ubicaciones_xyz(warehouse_o_tabla):
                 self.ubicaciones_xy.add((x, y))
                 self.ubicaciones_xyz.add((x, y, z))
 

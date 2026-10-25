@@ -1,5 +1,9 @@
 from typing import Dict, Any, List, Tuple, Optional
-from BackEnd.enums.enums import TipoCelda, SentidoCirculacion as Sentido
+from BackEnd.enums.enums import (
+    TipoCelda,
+    SentidoCirculacion as Sentido,
+    EstadoPedido,
+)
 from BackEnd.models.entities import (
     Celda,
     CeldaRack,
@@ -7,6 +11,9 @@ from BackEnd.models.entities import (
     ZonaDespacho,
     Puerta,
     Product,
+    Pedido,
+    DetallePedido,
+    Picker,
 )
 from BackEnd.models.warehouse import Warehouse, Coord
 
@@ -14,7 +21,7 @@ DIRECCIONES_ORTOGONALES: List[Tuple[int, int]] = [(0, 1), (0, -1), (1, 0), (-1, 
 
 
 class GraphBuilder:
-    """Construye el dígrafo de pasillos del Warehouse directamente desde el JSON y lo valida."""
+    """Construye el dígrafo de pasillos y carga productos, pedidos y pickers en Warehouse."""
 
     @staticmethod
     def construir_warehouse_desde_dict(data: Dict[str, Any]) -> Warehouse:
@@ -23,6 +30,7 @@ class GraphBuilder:
         largo_y = int(wh_data["dimensiones"]["largo_y"])
 
         wh = Warehouse(ancho_x, largo_y)
+        wh.warehouse_raw = wh_data
         advertencias: List[str] = []
         ocupado_por: Dict[Coord, str] = {}
         pasillos_declarados: Dict[Coord, Tuple[Sentido, str]] = {}
@@ -30,8 +38,7 @@ class GraphBuilder:
         def ocupar(x: int, y: int, elem_id: str):
             if not wh.dentro(x, y):
                 raise ValueError(
-                    f"El elemento {elem_id} ocupa la celda ({x},{y}), que está fuera del "
-                    f"almacén ({ancho_x}x{largo_y})."
+                    f"El elemento {elem_id} ocupa la celda ({x},{y}), fuera del almacén ({ancho_x}x{largo_y})."
                 )
             anterior = ocupado_por.get((x, y))
             if anterior is not None and anterior != elem_id:
@@ -42,7 +49,7 @@ class GraphBuilder:
             ocupar(x, y, elem_id)
             wh.obstaculos[(x, y)] = celda
 
-        # 1. Pasillos declarados (En intersecciones con AMBOS prevalece AMBOS para permitir giro)
+        # 1. Pasillos declarados (En cruces con AMBOS prevalece AMBOS para permitir giro)
         validos = [s.value for s in Sentido]
         for pas in wh_data.get("pasillos", []):
             try:
@@ -98,7 +105,7 @@ class GraphBuilder:
                     ocupar_obstaculo(x, y, CeldaRack(x, y, r["id"]), r["id"])
             wh.racks[r["id"]] = Rack(r["id"], rx, ry, ancho_r, alto_r)
 
-        # 5. Productos
+        # 5. Productos -> wh.catalogo_productos (O(1))
         for prod in data.get("productos", []):
             ub = prod["ubicacion"]
             px, py, pz = int(ub["x"]), int(ub["y"]), int(ub.get("z", 1))
@@ -121,16 +128,55 @@ class GraphBuilder:
             if isinstance(celda, CeldaRack):
                 celda.apilar_producto(pz, prod_obj)
 
-        # 6. Construir Dígrafo
+        # 6. Construir Dígrafo de pasillos y validar con Kosaraju
         GraphBuilder._construir_digrafo(wh, pasillos_declarados)
 
-        # 7. Validar con Kosaraju
         posiciones_pickers = [
             (pk["id"], (pk["posicion_inicial"]["x"], pk["posicion_inicial"]["y"]))
             for pk in data.get("pickers", [])
         ]
         advertencias.extend(GraphBuilder.validar_grafo(wh, posiciones_pickers))
         wh.advertencias = advertencias
+
+        # 7. Cargar Configuración, Pedidos (O(1)) y Pickers en el mismo Warehouse
+        config = data.get("configuracion", {})
+        wh.wave_max_pedidos = int(config.get("wave_max_pedidos", 3))
+        wh.wave_max_productos = int(config.get("wave_max_productos", 15))
+
+        for ped_raw in data.get("pedidos", []):
+            estado_str = str(ped_raw.get("estado", "PENDIENTE")).upper()
+            estado_enum = (
+                EstadoPedido[estado_str]
+                if estado_str in EstadoPedido.__members__
+                else EstadoPedido.PENDIENTE
+            )
+            items = [
+                DetallePedido(
+                    producto_id=str(it["producto_id"]),
+                    cantidad=int(it["cantidad"]),
+                )
+                for it in ped_raw.get("items", [])
+            ]
+            ped_obj = Pedido(
+                id_pedido=str(ped_raw["id"]),
+                prioridad=int(ped_raw.get("prioridad", 1)),
+                items=items,
+                estado=estado_enum,
+            )
+            wh.pedidos[ped_obj.id_pedido] = ped_obj
+
+        for pk_raw in data.get("pickers", []):
+            pos_ini = pk_raw.get("posicion_inicial", {"x": 0, "y": 0})
+            coord_raw = (int(pos_ini["x"]), int(pos_ini["y"]))
+            coord_valida = wh.obtener_celda_acceso_pasillo(*coord_raw) or coord_raw
+            wh.pickers.append(
+                Picker(
+                    id_picker=str(pk_raw["id"]),
+                    capacidad_carga_kg=float(pk_raw.get("capacidad_carga_kg", 100.0)),
+                    posicion_actual=coord_valida,
+                )
+            )
+
         return wh
 
     @staticmethod
@@ -272,7 +318,6 @@ class GraphBuilder:
         componentes = GraphBuilder.componentes_fuertemente_conexas(wh)
         principal = set(componentes[0]) if componentes else set()
 
-        # Garantizar que acceso_rack_a_pasillo apunte siempre a la red principal conexa
         for coord_rack, lista_acc in wh.accesos_rack_a_pasillo.items():
             en_principal = [a for a in lista_acc if a in principal]
             if en_principal:

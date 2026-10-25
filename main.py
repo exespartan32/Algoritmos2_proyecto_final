@@ -2,7 +2,8 @@ import time
 import argparse
 from typing import Optional, List, Dict
 
-from BackEnd.models.catalog_manager import CatalogManager
+from BackEnd.utils.file_parser import FileParser
+from BackEnd.models.warehouse import Warehouse
 from BackEnd.models.entities import Wave
 from BackEnd.controllers.wave_manager import WaveManager
 from BackEnd.controllers.path_finding import Pathfinding
@@ -29,16 +30,12 @@ MAX_PICKERS_POR_WAVE: int = 2
 WAVE_MAX_PEDIDOS: Optional[int] = None
 WAVE_MAX_PRODUCTOS: Optional[int] = None
 
-TAMANO_TABLA_HASH: int = 1009
-PRIMO_P_HASH: int = 999983
-SEMILLA_HASH: int = 42
-
 
 def mostrar_waves_disponibles_y_pickers(
-    gestor_waves: WaveManager, catalogo: CatalogManager
+    gestor_waves: WaveManager, warehouse: Warehouse
 ) -> List[Wave]:
     waves_disponibles = gestor_waves.obtener_waves_disponibles()
-    pickers_libres = gestor_waves.obtener_pickers_libres(catalogo.pickers)
+    pickers_libres = gestor_waves.obtener_pickers_libres(warehouse.pickers)
 
     print("\n" + "=" * 95)
     print(
@@ -55,7 +52,7 @@ def mostrar_waves_disponibles_y_pickers(
         )
 
     print("-" * 95)
-    print(f" PICKERS LIBRES ({len(pickers_libres)}/{len(catalogo.pickers)}):")
+    print(f" PICKERS LIBRES ({len(pickers_libres)}/{len(warehouse.pickers)}):")
     for pk in pickers_libres:
         print(
             f"  * {pk.id_picker} -> Posición actual: {pk.posicion_actual} | "
@@ -111,41 +108,36 @@ def ejecutar_orquestador(
     waves_preseleccionadas: List[str],
 ) -> None:
     # -------------------------------------------------------------------------
-    # 1. INICIALIZAR PARSER + GRAPH BUILDER (LAUREANO) + TABLAS HASH O(1) (EXEQUIEL)
+    # 1. CARGAR WAREHOUSE, DÍGRAFO, PRODUCTOS Y PEDIDOS CON EL PARSER DE LAUREANO
     # -------------------------------------------------------------------------
-    catalogo = CatalogManager(
-        tamano_tabla=TAMANO_TABLA_HASH,
-        primo_p=PRIMO_P_HASH,
-        semilla_hash=SEMILLA_HASH,
-    )
-
     t0 = time.perf_counter()
-    ruta_cargada = catalogo.cargar_escenario_json(archivo_entrada)
+    ruta_cargada = FileParser.resolver_ruta(archivo_entrada)
+    warehouse = FileParser.cargar_warehouse_desde_json(ruta_cargada)
     t_carga_ms = (time.perf_counter() - t0) * 1000.0
 
     stock_antes_waves: Dict[str, int] = {
         p.id_producto: p.cantidad_disponible
-        for p in catalogo.obtener_todos_los_productos()
+        for p in warehouse.obtener_todos_los_productos()
     }
 
     max_pedidos = (
-        WAVE_MAX_PEDIDOS if WAVE_MAX_PEDIDOS is not None else catalogo.wave_max_pedidos
+        WAVE_MAX_PEDIDOS if WAVE_MAX_PEDIDOS is not None else warehouse.wave_max_pedidos
     )
     max_productos = (
         WAVE_MAX_PRODUCTOS
         if WAVE_MAX_PRODUCTOS is not None
-        else catalogo.wave_max_productos
+        else warehouse.wave_max_productos
     )
 
     # Precalcular matriz APSP sobre los productos en el Dígrafo de Laureano
     t_pre = time.perf_counter()
     coords_productos = {
-        p.coordenadas_xy for p in catalogo.obtener_todos_los_productos()
+        p.coordenadas_xy for p in warehouse.obtener_todos_los_productos()
     }
     matriz_distancias = Pathfinding.construir_matriz_distancias_productos(
         coordenadas_productos_xy=coords_productos,
-        grafo=catalogo.digrafo,
-        warehouse=catalogo.warehouse,
+        grafo=warehouse.grafo_pasillos,
+        warehouse=warehouse,
     )
     t_pre_ms = (time.perf_counter() - t_pre) * 1000.0
 
@@ -161,24 +153,30 @@ def ejecutar_orquestador(
     )
 
     waves_armadas = gestor_waves.generar_waves(
-        catalogo=catalogo,
+        warehouse=warehouse,
         proveedor_distancias=matriz_distancias,
     )
     t_wave_ms = (time.perf_counter() - t_wave) * 1000.0
 
     alterados_en_armado = sum(
         1
-        for p in catalogo.obtener_todos_los_productos()
+        for p in warehouse.obtener_todos_los_productos()
         if p.cantidad_disponible != stock_antes_waves[p.id_producto]
     )
 
     print("=" * 95)
-    print(" PASO 1: ARMADO DE WAVES CON GRAFO DE LAUREANO + TABLA HASH O(1)")
+    print(
+        " PASO 1: ARMADO DE WAVES DIRECTAMENTE SOBRE EL WAREHOUSE DE LAUREANO (SIN CATALOG_MANAGER)"
+    )
     print("=" * 95)
     print(f"  * Escenario cargado           : {ruta_cargada} ({t_carga_ms:.2f} ms)")
     print(
-        f"  * Nodos de Pasillo (Laureano) : {len(catalogo.digrafo.nodos)} celdas | "
-        f"Zonas Despacho: {list(catalogo.warehouse.zonas_despacho.keys())}"
+        f"  * Nodos de Pasillo (Laureano) : {len(warehouse.grafo_pasillos.nodos)} celdas | "
+        f"Zonas Despacho: {list(warehouse.zonas_despacho.keys())}"
+    )
+    print(
+        f"  * Catálogo O(1) en Warehouse  : {len(warehouse.catalogo_productos)} productos | "
+        f"{len(warehouse.pedidos)} pedidos"
     )
     print(
         f"  * Matriz APSP Dígrafo         : {len(matriz_distancias)} pares en {t_pre_ms:.2f} ms"
@@ -193,7 +191,7 @@ def ejecutar_orquestador(
     # -------------------------------------------------------------------------
     # PASO 2 Y 3: VER WAVES DISPONIBLES Y SELECCIONAR CUÁLES EJECUTAR
     # -------------------------------------------------------------------------
-    waves_disponibles = mostrar_waves_disponibles_y_pickers(gestor_waves, catalogo)
+    waves_disponibles = mostrar_waves_disponibles_y_pickers(gestor_waves, warehouse)
     ids_seleccionados = solicitar_seleccion_waves_usuario(
         waves_disponibles, waves_preseleccionadas
     )
@@ -206,16 +204,14 @@ def ejecutar_orquestador(
     # -------------------------------------------------------------------------
     resultado = gestor_waves.asignar_y_ejecutar_waves_seleccionadas(
         ids_waves_seleccionadas=ids_seleccionados,
-        pickers=catalogo.pickers,
-        catalogo=catalogo,
-        grafo=catalogo.digrafo,
+        warehouse=warehouse,
         estrategia_ruteo=EstrategiaRuteo.CERCANIA_DIJKSTRA_MULTIDESTINO,
     )
 
     print("\n" + "=" * 95)
     print(" PASO 4: ASIGNACIÓN A LOS PICKERS MÁS CERCANOS (1 WAVE POR PICKER ACTIVO)")
     print("=" * 95)
-    mapa_pickers = {p.id_picker: p for p in catalogo.pickers}
+    mapa_pickers = {p.id_picker: p for p in warehouse.pickers}
 
     for asig in resultado["asignaciones"]:
         wid = asig["id_wave"]
@@ -256,11 +252,11 @@ def ejecutar_orquestador(
 
     while paso_tiempo < max_pasos_seguridad:
         en_movimiento = gestor_colisiones.avanzar_un_turno_simulacion(
-            pickers=catalogo.pickers,
+            pickers=warehouse.pickers,
             paso_actual=paso_tiempo,
-            grafo=catalogo.digrafo,
+            grafo=warehouse.grafo_pasillos,
             gestor_waves=gestor_waves,
-            catalogo=catalogo,
+            catalogo=warehouse,
         )
         if en_movimiento == 0:
             break
@@ -286,14 +282,17 @@ def ejecutar_orquestador(
     waves_pendientes = [w.id_wave for w in gestor_waves.obtener_waves_disponibles()]
     print(f"  * Waves FINALIZADAS y descargadas   : {waves_finalizadas}")
     print(f"  * Waves aún PENDIENTES para elegir  : {waves_pendientes}")
-    print("=" * 95)
 
-    catalogo.guardar_estado_simulacion_json(ARCHIVO_SALIDA_JSON)
+    ruta_salida = FileParser.guardar_estado_warehouse_json(
+        warehouse, ARCHIVO_SALIDA_JSON
+    )
+    print(f"  * Estado guardado en JSON           : {ruta_salida}")
+    print("=" * 95)
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="Orquestador completo: Laureano (Warehouse/Grafo) + Exequiel (Hash/WaveManager) + Leonel (Pathfinding/Colisiones)"
+        description="Orquestador unificado sin CatalogManager: Laureano (Warehouse/Grafo) + Exequiel (WaveManager) + Leonel (Pathfinding/Colisiones)"
     )
     parser.add_argument(
         "-i",

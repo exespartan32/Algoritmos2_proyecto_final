@@ -1,5 +1,6 @@
 from typing import List, Optional, Tuple, Set, Any, Dict
 from BackEnd.models.entities import Pedido, Wave, Picker, ZonaDespacho, TareaWavePicker
+from BackEnd.models.warehouse import Warehouse
 from BackEnd.enums.enums import EstadoWave, EstadoPedido, EstrategiaRuteo
 from BackEnd.data_structures.max_heap_pedidos import MaxHeapPedidos
 from BackEnd.controllers.path_finding import Pathfinding
@@ -10,10 +11,10 @@ CoordXY = Tuple[int, int]
 class WaveManager:
     """
     Controlador de Generación, Selección Interactiva y Asignación de Waves:
+    - Consume directamente el objeto Warehouse de Laureano (sin CatalogManager).
     - Usa Max-Heap O(log N) + Costo Marginal Promedio (Average Linkage) con matriz APSP O(1).
-    - Valida peso_max_kg de las Zonas de Despacho (puertas OUTBOUND / AMBOS).
-    - Divide Waves pesadas en sub-lotes geográficos para varios Pickers en simultáneo.
-    - PROHÍBE mezclar dos Waves en un mismo viaje de un Picker (un Picker = una Wave activa).
+    - NO modifica el stock real al armar las Waves (el descuento ocurre recién al descargar en despacho).
+    - PROHÍBE mezclar dos Waves en un mismo viaje de un Picker (1 Wave por Picker activo).
     """
 
     def __init__(
@@ -41,19 +42,15 @@ class WaveManager:
         self.waves_por_id: Dict[str, Wave] = {}
         self._pickers_pendientes_descarga: Dict[str, Set[str]] = {}
 
-    # =========================================================================
-    # 0. CONSULTA DE DISTANCIA EN DÍGRAFO EN O(1)
-    # =========================================================================
     def _preparar_fuente_distancias_O1(
         self,
         pedidos_validos: List[Pedido],
-        tabla_productos: Any,
+        warehouse: Warehouse,
         proveedor: Optional[Any],
-        warehouse: Any = None,
     ) -> Any:
         fuente = proveedor if proveedor is not None else self.proveedor_distancias
         if fuente is None:
-            return None
+            fuente = warehouse.grafo_pasillos
 
         es_grafo_directo = hasattr(fuente, "obtener_vecinos_validos") or hasattr(
             fuente, "lista_adyacencia"
@@ -63,7 +60,7 @@ class WaveManager:
 
         coords_xy_requeridas: Set[CoordXY] = set()
         for pedido in pedidos_validos:
-            for x, y, _ in pedido.obtener_ubicaciones_xyz(tabla_productos):
+            for x, y, _ in pedido.obtener_ubicaciones_xyz(warehouse):
                 coords_xy_requeridas.add((x, y))
 
         if not coords_xy_requeridas:
@@ -107,7 +104,7 @@ class WaveManager:
     def _es_pedido_internamente_alcanzable(
         self,
         pedido: Pedido,
-        tabla_productos: Any,
+        warehouse: Warehouse,
         proveedor: Optional[Any] = None,
     ) -> bool:
         fuente = proveedor if proveedor is not None else self.proveedor_distancias
@@ -115,7 +112,7 @@ class WaveManager:
             return True
 
         coords_xy = list(
-            {(x, y) for x, y, _ in pedido.obtener_ubicaciones_xyz(tabla_productos)}
+            {(x, y) for x, y, _ in pedido.obtener_ubicaciones_xyz(warehouse)}
         )
         if len(coords_xy) <= 1:
             return True
@@ -126,10 +123,7 @@ class WaveManager:
                 return False
         return True
 
-    # =========================================================================
-    # 1. ZONAS DE DESPACHO HABILITADAS (OUTBOUND / AMBOS) Y CAPACIDAD DE PESO
-    # =========================================================================
-    def obtener_zonas_despacho_salida(self, warehouse: Any) -> List[ZonaDespacho]:
+    def obtener_zonas_despacho_salida(self, warehouse: Warehouse) -> List[ZonaDespacho]:
         if warehouse is None or not hasattr(warehouse, "zonas_despacho"):
             return []
         zonas_salida: List[ZonaDespacho] = []
@@ -141,16 +135,15 @@ class WaveManager:
 
     def seleccionar_zona_despacho_para_wave(
         self,
-        warehouse: Any,
+        warehouse: Warehouse,
         pedido_semilla: Pedido,
-        tabla_productos: Any,
     ) -> Optional[ZonaDespacho]:
         zonas = self.obtener_zonas_despacho_salida(warehouse)
         if not zonas:
             return None
 
-        peso_semilla = pedido_semilla.obtener_peso_total(tabla_productos)
-        ubics = list(pedido_semilla.obtener_ubicaciones_xyz(tabla_productos))
+        peso_semilla = pedido_semilla.obtener_peso_total(warehouse)
+        ubics = list(pedido_semilla.obtener_ubicaciones_xyz(warehouse))
         cx = sum(x for x, _, _ in ubics) / len(ubics) if ubics else 0.0
         cy = sum(y for _, y, _ in ubics) / len(ubics) if ubics else 0.0
 
@@ -158,7 +151,6 @@ class WaveManager:
         if not zonas_con_capacidad:
             return None
 
-        # Elegir la Zona de Despacho con capacidad suficiente más cercana al pedido semilla
         return min(
             zonas_con_capacidad,
             key=lambda z: (
@@ -167,18 +159,12 @@ class WaveManager:
             ),
         )
 
-    # =========================================================================
-    # 2. VALIDACIÓN DE STOCK VIRTUAL Y PARTICIÓN EN SUB-LOTES MULTI-PICKER
-    # =========================================================================
     def _tiene_stock_suficiente_sin_modificar(
         self,
         pedido: Pedido,
-        tabla_productos: Any,
+        warehouse: Warehouse,
         stock_comprometido: Dict[str, int],
     ) -> bool:
-        if tabla_productos is None:
-            return True
-
         acumulado_pedido: Dict[str, int] = {}
         for item in pedido.items:
             acumulado_pedido[item.producto_id] = (
@@ -186,7 +172,7 @@ class WaveManager:
             )
 
         for prod_id, cant_solicitada in acumulado_pedido.items():
-            prod = Pedido._buscar_producto(tabla_productos, prod_id)
+            prod = warehouse.buscar_producto_O1(prod_id)
             if prod is None:
                 return False
             reservado = stock_comprometido.get(prod_id, 0)
@@ -206,13 +192,13 @@ class WaveManager:
         self,
         pedidos_wave: List[Pedido],
         pickers_disponibles: List[Picker],
-        tabla_productos: Any,
+        warehouse: Warehouse,
     ) -> Tuple[bool, List[Picker]]:
-        if not pickers_disponibles or tabla_productos is None:
+        if not pickers_disponibles:
             return True, []
 
         pesos_pedidos = sorted(
-            [p.obtener_peso_total(tabla_productos) for p in pedidos_wave],
+            [p.obtener_peso_total(warehouse) for p in pedidos_wave],
             reverse=True,
         )
         pickers_ordenados = sorted(
@@ -245,14 +231,12 @@ class WaveManager:
     def validar_pedidos_entrada(
         self,
         pedidos: List[Pedido],
-        tabla_productos: Any = None,
-        catalogo: Any = None,
-        pickers: Optional[List[Picker]] = None,
+        warehouse: Warehouse,
     ) -> List[Pedido]:
         pedidos_validos: List[Pedido] = []
         max_cap_individual = (
-            max((p.capacidad_carga_kg for p in pickers), default=float("inf"))
-            if pickers
+            max((p.capacidad_carga_kg for p in warehouse.pickers), default=float("inf"))
+            if warehouse.pickers
             else float("inf")
         )
 
@@ -262,76 +246,68 @@ class WaveManager:
 
             cant_productos = pedido.obtener_cantidad_productos()
             if cant_productos <= 0 or cant_productos > self.wave_max_productos:
-                mensaje_error = (
+                self._marcar_pedido_irrealizable(
+                    pedido,
                     f"Error de Caso Borde: El pedido '{pedido.id_pedido}' solicita "
-                    f"{cant_productos} productos, fuera del rango permitido (1..{self.wave_max_productos})."
+                    f"{cant_productos} productos, fuera del rango permitido (1..{self.wave_max_productos}).",
+                    warehouse,
                 )
-                self._marcar_pedido_irrealizable(pedido, mensaje_error, catalogo)
                 continue
 
-            if tabla_productos is not None:
-                ubicaciones = pedido.obtener_ubicaciones_xyz(tabla_productos)
-                if not ubicaciones:
-                    mensaje_error = (
-                        f"Error de Datos: El pedido '{pedido.id_pedido}' no tiene "
-                        f"ubicaciones válidas en el catálogo."
-                    )
-                    self._marcar_pedido_irrealizable(pedido, mensaje_error, catalogo)
-                    continue
+            ubicaciones = pedido.obtener_ubicaciones_xyz(warehouse)
+            if not ubicaciones:
+                self._marcar_pedido_irrealizable(
+                    pedido,
+                    f"Error de Datos: El pedido '{pedido.id_pedido}' no tiene ubicaciones válidas.",
+                    warehouse,
+                )
+                continue
 
-                peso_ped = pedido.obtener_peso_total(tabla_productos)
-                if peso_ped > max_cap_individual:
-                    mensaje_error = (
-                        f"Error de Peso Físico: El pedido '{pedido.id_pedido}' pesa "
-                        f"{peso_ped:.2f} kg y supera la capacidad del mayor picker ({max_cap_individual:.2f} kg)."
-                    )
-                    self._marcar_pedido_irrealizable(pedido, mensaje_error, catalogo)
-                    continue
+            peso_ped = pedido.obtener_peso_total(warehouse)
+            if peso_ped > max_cap_individual:
+                self._marcar_pedido_irrealizable(
+                    pedido,
+                    f"Error de Peso Físico: El pedido '{pedido.id_pedido}' pesa {peso_ped:.2f} kg "
+                    f"y supera la capacidad del mayor picker ({max_cap_individual:.2f} kg).",
+                    warehouse,
+                )
+                continue
 
-                if not self._tiene_stock_suficiente_sin_modificar(
-                    pedido, tabla_productos, {}
-                ):
-                    mensaje_error = (
-                        f"Error de Stock: El pedido '{pedido.id_pedido}' solicita "
-                        f"más unidades que el stock total inicial del Warehouse."
-                    )
-                    self._marcar_pedido_irrealizable(pedido, mensaje_error, catalogo)
-                    continue
+            if not self._tiene_stock_suficiente_sin_modificar(pedido, warehouse, {}):
+                self._marcar_pedido_irrealizable(
+                    pedido,
+                    f"Error de Stock: El pedido '{pedido.id_pedido}' supera el stock disponible.",
+                    warehouse,
+                )
+                continue
 
             pedidos_validos.append(pedido)
 
         return pedidos_validos
 
     def _marcar_pedido_irrealizable(
-        self, pedido: Pedido, mensaje_error: str, catalogo: Any = None
+        self, pedido: Pedido, mensaje_error: str, warehouse: Warehouse
     ) -> None:
         self.errores_validacion.append(mensaje_error)
         self.pedidos_descartados.append(pedido)
         pedido.estado = EstadoPedido.IRREALIZABLE
+        warehouse.actualizar_estado_pedido_O1(
+            pedido.id_pedido, EstadoPedido.IRREALIZABLE
+        )
 
-        if catalogo is not None and hasattr(catalogo, "actualizar_estado_pedido_O1"):
-            catalogo.actualizar_estado_pedido_O1(
-                pedido.id_pedido, EstadoPedido.IRREALIZABLE
-            )
-
-    # =========================================================================
-    # 3. ALGORITMO DE CERCANÍA: COSTO MARGINAL PROMEDIO EN DÍGRAFO
-    # =========================================================================
     def calcular_costo_marginal_promedio(
         self,
         wave: Wave,
         pedido_candidato: Pedido,
-        tabla_productos: Any,
+        warehouse: Warehouse,
         proveedor_distancias: Optional[Any] = None,
     ) -> float:
-        u_cand: Set[Tuple[int, int, int]] = pedido_candidato.obtener_ubicaciones_xyz(
-            tabla_productos
-        )
+        u_cand = pedido_candidato.obtener_ubicaciones_xyz(warehouse)
         if not u_cand:
             return float("inf")
 
-        u_wave_xyz: Set[Tuple[int, int, int]] = wave.ubicaciones_xyz
-        u_wave_xy: Set[CoordXY] = wave.ubicaciones_xy
+        u_wave_xyz = wave.ubicaciones_xyz
+        u_wave_xy = wave.ubicaciones_xy
 
         if not u_wave_xy:
             return 0.0
@@ -360,18 +336,11 @@ class WaveManager:
 
             suma_distancias_minimas += dist_p
 
-        score = suma_distancias_minimas / len(u_cand)
-        return round(score, 6)
+        return round(suma_distancias_minimas / len(u_cand), 6)
 
-    # =========================================================================
-    # 4. GENERACIÓN DE WAVES (PASO 1: ARMAR WAVES EN ESTADO PENDIENTE)
-    # =========================================================================
     def generar_waves(
         self,
-        pedidos: Optional[List[Pedido]] = None,
-        tabla_productos: Any = None,
-        catalogo: Any = None,
-        pickers: Optional[List[Picker]] = None,
+        warehouse: Warehouse,
         proveedor_distancias: Optional[Any] = None,
     ) -> List[Wave]:
         self.errores_validacion.clear()
@@ -380,45 +349,19 @@ class WaveManager:
         self.waves_creadas.clear()
         self.waves_por_id.clear()
 
-        if (
-            pedidos is None
-            and catalogo is not None
-            and hasattr(catalogo, "obtener_todos_los_pedidos")
-        ):
-            pedidos = catalogo.obtener_todos_los_pedidos()
-        if tabla_productos is None and catalogo is not None:
-            tabla_productos = catalogo
-        if pickers is None and catalogo is not None:
-            pickers = getattr(catalogo, "pickers", None)
-        warehouse = (
-            getattr(catalogo, "warehouse", None) if catalogo is not None else None
-        )
-        if (
-            proveedor_distancias is None
-            and catalogo is not None
-            and getattr(catalogo, "digrafo", None) is not None
-        ):
-            proveedor_distancias = catalogo.digrafo
-
+        pedidos = warehouse.obtener_todos_los_pedidos()
         if not pedidos:
             return []
 
-        # Limpiar reservas previas en las zonas de despacho
-        if warehouse is not None and hasattr(warehouse, "zonas_despacho"):
-            for zd in warehouse.zonas_despacho.values():
-                zd.peso_comprometido_waves_kg = 0.0
+        for zd in warehouse.zonas_despacho.values():
+            zd.peso_comprometido_waves_kg = 0.0
 
-        pedidos_validos = self.validar_pedidos_entrada(
-            pedidos,
-            tabla_productos=tabla_productos,
-            catalogo=catalogo,
-            pickers=pickers,
-        )
+        pedidos_validos = self.validar_pedidos_entrada(pedidos, warehouse)
         if not pedidos_validos:
             return []
 
         fuente_dist = self._preparar_fuente_distancias_O1(
-            pedidos_validos, tabla_productos, proveedor_distancias, warehouse=warehouse
+            pedidos_validos, warehouse, proveedor_distancias
         )
 
         self.cola_prioridad.construir_monticulo(pedidos_validos)
@@ -432,52 +375,46 @@ class WaveManager:
                 break
 
             if not self._es_pedido_internamente_alcanzable(
-                pedido_raiz, tabla_productos, fuente_dist
+                pedido_raiz, warehouse, fuente_dist
             ):
                 self._marcar_pedido_irrealizable(
                     pedido_raiz,
                     f"Error de Topología: El pedido '{pedido_raiz.id_pedido}' contiene ubicaciones inalcanzables.",
-                    catalogo,
+                    warehouse,
                 )
                 continue
 
             if not self._tiene_stock_suficiente_sin_modificar(
-                pedido_raiz, tabla_productos, stock_comprometido_virtual
+                pedido_raiz, warehouse, stock_comprometido_virtual
             ):
                 self._marcar_pedido_irrealizable(
                     pedido_raiz,
                     f"Stock Insuficiente: El pedido '{pedido_raiz.id_pedido}' excede el stock remanente.",
-                    catalogo,
+                    warehouse,
                 )
                 continue
 
-            # Seleccionar una Zona de Despacho con puerta de salida y capacidad de peso suficiente
-            zona_obj = self.seleccionar_zona_despacho_para_wave(
-                warehouse, pedido_raiz, tabla_productos
-            )
-            if zona_obj is None and warehouse is not None:
+            zona_obj = self.seleccionar_zona_despacho_para_wave(warehouse, pedido_raiz)
+            if zona_obj is None:
                 self.errores_validacion.append(
-                    f"Capacidad de Despacho Agotada: El pedido '{pedido_raiz.id_pedido}' "
-                    f"({pedido_raiz.obtener_peso_total(tabla_productos):.2f} kg) no cabe en ninguna Zona de Despacho."
+                    f"Capacidad de Despacho Agotada para el pedido '{pedido_raiz.id_pedido}'."
                 )
                 continue
 
             id_wave_actual = f"{self.prefijo_id_wave}_{contador_wave:02d}"
-            id_zona = zona_obj.id if zona_obj is not None else "ZONA_A"
-            peso_raiz = pedido_raiz.obtener_peso_total(tabla_productos)
+            peso_raiz = pedido_raiz.obtener_peso_total(warehouse)
 
             nueva_wave = Wave(
                 id_wave=id_wave_actual,
                 estado=EstadoWave.PENDIENTE,
                 wave_max_pedidos=self.wave_max_pedidos,
                 wave_max_productos=self.wave_max_productos,
-                id_zona_despacho=id_zona,
+                id_zona_despacho=zona_obj.id,
             )
 
-            nueva_wave.agregar_pedido(pedido_raiz, tabla_productos, catalogo=catalogo)
+            nueva_wave.agregar_pedido(pedido_raiz, warehouse_o_tabla=warehouse)
             self._registrar_compromiso_virtual(pedido_raiz, stock_comprometido_virtual)
-            if zona_obj is not None:
-                zona_obj.comprometer_carga_wave(peso_raiz)
+            zona_obj.comprometer_carga_wave(peso_raiz)
 
             self.traza_armado[id_wave_actual] = [
                 {
@@ -514,27 +451,23 @@ class WaveManager:
 
                 for cand in candidatos_factibles:
                     if not self._tiene_stock_suficiente_sin_modificar(
-                        cand, tabla_productos, stock_comprometido_virtual
+                        cand, warehouse, stock_comprometido_virtual
                     ):
                         continue
 
-                    peso_cand = cand.obtener_peso_total(tabla_productos)
-                    # Validar que no desborde el peso_max_kg de la Zona de Despacho asignada
-                    if zona_obj is not None and not zona_obj.puede_recibir_carga(
-                        peso_cand
-                    ):
+                    peso_cand = cand.obtener_peso_total(warehouse)
+                    if not zona_obj.puede_recibir_carga(peso_cand):
                         continue
 
-                    # Validar que sea repartible en sub-lotes entre hasta max_pickers_por_wave
-                    if pickers:
+                    if warehouse.pickers:
                         es_repartible, _ = self._es_repartible_en_equipo_pickers(
-                            nueva_wave.pedidos + [cand], pickers, tabla_productos
+                            nueva_wave.pedidos + [cand], warehouse.pickers, warehouse
                         )
                         if not es_repartible:
                             continue
 
                     score = self.calcular_costo_marginal_promedio(
-                        nueva_wave, cand, tabla_productos, fuente_dist
+                        nueva_wave, cand, warehouse, fuente_dist
                     )
                     if score == float("inf"):
                         continue
@@ -552,15 +485,12 @@ class WaveManager:
                 if mejor_candidato is None:
                     break
 
-                peso_mejor = mejor_candidato.obtener_peso_total(tabla_productos)
-                nueva_wave.agregar_pedido(
-                    mejor_candidato, tabla_productos, catalogo=catalogo
-                )
+                peso_mejor = mejor_candidato.obtener_peso_total(warehouse)
+                nueva_wave.agregar_pedido(mejor_candidato, warehouse_o_tabla=warehouse)
                 self._registrar_compromiso_virtual(
                     mejor_candidato, stock_comprometido_virtual
                 )
-                if zona_obj is not None:
-                    zona_obj.comprometer_carga_wave(peso_mejor)
+                zona_obj.comprometer_carga_wave(peso_mejor)
 
                 nueva_wave.costo_mst_total = round(
                     nueva_wave.costo_mst_total + mejor_score, 4
@@ -585,9 +515,6 @@ class WaveManager:
 
         return self.waves_creadas
 
-    # =========================================================================
-    # 5. CONSULTA DE WAVES DISPONIBLES Y ASIGNACIÓN A LOS PICKERS MÁS CERCANOS
-    # =========================================================================
     def obtener_waves_disponibles(self) -> List[Wave]:
         return [w for w in self.waves_creadas if w.estado == EstadoWave.PENDIENTE]
 
@@ -602,52 +529,34 @@ class WaveManager:
         self,
         picker: Picker,
         wave: Wave,
-        grafo: Any = None,
-        warehouse: Any = None,
+        warehouse: Warehouse,
     ) -> float:
         if not wave.ubicaciones_xy:
             return 0.0
 
-        if grafo is not None:
-            orig_pasillo = Pathfinding.obtener_celda_acceso_pasillo(
-                picker.posicion_actual, grafo, warehouse
+        grafo = warehouse.grafo_pasillos
+        orig_pasillo = Pathfinding.obtener_celda_acceso_pasillo(
+            picker.posicion_actual, grafo, warehouse
+        )
+        mapa_dist = Pathfinding.calcular_mapa_distancias_desde(orig_pasillo, grafo)
+        dist_min = float("inf")
+        for coord_rack in wave.ubicaciones_xy:
+            celda_acceso = Pathfinding.obtener_celda_acceso_pasillo(
+                coord_rack, grafo, warehouse
             )
-            mapa_dist = Pathfinding.calcular_mapa_distancias_desde(orig_pasillo, grafo)
-            dist_min = float("inf")
-            for coord_rack in wave.ubicaciones_xy:
-                celda_acceso = Pathfinding.obtener_celda_acceso_pasillo(
-                    coord_rack, grafo, warehouse
-                )
-                d = mapa_dist.get(celda_acceso, float("inf"))
-                if d < dist_min:
-                    dist_min = d
-            return dist_min
-
-        px, py = picker.posicion_actual
-        return float(min(abs(px - ux) + abs(py - uy) for ux, uy in wave.ubicaciones_xy))
+            d = mapa_dist.get(celda_acceso, float("inf"))
+            if d < dist_min:
+                dist_min = d
+        return dist_min
 
     def asignar_y_ejecutar_waves_seleccionadas(
         self,
         ids_waves_seleccionadas: List[str],
-        pickers: List[Picker],
-        catalogo: Any = None,
-        grafo: Any = None,
+        warehouse: Warehouse,
         estrategia_ruteo: EstrategiaRuteo = EstrategiaRuteo.CERCANIA_DIJKSTRA_MULTIDESTINO,
     ) -> Dict[str, Any]:
-        """
-        Asigna las Waves seleccionadas a los Pickers libres más cercanos:
-        - REGLA ESTRICTA: Un Picker NO puede mezclar dos Waves en el mismo viaje.
-          Cada Picker libre recibe a lo sumo UNA Wave activa en este viaje.
-        - Si una Wave supera la capacidad de un único Picker, se divide en sub-lotes
-          geográficos entre varios Pickers libres simultáneamente.
-        - Calcula inmediatamente la ruta de cada Picker hacia sus racks y hacia la
-          Zona de Despacho asignada a la Wave.
-        """
-        warehouse = (
-            getattr(catalogo, "warehouse", None) if catalogo is not None else None
-        )
-        if grafo is None and catalogo is not None:
-            grafo = getattr(catalogo, "digrafo", None)
+        grafo = warehouse.grafo_pasillos
+        pickers = warehouse.pickers
 
         waves_elegidas: List[Wave] = []
         for wid in ids_waves_seleccionadas:
@@ -677,7 +586,7 @@ class WaveManager:
         for pk in pickers_libres:
             for w in waves_elegidas:
                 dist_picker_wave[(pk.id_picker, w.id_wave)] = (
-                    self.calcular_distancia_picker_a_wave(pk, w, grafo, warehouse)
+                    self.calcular_distancia_picker_a_wave(pk, w, warehouse)
                 )
 
         for w in waves_elegidas:
@@ -695,19 +604,16 @@ class WaveManager:
             )
 
             equipo_elegido: List[Picker] = []
-            # Si el picker más cercano soporta toda la Wave solo, asignarle 1 picker
             if candidatos_cercanos[0].capacidad_carga_kg >= w.peso_total_kg:
                 equipo_elegido = [candidatos_cercanos[0]]
             else:
-                # Si ningún picker cercano individual o el más cercano no la soporta,
-                # ver si otro picker individual la soporta o dividirla en sub-lotes multi-picker
                 for pk in candidatos_cercanos:
                     if pk.capacidad_carga_kg >= w.peso_total_kg:
                         equipo_elegido = [pk]
                         break
                 if not equipo_elegido:
                     factible, equipo_multi = self._es_repartible_en_equipo_pickers(
-                        w.pedidos, candidatos_cercanos, catalogo
+                        w.pedidos, candidatos_cercanos, warehouse
                     )
                     if factible and equipo_multi:
                         equipo_elegido = equipo_multi
@@ -719,19 +625,13 @@ class WaveManager:
             for pk in equipo_elegido:
                 pickers_libres.remove(pk)
 
-            # Particionar la Wave en sub-lotes geográficos para el equipo elegido
-            w.asignar_equipo_pickers(equipo_elegido, catalogo)
+            w.asignar_equipo_pickers(equipo_elegido, warehouse)
             w.estado = EstadoWave.EN_EJECUCION
             self._pickers_pendientes_descarga[w.id_wave] = {
                 p.id_picker for p in equipo_elegido
             }
 
-            # Obtener los puntos de acceso de pasillo de la Zona de Despacho de esta Wave
-            accesos_despacho = (
-                warehouse.obtener_nodos_acceso_zona(w.id_zona_despacho)
-                if warehouse is not None
-                else []
-            )
+            accesos_despacho = warehouse.obtener_nodos_acceso_zona(w.id_zona_despacho)
 
             rutas_por_picker: Dict[str, List[CoordXY]] = {}
             for idx_pk, pk in enumerate(equipo_elegido):
@@ -740,7 +640,6 @@ class WaveManager:
                     Pathfinding.obtener_celda_acceso_pasillo(c, grafo, warehouse)
                     for c in destinos_rack
                 ]
-                # Distribuir el nodo de entrada a la Zona de Despacho para evitar congestión en 1 sola celda
                 nodo_despacho = (
                     accesos_despacho[idx_pk % len(accesos_despacho)]
                     if accesos_despacho
@@ -800,13 +699,8 @@ class WaveManager:
         id_wave: str,
         id_picker: str,
         pickers: List[Picker],
-        catalogo: Any = None,
+        warehouse: Optional[Warehouse] = None,
     ) -> None:
-        """
-        Cuando un Picker arriba a la Zona de Despacho y descarga su lote (su peso vuelve a 0),
-        se descuenta el stock real recolectado y, si todos los Pickers de la Wave ya descargaron,
-        la Wave pasa a FINALIZADA.
-        """
         w = self.waves_por_id.get(id_wave)
         if w is None:
             return
@@ -814,8 +708,12 @@ class WaveManager:
         pendientes = self._pickers_pendientes_descarga.get(id_wave, set())
         pendientes.discard(id_picker)
 
-        # Descontar stock de los pedidos que preparó este picker y marcarlos como PREPARADO
-        if catalogo is not None:
+        if warehouse is not None:
+            peso_descargado = w.peso_por_picker.get(id_picker, 0.0)
+            zona_obj = warehouse.zonas_despacho.get(w.id_zona_despacho)
+            if zona_obj is not None:
+                zona_obj.registrar_descarga_fisica(peso_descargado)
+
             ids_ped_picker = set(w.pedidos_por_picker.get(id_picker, []))
             for ped in w.pedidos:
                 if (
@@ -823,8 +721,8 @@ class WaveManager:
                     and ped.estado != EstadoPedido.PREPARADO
                 ):
                     for item in ped.items:
-                        catalogo.descontar_stock(item.producto_id, item.cantidad)
-                    catalogo.actualizar_estado_pedido_O1(
+                        warehouse.descontar_stock(item.producto_id, item.cantidad)
+                    warehouse.actualizar_estado_pedido_O1(
                         ped.id_pedido, EstadoPedido.PREPARADO
                     )
 
