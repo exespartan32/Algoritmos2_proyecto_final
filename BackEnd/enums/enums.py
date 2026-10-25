@@ -27,6 +27,7 @@ class SentidoCirculacion(Enum):
     E = "E"
     O = "O"
     AMBOS = "AMBOS"
+    NINGUNO = "NINGUNO"
 
 
 class TipoPuerta(Enum):

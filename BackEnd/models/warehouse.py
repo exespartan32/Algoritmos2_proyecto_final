@@ -1,50 +1,56 @@
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, List, Tuple, Optional, Set
 from BackEnd.enums.enums import TipoCelda, SentidoCirculacion as Sentido
-from BackEnd.models.entity import (
-    Celda, CeldaPasillo, CeldaRack, Rack, ZonaDespacho, Puerta, Product
+from BackEnd.models.entities import (
+    Celda,
+    CeldaPasillo,
+    CeldaRack,
+    Rack,
+    ZonaDespacho,
+    Puerta,
+    Product,
 )
 
 Coord = Tuple[int, int]
 
 
 class NodoGrafo:
-    """Una celda de PASILLO transitable. Es la única clase de celda que es nodo del grafo.
+    """Una celda de PASILLO transitable. Es la única clase de celda que es nodo del grafo."""
 
-    Racks, zonas de despacho y puertas son obstáculos que el picker no atraviesa
-    (enunciado 3.6), así que no son nodos.
-    """
-    def __init__(self, x: int, y: int, sentido: Sentido, pasillo_id: Optional[str] = None):
+    def __init__(
+        self, x: int, y: int, sentido: Sentido, pasillo_id: Optional[str] = None
+    ):
         self.x = x
         self.y = y
         self.sentido_permitido = sentido
-        # ID del pasillo declarado en el JSON (None si es una celda libre, que es pasillo AMBOS)
         self.pasillo_id = pasillo_id
-        # Celdas de rack que se pueden recoger desde este nodo (por el costado del rack)
         self.racks_adyacentes: List[CeldaRack] = []
-        # IDs de zonas de despacho pegadas a este nodo
         self.zonas_despacho_adyacentes: List[str] = []
 
 
 class Digrafo:
-    """Grafo dirigido representado mediante Lista de Adyacencia.
-
-    nodos:            (x, y) -> NodoGrafo
-    lista_adyacencia: (x, y) -> lista de coordenadas destino (aristas de costo 1)
     """
+    Grafo dirigido representado mediante Lista de Adyacencia.
+    Incluye soporte de bloqueos espacio-temporales para TurnAndCollisionManager y Pathfinding.
+    """
+
     def __init__(self):
         self.nodos: Dict[Coord, NodoGrafo] = {}
         self.lista_adyacencia: Dict[Coord, List[Coord]] = {}
+        # Reservas espacio-temporales: {(x, y, paso_tiempo): id_picker}
+        self.bloqueos_temporales: Dict[Tuple[int, int, int], str] = {}
+        # Bloqueos de nodos para un recálculo puntual de evasión
+        self.nodos_evasion_actual: Set[Coord] = set()
 
-    def agregar_nodo(self, x: int, y: int, sentido: Sentido, pasillo_id: Optional[str] = None) -> NodoGrafo:
+    def agregar_nodo(
+        self, x: int, y: int, sentido: Sentido, pasillo_id: Optional[str] = None
+    ) -> NodoGrafo:
         coord = (x, y)
         if coord not in self.nodos:
             self.nodos[coord] = NodoGrafo(x, y, sentido, pasillo_id)
             self.lista_adyacencia[coord] = []
         return self.nodos[coord]
 
-    def agregar_arista_dirigida(self, origen: Coord, destino: Coord):
-        # Cada nodo tiene como máximo 4 vecinos, así que el chequeo de
-        # duplicados sobre la lista es O(1) en la práctica.
+    def agregar_arista_dirigida(self, origen: Coord, destino: Coord) -> None:
         if origen in self.lista_adyacencia and destino in self.nodos:
             if destino not in self.lista_adyacencia[origen]:
                 self.lista_adyacencia[origen].append(destino)
@@ -52,19 +58,49 @@ class Digrafo:
     def obtener_vecinos(self, coord: Coord) -> List[Coord]:
         return self.lista_adyacencia.get(coord, [])
 
+    def bloquear_celda_temporal(
+        self, coord: Coord, paso_tiempo: int, picker_id: str
+    ) -> None:
+        self.bloqueos_temporales[(coord[0], coord[1], int(paso_tiempo))] = picker_id
+
+    def limpiar_bloqueos_antiguos(self, paso_actual: int) -> None:
+        claves_borrar = [k for k in self.bloqueos_temporales if k[2] < paso_actual]
+        for k in claves_borrar:
+            del self.bloqueos_temporales[k]
+
+    def obtener_vecinos_validos(
+        self,
+        nodo_actual: Coord,
+        paso_tiempo: int = 0,
+        picker_id_solicitante: Optional[str] = None,
+    ) -> List[Coord]:
+        """
+        Interfaz requerida por Pathfinding y TurnAndCollisionManager.
+        Filtra vecinos que estén bloqueados en 'paso_tiempo' o en 'nodos_evasion_actual'.
+        """
+        vecinos_base = self.lista_adyacencia.get(nodo_actual, [])
+        if not self.bloqueos_temporales and not self.nodos_evasion_actual:
+            return list(vecinos_base)
+
+        validos: List[Coord] = []
+        for v in vecinos_base:
+            if v in self.nodos_evasion_actual:
+                continue
+            if paso_tiempo > 0:
+                ocupante = self.bloqueos_temporales.get((v[0], v[1], paso_tiempo))
+                if ocupante is not None and ocupante != picker_id_solicitante:
+                    continue
+            validos.append(v)
+        return validos
+
 
 class Warehouse:
-    """Almacén de ancho_x por largo_y (el eje y crece hacia arriba).
+    """Almacén de ancho_x por largo_y (el eje y crece hacia arriba)."""
 
-    No hay una matriz con todas las celdas: los pasillos viven en el dígrafo
-    (grafo_pasillos.nodos) y los obstáculos en el diccionario `obstaculos`.
-    Toda coordenada dentro del almacén es exactamente una de las dos cosas.
-    """
     def __init__(self, ancho_x: int, largo_y: int):
         self.ancho_x = ancho_x
         self.largo_y = largo_y
         self.grafo_pasillos = Digrafo()
-        # Celdas que NO son nodo: (x, y) -> CeldaRack o Celda de tipo ZONA_DESPACHO / PUERTA
         self.obstaculos: Dict[Coord, Celda] = {}
 
         self.racks: Dict[str, Rack] = {}
@@ -72,25 +108,15 @@ class Warehouse:
         self.puertas: Dict[str, Puerta] = {}
         self.catalogo_productos: Dict[str, Product] = {}
 
-        # Compatibilidad: celda de RACK -> PRIMER nodo de PASILLO desde el que se la recoge
         self.acceso_rack_a_pasillo: Dict[Coord, Coord] = {}
-        # Celda de RACK -> TODOS los nodos de PASILLO desde los que se la recoge
         self.accesos_rack_a_pasillo: Dict[Coord, List[Coord]] = {}
-        # ID de zona de despacho -> nodos de PASILLO pegados a la zona
         self.accesos_zona_a_pasillo: Dict[str, List[Coord]] = {}
-        # Problemas del mapa detectados al construir/validar (no son errores fatales)
         self.advertencias: List[str] = []
 
     def dentro(self, x: int, y: int) -> bool:
         return 0 <= x < self.ancho_x and 0 <= y < self.largo_y
 
     def obtener_celda(self, x: int, y: int) -> Optional[Celda]:
-        """Devuelve qué hay en (x, y), como si hubiera una matriz, pero sin guardarla.
-
-        - Obstáculo: devuelve la celda real guardada (CeldaRack, zona o puerta).
-        - Pasillo: arma en el momento una CeldaPasillo con el sentido del nodo.
-        - Fuera del almacén: None.
-        """
         celda = self.obstaculos.get((x, y))
         if celda is not None:
             return celda
@@ -99,64 +125,50 @@ class Warehouse:
             return None
         return CeldaPasillo(x, y, nodo.sentido_permitido, nodo.pasillo_id)
 
+    def obtener_celda_acceso_pasillo(self, rx: int, ry: int) -> Optional[Coord]:
+        """
+        Traduce en O(1) una coordenada (rx, ry) de Rack o Zona de Despacho a su
+        celda de pasillo transitable en el dígrafo.
+        """
+        if (rx, ry) in self.grafo_pasillos.nodos:
+            return (rx, ry)
+        if (rx, ry) in self.acceso_rack_a_pasillo:
+            return self.acceso_rack_a_pasillo[(rx, ry)]
+
+        # Si (rx, ry) cae dentro de una Zona de Despacho, devolver el pasillo adyacente más cercano
+        obst = self.obstaculos.get((rx, ry))
+        if (
+            obst is not None
+            and obst.tipo == TipoCelda.ZONA_DESPACHO
+            and obst.elemento_id
+        ):
+            accesos_z = self.accesos_zona_a_pasillo.get(obst.elemento_id, [])
+            if accesos_z:
+                return min(accesos_z, key=lambda c: abs(c[0] - rx) + abs(c[1] - ry))
+        return None
+
+    def obtener_celda_acceso_despacho(
+        self, zona_id: str, ref_xy: Optional[Coord] = None
+    ) -> Optional[Coord]:
+        """Devuelve la celda de pasillo adyacente a 'zona_id' (la más cercana a ref_xy si se indica)."""
+        accesos = self.accesos_zona_a_pasillo.get(zona_id, [])
+        if not accesos:
+            return None
+        if ref_xy is None:
+            return accesos[0]
+        return min(accesos, key=lambda c: abs(c[0] - ref_xy[0]) + abs(c[1] - ref_xy[1]))
+
     def obtener_nodo_acceso_producto(self, prod_id: str) -> Optional[Coord]:
-        """Devuelve la coordenada del nodo de PASILLO donde debe frenar el picker para recoger el producto."""
         prod = self.catalogo_productos.get(prod_id)
         if not prod:
             return None
         return self.acceso_rack_a_pasillo.get((prod.x, prod.y))
 
     def obtener_nodos_acceso_producto(self, prod_id: str) -> List[Coord]:
-        """Devuelve todos los nodos de PASILLO desde los que se puede recoger el producto."""
         prod = self.catalogo_productos.get(prod_id)
         if not prod:
             return []
         return list(self.accesos_rack_a_pasillo.get((prod.x, prod.y), []))
 
     def obtener_nodos_acceso_zona(self, zona_id: str) -> List[Coord]:
-        """Devuelve los nodos de PASILLO pegados a la zona de despacho."""
         return list(self.accesos_zona_a_pasillo.get(zona_id, []))
-
-    def imprimir_mapa(self, camino_bfs: Optional[List[Coord]] = None):
-        """Imprime el almacén en la terminal (y crece hacia arriba, x hacia la derecha).
-
-        camino_bfs: lista opcional de coordenadas a marcar con '*' (por ejemplo, un camino o los puntos de acceso).
-        """
-        camino_set = set(camino_bfs) if camino_bfs else set()
-
-        simbolos_sentido = {
-            Sentido.N: "^",
-            Sentido.S: "v",
-            Sentido.E: ">",
-            Sentido.O: "<",
-            Sentido.AMBOS: "+",
-            Sentido.NINGUNO: "x",
-        }
-        simbolos_obstaculo = {
-            TipoCelda.RACK: "#",
-            TipoCelda.ZONA_DESPACHO: "D",
-            TipoCelda.PUERTA: "P",
-        }
-
-        print("\n=== MAPA DEL WAREHOUSE ===")
-        # Recorremos Y de arriba hacia abajo para que el (0,0) quede abajo a la izquierda
-        for y in range(self.largo_y - 1, -1, -1):
-            fila_str = f"y={y:02d} | "
-            for x in range(self.ancho_x):
-                if (x, y) in camino_set:
-                    fila_str += "*"
-                elif (x, y) in self.obstaculos:
-                    fila_str += simbolos_obstaculo[self.obstaculos[(x, y)].tipo]
-                else:
-                    nodo = self.grafo_pasillos.nodos[(x, y)]
-                    # Celda libre (no declarada) -> '.', pasillo declarado -> símbolo de su sentido
-                    fila_str += "." if nodo.pasillo_id is None else simbolos_sentido[nodo.sentido_permitido]
-            print(fila_str)
-
-        # Eje X abajo
-        print("     +" + "-" * self.ancho_x)
-        decenas = "       " + "".join(str((x // 10) % 10) for x in range(self.ancho_x))
-        unidades = "       " + "".join(str(x % 10) for x in range(self.ancho_x))
-        print(decenas)
-        print(unidades)
-        print("Referencias: [#] Rack | [D] Despacho | [P] Puerta | [^ v > < + x .] Pasillos | [*] Celdas marcadas\n")

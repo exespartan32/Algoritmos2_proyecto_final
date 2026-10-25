@@ -1,10 +1,10 @@
 import os
 import json
 import random
-from typing import Dict, List, Optional, Tuple, Any, Set
+from typing import Dict, List, Optional, Tuple, Any
 from BackEnd.models.entities import Producto, Pedido, DetallePedido, Picker
 from BackEnd.enums.enums import EstadoPedido
-from BackEnd.controllers.path_finding import Pathfinding
+from BackEnd.utils.file_parser import FileParser
 
 CoordXY = Tuple[int, int]
 
@@ -82,113 +82,10 @@ class HashTableUniversal:
         return valores
 
 
-class DigrafoEscenarioJSON:
-    """
-    Representación del Dígrafo del Warehouse construida directamente desde el bloque
-    'warehouse' de escenario_basico.json y escenario_grande.json.
-    Respeta el formato:
-      - dimensiones: {"ancho_x": ..., "largo_y": ...}
-      - ubicacion: {"x": ..., "y": ...} en racks, pasillos, puertas y zonas_despacho.
-    Expone 'obtener_vecinos_validos(nodo_actual, paso_tiempo=0)' para el Pathfinding de Leonel.
-    """
-
-    def __init__(
-        self, datos_warehouse: Dict[str, Any], norte_aumenta_y: bool = True
-    ) -> None:
-        dim = datos_warehouse.get("dimensiones", {})
-        self.ancho_x: int = int(dim.get("ancho_x", dim.get("ancho", 0)))
-        self.largo_y: int = int(dim.get("largo_y", dim.get("largo", 0)))
-        self.norte_aumenta_y: bool = norte_aumenta_y
-
-        self.racks_ocupados: Set[CoordXY] = set()
-        self.sentido_celda: Dict[CoordXY, str] = {}
-        self.lista_adyacencia: Dict[CoordXY, List[CoordXY]] = {}
-        self.zonas_despacho: Dict[str, Dict[str, Any]] = {}
-        self.puertas: Dict[str, Dict[str, Any]] = {}
-
-        self._construir_digrafo(datos_warehouse)
-
-    @staticmethod
-    def _extraer_xy(elemento: Dict[str, Any]) -> CoordXY:
-        if "ubicacion" in elemento and isinstance(elemento["ubicacion"], dict):
-            return int(elemento["ubicacion"]["x"]), int(elemento["ubicacion"]["y"])
-        return int(elemento.get("x", 0)), int(elemento.get("y", 0))
-
-    def _construir_digrafo(self, wh: Dict[str, Any]) -> None:
-        # 1. Celdas ocupadas por Racks (obstáculos físicos donde están los productos)
-        for rack in wh.get("racks", []):
-            rx, ry = self._extraer_xy(rack)
-            ancho_r = int(rack.get("ancho", 1))
-            alto_r = int(rack.get("alto", 1))
-            for dx in range(ancho_r):
-                for dy in range(alto_r):
-                    self.racks_ocupados.add((rx + dx, ry + dy))
-
-        # 2. Celdas de Pasillos y sus sentidos ('N', 'S', 'E', 'O', 'AMBOS')
-        for pas in wh.get("pasillos", []):
-            px, py = self._extraer_xy(pas)
-            ancho_p = int(pas.get("ancho", 1))
-            alto_p = int(pas.get("alto", 1))
-            sentido = str(pas.get("sentido", "AMBOS")).upper()
-
-            for dx in range(ancho_p):
-                for dy in range(alto_p):
-                    coord = (px + dx, py + dy)
-                    if coord in self.racks_ocupados:
-                        continue
-                    # En intersecciones con pasillos horizontales AMBOS, prevalece AMBOS
-                    if self.sentido_celda.get(coord) == "AMBOS":
-                        continue
-                    self.sentido_celda[coord] = sentido
-
-        # 3. Zonas de Despacho y Puertas (transitables con sentido AMBOS)
-        for zd in wh.get("zonas_despacho", []):
-            zx, zy = self._extraer_xy(zd)
-            ancho_z = int(zd.get("ancho", 1))
-            alto_z = int(zd.get("alto", 1))
-            self.zonas_despacho[str(zd["id"])] = zd
-            for dx in range(ancho_z):
-                for dy in range(alto_z):
-                    coord = (zx + dx, zy + dy)
-                    if coord not in self.racks_ocupados:
-                        self.sentido_celda[coord] = "AMBOS"
-
-        for pta in wh.get("puertas", []):
-            px, py = self._extraer_xy(pta)
-            self.puertas[str(pta["id"])] = pta
-            if (px, py) not in self.racks_ocupados:
-                self.sentido_celda[(px, py)] = "AMBOS"
-
-        # 4. Generar aristas dirigidas según reglas de circulación del Warehouse
-        pasos_ortogonales = [(1, 0), (-1, 0), (0, 1), (0, -1)]
-        for origen, sentido_orig in self.sentido_celda.items():
-            vecinos: List[CoordXY] = []
-            for dx, dy in pasos_ortogonales:
-                destino = (origen[0] + dx, origen[1] + dy)
-                if destino not in self.sentido_celda:
-                    continue
-                sentido_dest = self.sentido_celda[destino]
-                if Pathfinding.es_movimiento_permitido_digrafo(
-                    origen=origen,
-                    destino=destino,
-                    sentido_origen=sentido_orig,
-                    sentido_destino=sentido_dest,
-                    norte_aumenta_y=self.norte_aumenta_y,
-                ):
-                    vecinos.append(destino)
-            self.lista_adyacencia[origen] = vecinos
-
-    def obtener_vecinos_validos(
-        self, nodo_actual: CoordXY, paso_tiempo: int = 0
-    ) -> List[CoordXY]:
-        return self.lista_adyacencia.get(nodo_actual, [])
-
-
 class CatalogManager:
     """
-    Administrador central de las Tablas Hash O(1) de Productos y Pedidos.
-    Carga los escenarios base dados (escenario_basico.json y escenario_grande.json)
-    y decodifica las Tablas Hash de vuelta a JSON sin alterar los archivos originales.
+    Integra el Warehouse/Digrafo de Laureano (FileParser + GraphBuilder) con las
+    Tablas Hash Universales O(1) de Productos y Pedidos.
     """
 
     def __init__(
@@ -218,7 +115,8 @@ class CatalogManager:
 
         self.warehouse_raw: Dict[str, Any] = {}
         self.configuracion_raw: Dict[str, Any] = {}
-        self.digrafo: Optional[DigrafoEscenarioJSON] = None
+        self.warehouse = None
+        self.digrafo = None
         self.pickers: List[Picker] = []
         self.wave_max_pedidos: int = 3
         self.wave_max_productos: int = 15
@@ -227,18 +125,12 @@ class CatalogManager:
         if os.path.isfile(nombre_o_ruta):
             return os.path.abspath(nombre_o_ruta)
         candidato_en_data = os.path.join(self.ruta_data, nombre_o_ruta)
-        if os.path.isfile(candidato_en_data):
-            return os.path.abspath(candidato_en_data)
         return os.path.abspath(candidato_en_data)
 
-    def cargar_escenario_json(
-        self, nombre_o_ruta_archivo: str, norte_aumenta_y: bool = True
-    ) -> str:
+    def cargar_escenario_json(self, nombre_o_ruta_archivo: str) -> str:
         ruta_completa = self.resolver_ruta_archivo(nombre_o_ruta_archivo)
-        with open(ruta_completa, "r", encoding="utf-8") as archivo:
-            datos = json.load(archivo)
+        datos = FileParser.leer_json(ruta_completa)
 
-        # Reiniciar Tablas Hash
         self.productos_hash = HashTableUniversal(
             tamano_m=self.tamano_tabla, primo_p=self.primo_p, semilla=self.semilla_hash
         )
@@ -246,48 +138,39 @@ class CatalogManager:
             tamano_m=self.tamano_tabla, primo_p=self.primo_p, semilla=self.semilla_hash
         )
 
-        # 1. Bloque warehouse y construcción del Dígrafo de pasillos
+        # 1. Construir el Warehouse y el Dígrafo usando el módulo de Laureano
         self.warehouse_raw = datos.get("warehouse", {})
-        self.digrafo = DigrafoEscenarioJSON(
-            self.warehouse_raw, norte_aumenta_y=norte_aumenta_y
-        )
+        self.warehouse = FileParser.cargar_warehouse_desde_json(ruta_completa)
+        self.digrafo = self.warehouse.grafo_pasillos
 
-        # 2. Bloque configuracion (wave_max_pedidos y wave_max_productos)
+        # 2. Configuración de Waves
         self.configuracion_raw = datos.get("configuracion", {})
         self.wave_max_pedidos = int(self.configuracion_raw.get("wave_max_pedidos", 3))
         self.wave_max_productos = int(
             self.configuracion_raw.get("wave_max_productos", 15)
         )
 
-        # 3. Bloque pickers
+        # 3. Pickers (asegurando que su posición inicial esté en una celda de pasillo válida)
         self.pickers = []
         for pk in datos.get("pickers", []):
             pos_ini = pk.get("posicion_inicial", {"x": 0, "y": 0})
-            coord = (int(pos_ini["x"]), int(pos_ini["y"]))
+            coord_raw = (int(pos_ini["x"]), int(pos_ini["y"]))
+            coord_valida = (
+                self.warehouse.obtener_celda_acceso_pasillo(*coord_raw) or coord_raw
+            )
             self.pickers.append(
                 Picker(
                     id_picker=str(pk["id"]),
                     capacidad_carga_kg=float(pk.get("capacidad_carga_kg", 100.0)),
-                    posicion_actual=coord,
+                    posicion_actual=coord_valida,
                 )
             )
 
-        # 4. Bloque productos -> Tabla Hash en O(1)
-        for p_raw in datos.get("productos", []):
-            ubic = p_raw.get("ubicacion", {})
-            prod = Producto(
-                id_producto=str(p_raw["id"]),
-                nombre=str(p_raw.get("nombre", p_raw["id"])),
-                rack_id=str(p_raw.get("rack_id", "")),
-                ubicacion_x=int(ubic.get("x", 0)),
-                ubicacion_y=int(ubic.get("y", 0)),
-                ubicacion_z=int(ubic.get("z", 1)),
-                cantidad_disponible=int(p_raw.get("cantidad_disponible", 0)),
-                peso_kg=float(p_raw.get("peso_kg", 0.0)),
-            )
-            self.productos_hash.insertar(prod.id_producto, prod)
+        # 4. Poblar Tabla Hash Universal O(1) con los objetos Product ya creados en el Warehouse
+        for prod_id, prod_obj in self.warehouse.catalogo_productos.items():
+            self.productos_hash.insertar(prod_id, prod_obj)
 
-        # 5. Bloque pedidos -> Tabla Hash en O(1)
+        # 5. Poblar Tabla Hash Universal O(1) de Pedidos
         for ped_raw in datos.get("pedidos", []):
             estado_str = str(ped_raw.get("estado", "PENDIENTE")).upper()
             estado_enum = (
@@ -312,9 +195,6 @@ class CatalogManager:
 
         return ruta_completa
 
-    # =========================================================================
-    # OPERACIONES O(1) SOBRE LAS TABLAS HASH
-    # =========================================================================
     def buscar_producto_O1(self, id_producto: str) -> Optional[Producto]:
         return self.productos_hash.buscar(id_producto)
 
@@ -341,19 +221,12 @@ class CatalogManager:
         return True
 
     def descontar_stock(self, id_producto: str, cantidad: int) -> bool:
-        """
-        Método exclusivo para la etapa de recolección física del Picker.
-        NO se invoca durante el armado de las Waves.
-        """
         prod = self.buscar_producto_O1(id_producto)
         if prod is None or cantidad < 0 or prod.cantidad_disponible < cantidad:
             return False
         prod.cantidad_disponible -= cantidad
         return True
 
-    # =========================================================================
-    # DECODIFICACIÓN DE TABLAS HASH A JSON (PERSISTENCIA DE ESTADO)
-    # =========================================================================
     def guardar_estado_simulacion_json(
         self, nombre_archivo_salida: str = "estado_guardado.json"
     ) -> str:

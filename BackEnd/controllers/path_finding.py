@@ -6,11 +6,6 @@ CoordXY = Tuple[int, int]
 
 
 class RutaResultado:
-    """
-    Objeto de retorno esperado por SimulatorController.
-    Centraliza las métricas y el camino trazado por el algoritmo.
-    """
-
     def __init__(
         self,
         camino_completo: List[CoordXY],
@@ -19,7 +14,7 @@ class RutaResultado:
         destinos_inalcanzables: Optional[List[CoordXY]] = None,
     ) -> None:
         self.camino_completo = camino_completo
-        self.nodos_explorados = nodos_explorados  # Lista de tuplas (x, y)
+        self.nodos_explorados = nodos_explorados
         self.distancia_total = len(camino_completo) - 1 if camino_completo else 0
         self.aristas_recorridas = self.distancia_total
         self.tiempo_ejecucion_ms = tiempo_ejecucion_ms
@@ -27,19 +22,7 @@ class RutaResultado:
 
 
 class Pathfinding:
-    """
-    Motor de búsqueda y ruteo espacial del Warehouse.
-    Utiliza Dijkstra y heurísticas voraces sobre dígrafos de celdas unitarias.
-    """
-
-    # Parámetro global de orientación de ejes según escenario_basico.json y escenario_grande.json:
-    # True  -> Norte (arriba) es y + 1, Sur (abajo) es y - 1
-    # False -> Norte (arriba) es y - 1, Sur (abajo) es y + 1 (coordenadas de pantalla invertidas)
     NORTE_AUMENTA_Y: bool = True
-
-    # =========================================================================
-    # REGLAS DE CIRCULACIÓN EN EL DÍGRAFO Y TRADUCCIÓN RACK -> PASILLO
-    # =========================================================================
 
     @staticmethod
     def es_movimiento_permitido_digrafo(
@@ -49,25 +32,11 @@ class Pathfinding:
         sentido_destino: str = "AMBOS",
         norte_aumenta_y: Optional[bool] = None,
     ) -> bool:
-        """
-        Verifica si es válido moverse de 'origen' a 'destino' (celdas ortogonalmente
-        adyacentes) respetando las reglas de circulación del Warehouse:
-        - Si el sentido de circulación es N o S, también se permite al picker
-          moverse hacia los costados (Este-Oeste). Solo se prohíbe el sentido
-          vertical opuesto.
-        - Si el sentido de circulación es E u O, también se permite al picker
-          moverse hacia arriba y abajo (Norte-Sur). Solo se prohíbe el sentido
-          horizontal opuesto.
-        - No se permite entrar a una celda vecina a contramano de su propio sentido.
-        """
         usar_norte_positivo = (
             Pathfinding.NORTE_AUMENTA_Y if norte_aumenta_y is None else norte_aumenta_y
         )
-
         dx = destino[0] - origen[0]
         dy = destino[1] - origen[1]
-
-        # Solo movimientos ortogonales de 1 celda
         if abs(dx) + abs(dy) != 1:
             return False
 
@@ -82,49 +51,32 @@ class Pathfinding:
             else str(sentido_destino).upper()
         )
 
-        # Determinar la dirección cardinal del paso (N, S, E, O)
+        if s_orig == "NINGUNO" or s_dest == "NINGUNO":
+            return False
+
         if dx == 1:
-            dir_paso = "E"
             opuesto_paso = "O"
         elif dx == -1:
-            dir_paso = "O"
             opuesto_paso = "E"
         elif dy == 1:
-            dir_paso = "N" if usar_norte_positivo else "S"
             opuesto_paso = "S" if usar_norte_positivo else "N"
-        else:  # dy == -1
-            dir_paso = "S" if usar_norte_positivo else "N"
+        else:
             opuesto_paso = "N" if usar_norte_positivo else "S"
 
-        # 1. Restricción de salida desde la celda origen:
-        # Si origen es N, prohíbe S (permite N, E, O).
-        # Si origen es S, prohíbe N (permite S, E, O).
-        # Si origen es E, prohíbe O (permite E, N, S).
-        # Si origen es O, prohíbe E (permite O, N, S).
-        if s_orig == opuesto_paso:
+        if s_orig == opuesto_paso or s_dest == opuesto_paso:
             return False
-
-        # 2. Restricción de entrada a la celda destino (no entrar a contramano):
-        if s_dest == opuesto_paso:
-            return False
-
         return True
 
     @staticmethod
     def _es_celda_pasillo_en_grafo(coord: CoordXY, grafo: Any) -> bool:
-        """Comprueba si 'coord' existe como nodo transitable dentro del grafo."""
         if grafo is None:
             return False
+        if hasattr(grafo, "nodos") and isinstance(grafo.nodos, dict):
+            return coord in grafo.nodos
         if hasattr(grafo, "lista_adyacencia") and isinstance(
             grafo.lista_adyacencia, dict
         ):
             return coord in grafo.lista_adyacencia
-        if hasattr(grafo, "nodos") and isinstance(grafo.nodos, dict):
-            return coord in grafo.nodos
-        if hasattr(grafo, "es_transitable"):
-            return bool(grafo.es_transitable(coord))
-        if hasattr(grafo, "obtener_vecinos_validos"):
-            return len(grafo.obtener_vecinos_validos(coord, paso_tiempo=0)) > 0
         return False
 
     @staticmethod
@@ -133,64 +85,41 @@ class Pathfinding:
         grafo: Any,
         warehouse: Any = None,
     ) -> CoordXY:
-        """
-        Traduce la coordenada (rx, ry) de un producto (que cae adentro de un Rack
-        de ancho 2) a su celda de pasillo adyacente en el dígrafo:
-        - Si ya es una celda de pasillo transitable, la devuelve tal cual.
-        - En los JSON del proyecto, los racks son verticales de ancho 2:
-          la columna izquierda accede por (rx - 1, ry) y la derecha por (rx + 1, ry).
-        """
+        if warehouse is not None and hasattr(warehouse, "obtener_celda_acceso_pasillo"):
+            acceso = warehouse.obtener_celda_acceso_pasillo(coord_xy[0], coord_xy[1])
+            if acceso is not None:
+                return acceso
+
         if Pathfinding._es_celda_pasillo_en_grafo(coord_xy, grafo):
             return coord_xy
 
         rx, ry = coord_xy
-
-        # Si el objeto warehouse de Laureano provee un método específico, usarlo:
-        if warehouse is not None and hasattr(warehouse, "obtener_celda_acceso_pasillo"):
-            acceso = warehouse.obtener_celda_acceso_pasillo(rx, ry)
-            if acceso is not None:
-                return acceso
-
-        # Priorizamos los pasillos laterales izquierdo (rx - 1, ry) y derecho (rx + 1, ry),
-        # y luego superior/inferior por si hubiese un rack en borde horizontal.
-        candidatos_adyacentes = [
-            (rx - 1, ry),
-            (rx + 1, ry),
-            (rx, ry - 1),
-            (rx, ry + 1),
-        ]
-        for candidato in candidatos_adyacentes:
-            if Pathfinding._es_celda_pasillo_en_grafo(candidato, grafo):
-                return candidato
-
+        for cand in [(rx - 1, ry), (rx + 1, ry), (rx, ry - 1), (rx, ry + 1)]:
+            if Pathfinding._es_celda_pasillo_en_grafo(cand, grafo):
+                return cand
         return coord_xy
-
-    # =========================================================================
-    # FUNCIONES ENVOLTORIO PARA EL SIMULADOR (CON MANEJO DE CASOS LÍMITE)
-    # =========================================================================
 
     @staticmethod
     def calcular_estrategia_orden_pedidos(
         grafo: Any,
         origen: CoordXY,
         destinos: List[CoordXY],
+        destino_retorno: Optional[CoordXY] = None,
+        warehouse: Any = None,
     ) -> RutaResultado:
-        """
-        ESTRATEGIA A: Visita los destinos en el orden estricto de la lista
-        y luego regresa a la zona de despacho.
-        Contempla casos límite:
-        - Lista de destinos vacía.
-        - Coordenadas de destino dentro de racks (se traducen a su pasillo adyacente).
-        - Destinos consecutivos idénticos.
-        - Destinos inalcanzables (evita teletransportar al picker).
-        """
         tiempo_inicio = time.perf_counter()
         nodos_explorados_totales: Set[CoordXY] = set()
         destinos_inalcanzables: List[CoordXY] = []
 
-        origen_pasillo = Pathfinding.obtener_celda_acceso_pasillo(origen, grafo)
+        origen_pasillo = Pathfinding.obtener_celda_acceso_pasillo(
+            origen, grafo, warehouse
+        )
+        cierre_pasillo = (
+            Pathfinding.obtener_celda_acceso_pasillo(destino_retorno, grafo, warehouse)
+            if destino_retorno is not None
+            else origen_pasillo
+        )
 
-        # Caso límite: sin destinos
         if not destinos:
             tiempo_ms = (time.perf_counter() - tiempo_inicio) * 1000
             return RutaResultado([origen_pasillo], [], tiempo_ms)
@@ -198,11 +127,10 @@ class Pathfinding:
         ruta_total: List[CoordXY] = [origen_pasillo]
         posicion_actual = origen_pasillo
 
-        # 1. Viajar a cada destino en el orden exacto de la lista
         for destino_raw in destinos:
-            destino = Pathfinding.obtener_celda_acceso_pasillo(destino_raw, grafo)
-
-            # Caso límite: dos productos consecutivos comparten el mismo punto de acceso
+            destino = Pathfinding.obtener_celda_acceso_pasillo(
+                destino_raw, grafo, warehouse
+            )
             if destino == posicion_actual:
                 continue
 
@@ -211,7 +139,6 @@ class Pathfinding:
             )
             nodos_explorados_totales.update(explorados_tramo)
 
-            # Caso límite crítico: si no existe camino, NO teletransportar posicion_actual
             if not ruta_tramo:
                 destinos_inalcanzables.append(destino_raw)
                 continue
@@ -219,21 +146,17 @@ class Pathfinding:
             ruta_total.extend(ruta_tramo[1:])
             posicion_actual = destino
 
-        # 2. Regresar al origen (Zona de Despacho)
-        if posicion_actual != origen_pasillo:
+        if posicion_actual != cierre_pasillo:
             ruta_regreso, explorados_regreso = Pathfinding.calcular_ruta_dijkstra(
-                posicion_actual, origen_pasillo, grafo
+                posicion_actual, cierre_pasillo, grafo
             )
             nodos_explorados_totales.update(explorados_regreso)
-
             if ruta_regreso:
                 ruta_total.extend(ruta_regreso[1:])
             else:
-                destinos_inalcanzables.append(origen_pasillo)
+                destinos_inalcanzables.append(cierre_pasillo)
 
-        tiempo_fin = time.perf_counter()
-        tiempo_ms = (tiempo_fin - tiempo_inicio) * 1000
-
+        tiempo_ms = (time.perf_counter() - tiempo_inicio) * 1000
         return RutaResultado(
             ruta_total,
             list(nodos_explorados_totales),
@@ -246,21 +169,21 @@ class Pathfinding:
         grafo: Any,
         origen: CoordXY,
         destinos_pendientes: List[CoordXY],
+        destino_retorno: Optional[CoordXY] = None,
+        warehouse: Any = None,
     ) -> RutaResultado:
-        """
-        ESTRATEGIA B: Greedy multidestino. Desde el punto actual, encuentra
-        el destino no visitado más cercano en una sola corrida de Dijkstra,
-        viaja allí y repite.
-        Contempla casos límite:
-        - Duplicados en destinos_pendientes (ej. varios productos en el mismo rack).
-        - Coordenadas en racks traducidas automáticamente a pasillo.
-        - Destinos desconectados del dígrafo.
-        """
         tiempo_inicio = time.perf_counter()
         nodos_explorados_totales: Set[CoordXY] = set()
         destinos_inalcanzables: List[CoordXY] = []
 
-        origen_pasillo = Pathfinding.obtener_celda_acceso_pasillo(origen, grafo)
+        origen_pasillo = Pathfinding.obtener_celda_acceso_pasillo(
+            origen, grafo, warehouse
+        )
+        cierre_pasillo = (
+            Pathfinding.obtener_celda_acceso_pasillo(destino_retorno, grafo, warehouse)
+            if destino_retorno is not None
+            else origen_pasillo
+        )
 
         if not destinos_pendientes:
             tiempo_ms = (time.perf_counter() - tiempo_inicio) * 1000
@@ -269,9 +192,8 @@ class Pathfinding:
         ruta_total: List[CoordXY] = [origen_pasillo]
         posicion_actual = origen_pasillo
 
-        # Traducir cada destino a su celda de pasillo y eliminar duplicados en O(1)
         pendientes: Set[CoordXY] = {
-            Pathfinding.obtener_celda_acceso_pasillo(d, grafo)
+            Pathfinding.obtener_celda_acceso_pasillo(d, grafo, warehouse)
             for d in destinos_pendientes
         }
         pendientes.discard(origen_pasillo)
@@ -283,7 +205,6 @@ class Pathfinding:
             nodos_explorados_totales.update(explorados_tramo)
 
             if not destino_alcanzado or not ruta_tramo:
-                # Los destinos que quedaron en 'pendientes' son inalcanzables
                 destinos_inalcanzables.extend(pendientes)
                 break
 
@@ -291,21 +212,17 @@ class Pathfinding:
             posicion_actual = destino_alcanzado
             pendientes.discard(destino_alcanzado)
 
-        # Regresar al origen (Zona de Despacho)
-        if posicion_actual != origen_pasillo:
+        if posicion_actual != cierre_pasillo:
             ruta_regreso, explorados_regreso = Pathfinding.calcular_ruta_dijkstra(
-                posicion_actual, origen_pasillo, grafo
+                posicion_actual, cierre_pasillo, grafo
             )
             nodos_explorados_totales.update(explorados_regreso)
-
             if ruta_regreso:
                 ruta_total.extend(ruta_regreso[1:])
             else:
-                destinos_inalcanzables.append(origen_pasillo)
+                destinos_inalcanzables.append(cierre_pasillo)
 
-        tiempo_fin = time.perf_counter()
-        tiempo_ms = (tiempo_fin - tiempo_inicio) * 1000
-
+        tiempo_ms = (time.perf_counter() - tiempo_inicio) * 1000
         return RutaResultado(
             ruta_total,
             list(nodos_explorados_totales),
@@ -313,22 +230,28 @@ class Pathfinding:
             destinos_inalcanzables,
         )
 
-    # =========================================================================
-    # ALGORITMOS CORE MATEMÁTICOS (DIJKSTRA PUNTO A PUNTO Y MULTIDESTINO)
-    # =========================================================================
-
     @staticmethod
     def _obtener_vecinos(
-        grafo: Any, nodo_actual: CoordXY, paso_tiempo: int = 0
+        grafo: Any,
+        nodo_actual: CoordXY,
+        paso_tiempo: int = 0,
+        picker_id: Optional[str] = None,
     ) -> List[CoordXY]:
         if hasattr(grafo, "obtener_vecinos_validos"):
-            return grafo.obtener_vecinos_validos(nodo_actual, paso_tiempo=paso_tiempo)
+            try:
+                return grafo.obtener_vecinos_validos(
+                    nodo_actual,
+                    paso_tiempo=paso_tiempo,
+                    picker_id_solicitante=picker_id,
+                )
+            except TypeError:
+                return grafo.obtener_vecinos_validos(
+                    nodo_actual, paso_tiempo=paso_tiempo
+                )
         if hasattr(grafo, "lista_adyacencia") and isinstance(
             grafo.lista_adyacencia, dict
         ):
             return grafo.lista_adyacencia.get(nodo_actual, [])
-        if isinstance(grafo, dict):
-            return grafo.get(nodo_actual, [])
         return []
 
     @staticmethod
@@ -337,6 +260,7 @@ class Pathfinding:
         destino: CoordXY,
         grafo: Any,
         paso_tiempo_inicial: int = 0,
+        picker_id: Optional[str] = None,
     ) -> Tuple[List[CoordXY], Set[CoordXY]]:
         if origen == destino:
             return [origen], {origen}
@@ -348,28 +272,22 @@ class Pathfinding:
 
         while cola:
             dist_actual, nodo_actual = heapq.heappop(cola)
-
-            # Primero filtramos entradas obsoletas del heap antes de marcar explorado
             if dist_actual > distancias.get(nodo_actual, float("inf")):
                 continue
 
             nodos_explorados.add(nodo_actual)
-
             if nodo_actual == destino:
-                ruta = Pathfinding._reconstruir_ruta(padres, destino)
-                return ruta, nodos_explorados
+                return Pathfinding._reconstruir_ruta(padres, destino), nodos_explorados
 
             paso_eval = (
-                paso_tiempo_inicial + dist_actual if paso_tiempo_inicial > 0 else 0
+                paso_tiempo_inicial + dist_actual + 1 if paso_tiempo_inicial > 0 else 0
             )
             vecinos = Pathfinding._obtener_vecinos(
-                grafo, nodo_actual, paso_tiempo=paso_eval
+                grafo, nodo_actual, paso_tiempo=paso_eval, picker_id=picker_id
             )
 
             for vecino in vecinos:
-                peso = 1
-                nueva_distancia = dist_actual + peso
-
+                nueva_distancia = dist_actual + 1
                 if nueva_distancia < distancias.get(vecino, float("inf")):
                     distancias[vecino] = nueva_distancia
                     padres[vecino] = nodo_actual
@@ -392,7 +310,6 @@ class Pathfinding:
             if isinstance(destinos_pendientes, set)
             else set(destinos_pendientes)
         )
-
         if origen in set_destinos:
             return [origen], origen, {origen}
 
@@ -403,33 +320,81 @@ class Pathfinding:
 
         while cola:
             dist_actual, nodo_actual = heapq.heappop(cola)
-
             if dist_actual > distancias.get(nodo_actual, float("inf")):
                 continue
 
             nodos_explorados.add(nodo_actual)
-
             if nodo_actual in set_destinos:
-                ruta = Pathfinding._reconstruir_ruta(padres, nodo_actual)
-                return ruta, nodo_actual, nodos_explorados
+                return (
+                    Pathfinding._reconstruir_ruta(padres, nodo_actual),
+                    nodo_actual,
+                    nodos_explorados,
+                )
 
             paso_eval = (
-                paso_tiempo_inicial + dist_actual if paso_tiempo_inicial > 0 else 0
+                paso_tiempo_inicial + dist_actual + 1 if paso_tiempo_inicial > 0 else 0
             )
             vecinos = Pathfinding._obtener_vecinos(
                 grafo, nodo_actual, paso_tiempo=paso_eval
             )
 
             for vecino in vecinos:
-                peso = 1
-                nueva_distancia = dist_actual + peso
-
+                nueva_distancia = dist_actual + 1
                 if nueva_distancia < distancias.get(vecino, float("inf")):
                     distancias[vecino] = nueva_distancia
                     padres[vecino] = nodo_actual
                     heapq.heappush(cola, (nueva_distancia, vecino))
 
         return [], None, nodos_explorados
+
+    def recalcular_evitando_obstaculo(
+        self,
+        grafo: Any,
+        picker: Any,
+        paso_actual: int,
+        celdas_bloqueadas: Optional[Set[CoordXY]] = None,
+    ) -> List[CoordXY]:
+        """
+        Recalcula la ruta del picker hacia su próximo waypoint o destino final
+        evitando las celdas bloqueadas en el turno actual.
+        Si no existe desvío posible, inserta una espera de 1 turno en su posición actual.
+        """
+        if not picker.ruta_asignada:
+            return []
+
+        # Determinar el próximo objetivo importante (waypoint o final de ruta)
+        objetivo_inmediato = (
+            picker.objetivos_pendientes[0]
+            if getattr(picker, "objetivos_pendientes", None)
+            else picker.ruta_asignada[-1]
+        )
+
+        bloqueos_previos = set(getattr(grafo, "nodos_evasion_actual", set()))
+        if hasattr(grafo, "nodos_evasion_actual") and celdas_bloqueadas:
+            grafo.nodos_evasion_actual = set(celdas_bloqueadas)
+
+        try:
+            nueva_ruta, _ = self.calcular_ruta_dijkstra(
+                origen=picker.posicion_actual,
+                destino=objetivo_inmediato,
+                grafo=grafo,
+                paso_tiempo_inicial=paso_actual,
+                picker_id=picker.id_picker,
+            )
+        finally:
+            if hasattr(grafo, "nodos_evasion_actual"):
+                grafo.nodos_evasion_actual = bloqueos_previos
+
+        if nueva_ruta and len(nueva_ruta) > 1:
+            # Reemplazar el tramo hasta objetivo_inmediato y conservar el resto de la ruta
+            resto_ruta: List[CoordXY] = []
+            if objetivo_inmediato in picker.ruta_asignada:
+                idx = picker.ruta_asignada.index(objetivo_inmediato)
+                resto_ruta = picker.ruta_asignada[idx + 1 :]
+            return nueva_ruta[1:] + resto_ruta
+
+        # Si no hay desvío válido, el picker espera 1 turno en su celda actual
+        return [picker.posicion_actual] + list(picker.ruta_asignada)
 
     @staticmethod
     def _reconstruir_ruta(
@@ -443,18 +408,10 @@ class Pathfinding:
         ruta.reverse()
         return ruta
 
-    # =========================================================================
-    # SERVICIO DE DISTANCIAS DEL DÍGRAFO PARA WAVE MANAGER (CONSULTA O(1))
-    # =========================================================================
-
     @staticmethod
     def calcular_mapa_distancias_desde(
         origen_pasillo: CoordXY, grafo: Any
     ) -> Dict[CoordXY, float]:
-        """
-        Ejecuta una única expansión de Dijkstra desde 'origen_pasillo' hacia
-        todo el dígrafo en O((V + E) log V) y retorna el diccionario de distancias.
-        """
         if not Pathfinding._es_celda_pasillo_en_grafo(origen_pasillo, grafo):
             return {}
 
@@ -480,14 +437,6 @@ class Pathfinding:
         grafo: Any,
         warehouse: Any = None,
     ) -> Dict[Tuple[CoordXY, CoordXY], float]:
-        """
-        Precalcula las distancias dirigidas reales en el dígrafo entre todas las
-        coordenadas (x, y) de productos (racks), traduciéndolas internamente a su
-        celda de pasillo adyacente.
-        Retorna un diccionario {(u_rack_xy, v_rack_xy): distancia_dirigida} para que
-        WaveManager consulte cualquier par en tiempo O(1).
-        """
-        # 1. Traducir cada coordenada de producto (rack) a su celda de pasillo
         mapa_rack_a_pasillo: Dict[CoordXY, CoordXY] = {
             coord_rack: Pathfinding.obtener_celda_acceso_pasillo(
                 coord_rack, grafo, warehouse
@@ -495,7 +444,6 @@ class Pathfinding:
             for coord_rack in coordenadas_productos_xy
         }
 
-        # 2. Ejecutar Dijkstra una sola vez por cada celda de pasillo origen única
         pasillos_unicos = set(mapa_rack_a_pasillo.values())
         distancias_entre_pasillos: Dict[CoordXY, Dict[CoordXY, float]] = {
             pasillo_orig: Pathfinding.calcular_mapa_distancias_desde(
@@ -504,7 +452,6 @@ class Pathfinding:
             for pasillo_orig in pasillos_unicos
         }
 
-        # 3. Indexar la matriz directamente por las coordenadas (x, y) de los productos
         matriz_distancias: Dict[Tuple[CoordXY, CoordXY], float] = {}
         for u_rack, u_pasillo in mapa_rack_a_pasillo.items():
             mapa_desde_u = distancias_entre_pasillos.get(u_pasillo, {})

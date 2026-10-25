@@ -1,6 +1,6 @@
 from typing import List, Optional, Tuple, Set, Any, Dict
-from BackEnd.models.entities import Pedido, Wave, Picker
-from BackEnd.enums.enums import EstadoWave, EstadoPedido
+from BackEnd.models.entities import Pedido, Wave, Picker, ZonaDespacho, TareaWavePicker
+from BackEnd.enums.enums import EstadoWave, EstadoPedido, EstrategiaRuteo
 from BackEnd.data_structures.max_heap_pedidos import MaxHeapPedidos
 from BackEnd.controllers.path_finding import Pathfinding
 
@@ -9,11 +9,11 @@ CoordXY = Tuple[int, int]
 
 class WaveManager:
     """
-    Controlador de Generación, Selección Interactiva yAsignación de Waves:
-    1. generar_waves(): Arma todas las Waves en estado PENDIENTE (sin descontar stock).
-    2. obtener_waves_disponibles(): Lista las Waves en estado PENDIENTE para mostrar en UI/Consola.
-    3. asignar_y_ejecutar_waves_seleccionadas(): Recibe los IDs de las Waves elegidas por el
-       usuario y las asigna a los Pickers libres MÁS CERCANOS en el dígrafo.
+    Controlador de Generación, Selección Interactiva y Asignación de Waves:
+    - Usa Max-Heap O(log N) + Costo Marginal Promedio (Average Linkage) con matriz APSP O(1).
+    - Valida peso_max_kg de las Zonas de Despacho (puertas OUTBOUND / AMBOS).
+    - Divide Waves pesadas en sub-lotes geográficos para varios Pickers en simultáneo.
+    - PROHÍBE mezclar dos Waves en un mismo viaje de un Picker (un Picker = una Wave activa).
     """
 
     def __init__(
@@ -37,18 +37,19 @@ class WaveManager:
         self.pedidos_descartados: List[Pedido] = []
         self.traza_armado: Dict[str, List[Dict[str, Any]]] = {}
 
-        # Almacén interno de todas las Waves generadas para consulta desde Pygame o Consola
         self.waves_creadas: List[Wave] = []
         self.waves_por_id: Dict[str, Wave] = {}
+        self._pickers_pendientes_descarga: Dict[str, Set[str]] = {}
 
     # =========================================================================
-    # 0. INTEGRACIÓN CON EL DÍGRAFO Y PATHFINDING (CONSULTA O(1))
+    # 0. CONSULTA DE DISTANCIA EN DÍGRAFO EN O(1)
     # =========================================================================
     def _preparar_fuente_distancias_O1(
         self,
         pedidos_validos: List[Pedido],
         tabla_productos: Any,
         proveedor: Optional[Any],
+        warehouse: Any = None,
     ) -> Any:
         fuente = proveedor if proveedor is not None else self.proveedor_distancias
         if fuente is None:
@@ -71,6 +72,7 @@ class WaveManager:
         return Pathfinding.construir_matriz_distancias_productos(
             coordenadas_productos_xy=coords_xy_requeridas,
             grafo=fuente,
+            warehouse=warehouse,
         )
 
     def _obtener_distancia_dirigida(
@@ -83,32 +85,12 @@ class WaveManager:
             return 0.0
 
         fuente = proveedor if proveedor is not None else self.proveedor_distancias
-
-        if fuente is not None:
-            if isinstance(fuente, dict):
-                if (origen, destino) in fuente:
-                    return float(fuente[(origen, destino)])
-                if origen in fuente and isinstance(fuente[origen], dict):
-                    return float(fuente[origen].get(destino, float("inf")))
-                return float("inf")
-
-            if hasattr(fuente, "obtener_distancia"):
-                return float(fuente.obtener_distancia(origen, destino))
-
-            if callable(fuente):
-                return float(fuente(origen, destino))
-
-            if hasattr(fuente, "obtener_vecinos_validos") or hasattr(
-                fuente, "lista_adyacencia"
-            ):
-                orig_pasillo = Pathfinding.obtener_celda_acceso_pasillo(origen, fuente)
-                dest_pasillo = Pathfinding.obtener_celda_acceso_pasillo(destino, fuente)
-                if orig_pasillo == dest_pasillo:
-                    return 0.0
-                ruta, _ = Pathfinding.calcular_ruta_dijkstra(
-                    orig_pasillo, dest_pasillo, fuente
-                )
-                return float(len(ruta) - 1) if ruta else float("inf")
+        if fuente is not None and isinstance(fuente, dict):
+            if (origen, destino) in fuente:
+                return float(fuente[(origen, destino)])
+            if origen in fuente and isinstance(fuente[origen], dict):
+                return float(fuente[origen].get(destino, float("inf")))
+            return float("inf")
 
         return float(abs(origen[0] - destino[0]) + abs(origen[1] - destino[1]))
 
@@ -145,7 +127,48 @@ class WaveManager:
         return True
 
     # =========================================================================
-    # 1. VALIDACIÓN DE STOCK VIRTUAL Y FACTIBILIDAD DE PESO
+    # 1. ZONAS DE DESPACHO HABILITADAS (OUTBOUND / AMBOS) Y CAPACIDAD DE PESO
+    # =========================================================================
+    def obtener_zonas_despacho_salida(self, warehouse: Any) -> List[ZonaDespacho]:
+        if warehouse is None or not hasattr(warehouse, "zonas_despacho"):
+            return []
+        zonas_salida: List[ZonaDespacho] = []
+        for zd in warehouse.zonas_despacho.values():
+            puerta = warehouse.puertas.get(zd.puerta_id)
+            if puerta is None or puerta.permite_despacho_salida():
+                zonas_salida.append(zd)
+        return zonas_salida if zonas_salida else list(warehouse.zonas_despacho.values())
+
+    def seleccionar_zona_despacho_para_wave(
+        self,
+        warehouse: Any,
+        pedido_semilla: Pedido,
+        tabla_productos: Any,
+    ) -> Optional[ZonaDespacho]:
+        zonas = self.obtener_zonas_despacho_salida(warehouse)
+        if not zonas:
+            return None
+
+        peso_semilla = pedido_semilla.obtener_peso_total(tabla_productos)
+        ubics = list(pedido_semilla.obtener_ubicaciones_xyz(tabla_productos))
+        cx = sum(x for x, _, _ in ubics) / len(ubics) if ubics else 0.0
+        cy = sum(y for _, y, _ in ubics) / len(ubics) if ubics else 0.0
+
+        zonas_con_capacidad = [z for z in zonas if z.puede_recibir_carga(peso_semilla)]
+        if not zonas_con_capacidad:
+            return None
+
+        # Elegir la Zona de Despacho con capacidad suficiente más cercana al pedido semilla
+        return min(
+            zonas_con_capacidad,
+            key=lambda z: (
+                abs(z.x - cx) + abs(z.y - cy),
+                z.peso_comprometido_waves_kg,
+            ),
+        )
+
+    # =========================================================================
+    # 2. VALIDACIÓN DE STOCK VIRTUAL Y PARTICIÓN EN SUB-LOTES MULTI-PICKER
     # =========================================================================
     def _tiene_stock_suficiente_sin_modificar(
         self,
@@ -241,8 +264,7 @@ class WaveManager:
             if cant_productos <= 0 or cant_productos > self.wave_max_productos:
                 mensaje_error = (
                     f"Error de Caso Borde: El pedido '{pedido.id_pedido}' solicita "
-                    f"{cant_productos} productos, fuera del rango permitido "
-                    f"(1..{self.wave_max_productos})."
+                    f"{cant_productos} productos, fuera del rango permitido (1..{self.wave_max_productos})."
                 )
                 self._marcar_pedido_irrealizable(pedido, mensaje_error, catalogo)
                 continue
@@ -293,7 +315,7 @@ class WaveManager:
             )
 
     # =========================================================================
-    # 2. ALGORITMO DE CERCANÍA: COSTO MARGINAL PROMEDIO EN DÍGRAFO
+    # 3. ALGORITMO DE CERCANÍA: COSTO MARGINAL PROMEDIO EN DÍGRAFO
     # =========================================================================
     def calcular_costo_marginal_promedio(
         self,
@@ -342,7 +364,7 @@ class WaveManager:
         return round(score, 6)
 
     # =========================================================================
-    # 3. ETAPA 1: ARMAR LAS WAVES (TODAS QUEDAN DISPONIBLES EN ESTADO PENDIENTE)
+    # 4. GENERACIÓN DE WAVES (PASO 1: ARMAR WAVES EN ESTADO PENDIENTE)
     # =========================================================================
     def generar_waves(
         self,
@@ -352,11 +374,6 @@ class WaveManager:
         pickers: Optional[List[Picker]] = None,
         proveedor_distancias: Optional[Any] = None,
     ) -> List[Wave]:
-        """
-        Paso 1 del flujo: Construye todas las Waves a partir de los pedidos pendientes
-        y las deja en estado PENDIENTE (sin ejecutarlas todavía), listas para que el
-        usuario o la interfaz de Pygame consulte las disponibles y seleccione cuáles lanzar.
-        """
         self.errores_validacion.clear()
         self.pedidos_descartados.clear()
         self.traza_armado.clear()
@@ -373,6 +390,9 @@ class WaveManager:
             tabla_productos = catalogo
         if pickers is None and catalogo is not None:
             pickers = getattr(catalogo, "pickers", None)
+        warehouse = (
+            getattr(catalogo, "warehouse", None) if catalogo is not None else None
+        )
         if (
             proveedor_distancias is None
             and catalogo is not None
@@ -382,6 +402,11 @@ class WaveManager:
 
         if not pedidos:
             return []
+
+        # Limpiar reservas previas en las zonas de despacho
+        if warehouse is not None and hasattr(warehouse, "zonas_despacho"):
+            for zd in warehouse.zonas_despacho.values():
+                zd.peso_comprometido_waves_kg = 0.0
 
         pedidos_validos = self.validar_pedidos_entrada(
             pedidos,
@@ -393,13 +418,7 @@ class WaveManager:
             return []
 
         fuente_dist = self._preparar_fuente_distancias_O1(
-            pedidos_validos, tabla_productos, proveedor_distancias
-        )
-
-        zonas_ids = (
-            list(catalogo.digrafo.zonas_despacho.keys())
-            if (catalogo is not None and getattr(catalogo, "digrafo", None) is not None)
-            else ["ZONA_A"]
+            pedidos_validos, tabla_productos, proveedor_distancias, warehouse=warehouse
         )
 
         self.cola_prioridad.construir_monticulo(pedidos_validos)
@@ -417,8 +436,7 @@ class WaveManager:
             ):
                 self._marcar_pedido_irrealizable(
                     pedido_raiz,
-                    f"Error de Topología: El pedido '{pedido_raiz.id_pedido}' "
-                    f"contiene ubicaciones inalcanzables en el dígrafo.",
+                    f"Error de Topología: El pedido '{pedido_raiz.id_pedido}' contiene ubicaciones inalcanzables.",
                     catalogo,
                 )
                 continue
@@ -428,29 +446,38 @@ class WaveManager:
             ):
                 self._marcar_pedido_irrealizable(
                     pedido_raiz,
-                    f"Stock Insuficiente: El pedido '{pedido_raiz.id_pedido}' "
-                    f"excede el stock remanente tras las Waves anteriores.",
+                    f"Stock Insuficiente: El pedido '{pedido_raiz.id_pedido}' excede el stock remanente.",
                     catalogo,
                 )
                 continue
 
-            id_wave_actual = f"{self.prefijo_id_wave}_{contador_wave:02d}"
-            zona_asignada = (
-                zonas_ids[(contador_wave - 1) % len(zonas_ids)]
-                if zonas_ids
-                else "ZONA_A"
+            # Seleccionar una Zona de Despacho con puerta de salida y capacidad de peso suficiente
+            zona_obj = self.seleccionar_zona_despacho_para_wave(
+                warehouse, pedido_raiz, tabla_productos
             )
+            if zona_obj is None and warehouse is not None:
+                self.errores_validacion.append(
+                    f"Capacidad de Despacho Agotada: El pedido '{pedido_raiz.id_pedido}' "
+                    f"({pedido_raiz.obtener_peso_total(tabla_productos):.2f} kg) no cabe en ninguna Zona de Despacho."
+                )
+                continue
+
+            id_wave_actual = f"{self.prefijo_id_wave}_{contador_wave:02d}"
+            id_zona = zona_obj.id if zona_obj is not None else "ZONA_A"
+            peso_raiz = pedido_raiz.obtener_peso_total(tabla_productos)
 
             nueva_wave = Wave(
                 id_wave=id_wave_actual,
                 estado=EstadoWave.PENDIENTE,
                 wave_max_pedidos=self.wave_max_pedidos,
                 wave_max_productos=self.wave_max_productos,
-                id_zona_despacho=zona_asignada,
+                id_zona_despacho=id_zona,
             )
 
             nueva_wave.agregar_pedido(pedido_raiz, tabla_productos, catalogo=catalogo)
             self._registrar_compromiso_virtual(pedido_raiz, stock_comprometido_virtual)
+            if zona_obj is not None:
+                zona_obj.comprometer_carga_wave(peso_raiz)
 
             self.traza_armado[id_wave_actual] = [
                 {
@@ -458,7 +485,7 @@ class WaveManager:
                     "id_pedido": pedido_raiz.id_pedido,
                     "prioridad": pedido_raiz.prioridad,
                     "unidades": pedido_raiz.obtener_cantidad_productos(),
-                    "peso_kg": pedido_raiz.obtener_peso_total(tabla_productos),
+                    "peso_kg": peso_raiz,
                     "score_marginal": 0.0,
                     "candidatos_evaluados": 1,
                 }
@@ -491,6 +518,14 @@ class WaveManager:
                     ):
                         continue
 
+                    peso_cand = cand.obtener_peso_total(tabla_productos)
+                    # Validar que no desborde el peso_max_kg de la Zona de Despacho asignada
+                    if zona_obj is not None and not zona_obj.puede_recibir_carga(
+                        peso_cand
+                    ):
+                        continue
+
+                    # Validar que sea repartible en sub-lotes entre hasta max_pickers_por_wave
                     if pickers:
                         es_repartible, _ = self._es_repartible_en_equipo_pickers(
                             nueva_wave.pedidos + [cand], pickers, tabla_productos
@@ -517,12 +552,16 @@ class WaveManager:
                 if mejor_candidato is None:
                     break
 
+                peso_mejor = mejor_candidato.obtener_peso_total(tabla_productos)
                 nueva_wave.agregar_pedido(
                     mejor_candidato, tabla_productos, catalogo=catalogo
                 )
                 self._registrar_compromiso_virtual(
                     mejor_candidato, stock_comprometido_virtual
                 )
+                if zona_obj is not None:
+                    zona_obj.comprometer_carga_wave(peso_mejor)
+
                 nueva_wave.costo_mst_total = round(
                     nueva_wave.costo_mst_total + mejor_score, 4
                 )
@@ -534,7 +573,7 @@ class WaveManager:
                         "id_pedido": mejor_candidato.id_pedido,
                         "prioridad": mejor_candidato.prioridad,
                         "unidades": mejor_candidato.obtener_cantidad_productos(),
-                        "peso_kg": mejor_candidato.obtener_peso_total(tabla_productos),
+                        "peso_kg": peso_mejor,
                         "score_marginal": mejor_score,
                         "candidatos_evaluados": evaluados_validos,
                     }
@@ -547,47 +586,37 @@ class WaveManager:
         return self.waves_creadas
 
     # =========================================================================
-    # 4. ETAPA 2: CONSULTAR WAVES DISPONIBLES Y PICKERS LIBRES (PARA UI/CONSOLA)
+    # 5. CONSULTA DE WAVES DISPONIBLES Y ASIGNACIÓN A LOS PICKERS MÁS CERCANOS
     # =========================================================================
     def obtener_waves_disponibles(self) -> List[Wave]:
-        """Devuelve todas las Waves armadas que están en estado PENDIENTE listas para seleccionarse."""
         return [w for w in self.waves_creadas if w.estado == EstadoWave.PENDIENTE]
 
     def obtener_waves_en_ejecucion(self) -> List[Wave]:
-        """Devuelve las Waves que se están ejecutando simultáneamente en este momento."""
         return [w for w in self.waves_creadas if w.estado == EstadoWave.EN_EJECUCION]
 
     @staticmethod
     def obtener_pickers_libres(pickers: List[Picker]) -> List[Picker]:
-        """Devuelve los Pickers que no tienen ninguna Wave en curso actualmente."""
         return [p for p in pickers if p.id_wave_actual is None]
 
-    # =========================================================================
-    # 5. ETAPA 3 Y 4: SELECCIONAR WAVES Y ASIGNARLAS A LOS PICKERS MÁS CERCANOS
-    # =========================================================================
     def calcular_distancia_picker_a_wave(
         self,
         picker: Picker,
         wave: Wave,
         grafo: Any = None,
+        warehouse: Any = None,
     ) -> float:
-        """
-        Calcula la distancia real en el dígrafo desde la posición actual del Picker
-        hasta la ubicación de recolección más cercana de la Wave (el punto de entrada
-        del Picker a la Wave). Si no hay grafo, usa distancia Manhattan.
-        """
         if not wave.ubicaciones_xy:
             return 0.0
 
         if grafo is not None:
             orig_pasillo = Pathfinding.obtener_celda_acceso_pasillo(
-                picker.posicion_actual, grafo
+                picker.posicion_actual, grafo, warehouse
             )
             mapa_dist = Pathfinding.calcular_mapa_distancias_desde(orig_pasillo, grafo)
             dist_min = float("inf")
             for coord_rack in wave.ubicaciones_xy:
                 celda_acceso = Pathfinding.obtener_celda_acceso_pasillo(
-                    coord_rack, grafo
+                    coord_rack, grafo, warehouse
                 )
                 d = mapa_dist.get(celda_acceso, float("inf"))
                 if d < dist_min:
@@ -603,28 +632,20 @@ class WaveManager:
         pickers: List[Picker],
         catalogo: Any = None,
         grafo: Any = None,
-        repartir_pickers_sobrantes: bool = False,
+        estrategia_ruteo: EstrategiaRuteo = EstrategiaRuteo.CERCANIA_DIJKSTRA_MULTIDESTINO,
     ) -> Dict[str, Any]:
         """
-        Recibe la lista de IDs de las Waves que el usuario seleccionó para ejecutar
-        al mismo tiempo, busca los Pickers libres MÁS CERCANOS en el dígrafo a cada
-        una de esas Waves, les asigna la Wave e inicia su ejecución simultánea.
-
-        Retorna un diccionario con el detalle de la asignación para mostrar en
-        Consola o en la interfaz gráfica de Pygame:
-        {
-            "waves_iniciadas": [Wave, ...],
-            "asignaciones": [
-                {
-                    "id_wave": str,
-                    "ids_pickers": [str, ...],
-                    "distancias_picker_a_wave": {id_picker: float},
-                    "pedidos_por_picker": {id_picker: [id_pedido, ...]},
-                }, ...
-            ],
-            "waves_sin_picker_disponible": [str, ...]
-        }
+        Asigna las Waves seleccionadas a los Pickers libres más cercanos:
+        - REGLA ESTRICTA: Un Picker NO puede mezclar dos Waves en el mismo viaje.
+          Cada Picker libre recibe a lo sumo UNA Wave activa en este viaje.
+        - Si una Wave supera la capacidad de un único Picker, se divide en sub-lotes
+          geográficos entre varios Pickers libres simultáneamente.
+        - Calcula inmediatamente la ruta de cada Picker hacia sus racks y hacia la
+          Zona de Despacho asignada a la Wave.
         """
+        warehouse = (
+            getattr(catalogo, "warehouse", None) if catalogo is not None else None
+        )
         if grafo is None and catalogo is not None:
             grafo = getattr(catalogo, "digrafo", None)
 
@@ -652,25 +673,18 @@ class WaveManager:
             ]
             return resultado
 
-        # Precalcular la distancia en el dígrafo desde cada Picker libre hacia cada Wave seleccionada
         dist_picker_wave: Dict[Tuple[str, str], float] = {}
         for pk in pickers_libres:
             for w in waves_elegidas:
                 dist_picker_wave[(pk.id_picker, w.id_wave)] = (
-                    self.calcular_distancia_picker_a_wave(pk, w, grafo)
+                    self.calcular_distancia_picker_a_wave(pk, w, grafo, warehouse)
                 )
 
-        equipos_asignados: Dict[str, List[Picker]] = {}
-        waves_activas: List[Wave] = []
-
-        # 1. Para cada Wave seleccionada, elegir el Picker (o equipo mínimo si pesa mucho) MÁS CERCANO
         for w in waves_elegidas:
             if not pickers_libres:
                 resultado["waves_sin_picker_disponible"].append(w.id_wave)
                 continue
 
-            # Ordenar los pickers libres por menor distancia real en el dígrafo hacia esta Wave
-            # (En caso de empate en distancia, priorizar el de mayor capacidad de carga)
             candidatos_cercanos = sorted(
                 pickers_libres,
                 key=lambda pk: (
@@ -680,90 +694,139 @@ class WaveManager:
                 ),
             )
 
-            # Verificar si el picker más cercano puede llevar toda la Wave solo
             equipo_elegido: List[Picker] = []
-            for pk in candidatos_cercanos:
-                if pk.capacidad_carga_kg >= w.peso_total_kg:
-                    equipo_elegido = [pk]
-                    break
-
-            # Si un solo picker no alcanza por peso, armar un equipo con los más cercanos
-            if not equipo_elegido:
-                factible, equipo_multi = self._es_repartible_en_equipo_pickers(
-                    w.pedidos, candidatos_cercanos, catalogo
-                )
-                if factible and equipo_multi:
-                    # Reordenar por cercanía entre los que cumplen el peso
-                    equipo_elegido = equipo_multi
+            # Si el picker más cercano soporta toda la Wave solo, asignarle 1 picker
+            if candidatos_cercanos[0].capacidad_carga_kg >= w.peso_total_kg:
+                equipo_elegido = [candidatos_cercanos[0]]
+            else:
+                # Si ningún picker cercano individual o el más cercano no la soporta,
+                # ver si otro picker individual la soporta o dividirla en sub-lotes multi-picker
+                for pk in candidatos_cercanos:
+                    if pk.capacidad_carga_kg >= w.peso_total_kg:
+                        equipo_elegido = [pk]
+                        break
+                if not equipo_elegido:
+                    factible, equipo_multi = self._es_repartible_en_equipo_pickers(
+                        w.pedidos, candidatos_cercanos, catalogo
+                    )
+                    if factible and equipo_multi:
+                        equipo_elegido = equipo_multi
 
             if not equipo_elegido:
                 resultado["waves_sin_picker_disponible"].append(w.id_wave)
                 continue
 
-            equipos_asignados[w.id_wave] = equipo_elegido
-            waves_activas.append(w)
             for pk in equipo_elegido:
                 pickers_libres.remove(pk)
 
-        # 2. (Opcional) Si el usuario desea que los pickers libres restantes refuercen a las Waves
-        #    seleccionadas, se asigna cada picker libre restante a la Wave seleccionada más cercana.
-        if repartir_pickers_sobrantes and pickers_libres and waves_activas:
-            for pk_extra in list(pickers_libres):
-                waves_reforzables = [
-                    w
-                    for w in waves_activas
-                    if len(equipos_asignados[w.id_wave]) < self.max_pickers_por_wave
-                    and len(equipos_asignados[w.id_wave]) < len(w.pedidos)
-                ]
-                if not waves_reforzables:
-                    break
-                wave_mas_cercana = min(
-                    waves_reforzables,
-                    key=lambda w: dist_picker_wave.get(
-                        (pk_extra.id_picker, w.id_wave), float("inf")
-                    ),
-                )
-                equipos_asignados[wave_mas_cercana.id_wave].append(pk_extra)
-                pickers_libres.remove(pk_extra)
-
-        # 3. Formalizar la asignación en las entidades Wave y Picker y pasar a EN_EJECUCION
-        for w in waves_activas:
-            equipo = equipos_asignados[w.id_wave]
-            w.asignar_equipo_pickers(equipo, catalogo)
+            # Particionar la Wave en sub-lotes geográficos para el equipo elegido
+            w.asignar_equipo_pickers(equipo_elegido, catalogo)
             w.estado = EstadoWave.EN_EJECUCION
+            self._pickers_pendientes_descarga[w.id_wave] = {
+                p.id_picker for p in equipo_elegido
+            }
 
-            for pk in equipo:
-                pk.id_wave_actual = w.id_wave
+            # Obtener los puntos de acceso de pasillo de la Zona de Despacho de esta Wave
+            accesos_despacho = (
+                warehouse.obtener_nodos_acceso_zona(w.id_zona_despacho)
+                if warehouse is not None
+                else []
+            )
+
+            rutas_por_picker: Dict[str, List[CoordXY]] = {}
+            for idx_pk, pk in enumerate(equipo_elegido):
+                destinos_rack = w.destinos_xy_por_picker.get(pk.id_picker, [])
+                destinos_pasillo = [
+                    Pathfinding.obtener_celda_acceso_pasillo(c, grafo, warehouse)
+                    for c in destinos_rack
+                ]
+                # Distribuir el nodo de entrada a la Zona de Despacho para evitar congestión en 1 sola celda
+                nodo_despacho = (
+                    accesos_despacho[idx_pk % len(accesos_despacho)]
+                    if accesos_despacho
+                    else pk.posicion_actual
+                )
+
+                if estrategia_ruteo == EstrategiaRuteo.ORDEN_PEDIDOS_DIJKSTRA:
+                    res_ruta = Pathfinding.calcular_estrategia_orden_pedidos(
+                        grafo,
+                        pk.posicion_actual,
+                        destinos_pasillo,
+                        destino_retorno=nodo_despacho,
+                        warehouse=warehouse,
+                    )
+                else:
+                    res_ruta = Pathfinding.calcular_estrategia_cercania_multidestino(
+                        grafo,
+                        pk.posicion_actual,
+                        destinos_pasillo,
+                        destino_retorno=nodo_despacho,
+                        warehouse=warehouse,
+                    )
+
+                tarea = TareaWavePicker(
+                    id_wave=w.id_wave,
+                    id_zona_despacho=w.id_zona_despacho or "ZONA_A",
+                    destino_despacho_pasillo=nodo_despacho,
+                    pedidos_asignados=w.pedidos_por_picker.get(pk.id_picker, []),
+                    destinos_recoleccion_pasillo=destinos_pasillo,
+                    peso_lote_kg=w.peso_por_picker.get(pk.id_picker, 0.0),
+                    ruta_calculada=res_ruta.camino_completo,
+                )
+                pk.cola_waves_asignadas.append(tarea)
+                pk.iniciar_siguiente_tarea_en_cola()
+                rutas_por_picker[pk.id_picker] = res_ruta.camino_completo
 
             resultado["waves_iniciadas"].append(w)
             resultado["asignaciones"].append(
                 {
                     "id_wave": w.id_wave,
-                    "ids_pickers": [p.id_picker for p in equipo],
+                    "ids_pickers": [p.id_picker for p in equipo_elegido],
                     "distancias_picker_a_wave": {
                         p.id_picker: dist_picker_wave.get((p.id_picker, w.id_wave), 0.0)
-                        for p in equipo
+                        for p in equipo_elegido
                     },
                     "pedidos_por_picker": dict(w.pedidos_por_picker),
+                    "peso_por_picker": dict(w.peso_por_picker),
                     "destinos_xy_por_picker": dict(w.destinos_xy_por_picker),
+                    "rutas_por_picker": rutas_por_picker,
                 }
             )
 
         return resultado
 
-    def finalizar_wave_en_ejecucion(self, id_wave: str, pickers: List[Picker]) -> bool:
+    def notificar_picker_descargo_en_despacho(
+        self,
+        id_wave: str,
+        id_picker: str,
+        pickers: List[Picker],
+        catalogo: Any = None,
+    ) -> None:
         """
-        Marca una Wave como FINALIZADA y libera a los Pickers que la estaban realizando
-        para que queden disponibles para la siguiente selección de Waves en Pygame/Consola.
+        Cuando un Picker arriba a la Zona de Despacho y descarga su lote (su peso vuelve a 0),
+        se descuenta el stock real recolectado y, si todos los Pickers de la Wave ya descargaron,
+        la Wave pasa a FINALIZADA.
         """
         w = self.waves_por_id.get(id_wave)
-        if w is None or w.estado != EstadoWave.EN_EJECUCION:
-            return False
+        if w is None:
+            return
 
-        w.estado = EstadoWave.FINALIZADA
-        ids_liberados = set(w.ids_pickers_asignados)
-        for pk in pickers:
-            if pk.id_picker in ids_liberados or pk.id_wave_actual == id_wave:
-                pk.id_wave_actual = None
-                pk.peso_actual_kg = 0.0
-        return True
+        pendientes = self._pickers_pendientes_descarga.get(id_wave, set())
+        pendientes.discard(id_picker)
+
+        # Descontar stock de los pedidos que preparó este picker y marcarlos como PREPARADO
+        if catalogo is not None:
+            ids_ped_picker = set(w.pedidos_por_picker.get(id_picker, []))
+            for ped in w.pedidos:
+                if (
+                    ped.id_pedido in ids_ped_picker
+                    and ped.estado != EstadoPedido.PREPARADO
+                ):
+                    for item in ped.items:
+                        catalogo.descontar_stock(item.producto_id, item.cantidad)
+                    catalogo.actualizar_estado_pedido_O1(
+                        ped.id_pedido, EstadoPedido.PREPARADO
+                    )
+
+        if not pendientes:
+            w.estado = EstadoWave.FINALIZADA
