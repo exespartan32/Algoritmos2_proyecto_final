@@ -1,240 +1,421 @@
 import os
 import json
 import random
-from typing import List, Optional, Dict, Any
-from BackEnd.models.entities import Product, Order, DetallePedido, Picker
+from typing import Dict, List, Optional, Tuple, Any, Set
+from BackEnd.models.entities import Producto, Pedido, DetallePedido, Picker
 from BackEnd.enums.enums import EstadoPedido
-from BackEnd.data_structures.linkedlist import LinkedList, add
+from BackEnd.controllers.path_finding import Pathfinding
+
+CoordXY = Tuple[int, int]
+
+
+class NodoHash:
+    __slots__ = ("clave", "valor", "siguiente")
+
+    def __init__(
+        self, clave: str, valor: Any, siguiente: Optional["NodoHash"] = None
+    ) -> None:
+        self.clave = clave
+        self.valor = valor
+        self.siguiente = siguiente
 
 
 class HashTableUniversal:
     """
-    Tabla Hash propia con Encadenamiento (Chaining) sobre LinkedList
-    y función de Hashing Universal h_ab(k) = ((a*k + b) mod p) mod m.
+    Tabla Hash con Encadenamiento (Chaining) y familia de Hashing Universal
+    h_{a,b}(k) = ((a * k + b) mod p) mod m para acceso y actualización en O(1) promedio.
     """
 
-    def __init__(self, tamano_tabla: int, primo_p: int, semilla: Optional[int] = None):
-        self.m = tamano_tabla
-        self.p = primo_p
-        generador = random.Random(semilla) if semilla is not None else random
+    def __init__(
+        self,
+        tamano_m: int = 1009,
+        primo_p: int = 999983,
+        semilla: Optional[int] = 42,
+    ) -> None:
+        self.m = max(7, int(tamano_m))
+        self.p = max(self.m + 1, int(primo_p))
+        generador = random.Random(semilla)
         self.a = generador.randint(1, self.p - 1)
         self.b = generador.randint(0, self.p - 1)
+        self.tabla: List[Optional[NodoHash]] = [None] * self.m
+        self.cantidad_elementos: int = 0
 
-        self.tabla: List[LinkedList] = [LinkedList() for _ in range(self.m)]
-        self.cantidad_elementos = 0
+    def _convertir_clave_a_entero(self, clave: str) -> int:
+        acumulado = 0
+        for caracter in str(clave):
+            acumulado = (acumulado * 131 + ord(caracter)) % self.p
+        return acumulado
 
-    def _hash_universal(self, key: str) -> int:
-        k = 0
-        for char in key:
-            k = (k << 7) + ord(char)
+    def _hash(self, clave: str) -> int:
+        k = self._convertir_clave_a_entero(clave)
         return ((self.a * k + self.b) % self.p) % self.m
 
     def insertar(self, clave: str, valor: Any) -> None:
-        posicion = self._hash_universal(clave)
-        lista_slot = self.tabla[posicion]
-
-        actual = lista_slot.head
+        indice = self._hash(clave)
+        actual = self.tabla[indice]
         while actual is not None:
-            if actual.value[0] == clave:
-                actual.value = (clave, valor)
+            if actual.clave == clave:
+                actual.valor = valor
                 return
-            actual = actual.nextNode
+            actual = actual.siguiente
 
-        add(lista_slot, (clave, valor))
+        nuevo_nodo = NodoHash(clave, valor, self.tabla[indice])
+        self.tabla[indice] = nuevo_nodo
         self.cantidad_elementos += 1
 
     def buscar(self, clave: str) -> Optional[Any]:
-        posicion = self._hash_universal(clave)
-        actual = self.tabla[posicion].head
+        indice = self._hash(clave)
+        actual = self.tabla[indice]
         while actual is not None:
-            if actual.value[0] == clave:
-                return actual.value[1]
-            actual = actual.nextNode
+            if actual.clave == clave:
+                return actual.valor
+            actual = actual.siguiente
         return None
 
     def obtener_todos_los_valores(self) -> List[Any]:
-        valores = []
-        for lista_slot in self.tabla:
-            actual = lista_slot.head
+        valores: List[Any] = []
+        for cabeza in self.tabla:
+            actual = cabeza
             while actual is not None:
-                valores.append(actual.value[1])
-                actual = actual.nextNode
+                valores.append(actual.valor)
+                actual = actual.siguiente
         return valores
 
-    def limpiar(self) -> None:
-        self.tabla = [LinkedList() for _ in range(self.m)]
-        self.cantidad_elementos = 0
+
+class DigrafoEscenarioJSON:
+    """
+    Representación del Dígrafo del Warehouse construida directamente desde el bloque
+    'warehouse' de escenario_basico.json y escenario_grande.json.
+    Respeta el formato:
+      - dimensiones: {"ancho_x": ..., "largo_y": ...}
+      - ubicacion: {"x": ..., "y": ...} en racks, pasillos, puertas y zonas_despacho.
+    Expone 'obtener_vecinos_validos(nodo_actual, paso_tiempo=0)' para el Pathfinding de Leonel.
+    """
+
+    def __init__(
+        self, datos_warehouse: Dict[str, Any], norte_aumenta_y: bool = True
+    ) -> None:
+        dim = datos_warehouse.get("dimensiones", {})
+        self.ancho_x: int = int(dim.get("ancho_x", dim.get("ancho", 0)))
+        self.largo_y: int = int(dim.get("largo_y", dim.get("largo", 0)))
+        self.norte_aumenta_y: bool = norte_aumenta_y
+
+        self.racks_ocupados: Set[CoordXY] = set()
+        self.sentido_celda: Dict[CoordXY, str] = {}
+        self.lista_adyacencia: Dict[CoordXY, List[CoordXY]] = {}
+        self.zonas_despacho: Dict[str, Dict[str, Any]] = {}
+        self.puertas: Dict[str, Dict[str, Any]] = {}
+
+        self._construir_digrafo(datos_warehouse)
+
+    @staticmethod
+    def _extraer_xy(elemento: Dict[str, Any]) -> CoordXY:
+        if "ubicacion" in elemento and isinstance(elemento["ubicacion"], dict):
+            return int(elemento["ubicacion"]["x"]), int(elemento["ubicacion"]["y"])
+        return int(elemento.get("x", 0)), int(elemento.get("y", 0))
+
+    def _construir_digrafo(self, wh: Dict[str, Any]) -> None:
+        # 1. Celdas ocupadas por Racks (obstáculos físicos donde están los productos)
+        for rack in wh.get("racks", []):
+            rx, ry = self._extraer_xy(rack)
+            ancho_r = int(rack.get("ancho", 1))
+            alto_r = int(rack.get("alto", 1))
+            for dx in range(ancho_r):
+                for dy in range(alto_r):
+                    self.racks_ocupados.add((rx + dx, ry + dy))
+
+        # 2. Celdas de Pasillos y sus sentidos ('N', 'S', 'E', 'O', 'AMBOS')
+        for pas in wh.get("pasillos", []):
+            px, py = self._extraer_xy(pas)
+            ancho_p = int(pas.get("ancho", 1))
+            alto_p = int(pas.get("alto", 1))
+            sentido = str(pas.get("sentido", "AMBOS")).upper()
+
+            for dx in range(ancho_p):
+                for dy in range(alto_p):
+                    coord = (px + dx, py + dy)
+                    if coord in self.racks_ocupados:
+                        continue
+                    # En intersecciones con pasillos horizontales AMBOS, prevalece AMBOS
+                    if self.sentido_celda.get(coord) == "AMBOS":
+                        continue
+                    self.sentido_celda[coord] = sentido
+
+        # 3. Zonas de Despacho y Puertas (transitables con sentido AMBOS)
+        for zd in wh.get("zonas_despacho", []):
+            zx, zy = self._extraer_xy(zd)
+            ancho_z = int(zd.get("ancho", 1))
+            alto_z = int(zd.get("alto", 1))
+            self.zonas_despacho[str(zd["id"])] = zd
+            for dx in range(ancho_z):
+                for dy in range(alto_z):
+                    coord = (zx + dx, zy + dy)
+                    if coord not in self.racks_ocupados:
+                        self.sentido_celda[coord] = "AMBOS"
+
+        for pta in wh.get("puertas", []):
+            px, py = self._extraer_xy(pta)
+            self.puertas[str(pta["id"])] = pta
+            if (px, py) not in self.racks_ocupados:
+                self.sentido_celda[(px, py)] = "AMBOS"
+
+        # 4. Generar aristas dirigidas según reglas de circulación del Warehouse
+        pasos_ortogonales = [(1, 0), (-1, 0), (0, 1), (0, -1)]
+        for origen, sentido_orig in self.sentido_celda.items():
+            vecinos: List[CoordXY] = []
+            for dx, dy in pasos_ortogonales:
+                destino = (origen[0] + dx, origen[1] + dy)
+                if destino not in self.sentido_celda:
+                    continue
+                sentido_dest = self.sentido_celda[destino]
+                if Pathfinding.es_movimiento_permitido_digrafo(
+                    origen=origen,
+                    destino=destino,
+                    sentido_origen=sentido_orig,
+                    sentido_destino=sentido_dest,
+                    norte_aumenta_y=self.norte_aumenta_y,
+                ):
+                    vecinos.append(destino)
+            self.lista_adyacencia[origen] = vecinos
+
+    def obtener_vecinos_validos(
+        self, nodo_actual: CoordXY, paso_tiempo: int = 0
+    ) -> List[CoordXY]:
+        return self.lista_adyacencia.get(nodo_actual, [])
 
 
 class CatalogManager:
+    """
+    Administrador central de las Tablas Hash O(1) de Productos y Pedidos.
+    Carga los escenarios base dados (escenario_basico.json y escenario_grande.json)
+    y decodifica las Tablas Hash de vuelta a JSON sin alterar los archivos originales.
+    """
+
     def __init__(
         self,
-        tamano_tabla: int,
-        primo_p: int,
-        semilla_hash: Optional[int] = None,
+        tamano_tabla: int = 1009,
+        primo_p: int = 999983,
+        semilla_hash: Optional[int] = 42,
         directorio_datos: Optional[str] = None,
-    ):
-        if directorio_datos is not None:
-            self.ruta_data = os.path.abspath(directorio_datos)
+    ) -> None:
+        if directorio_datos is None:
+            dir_actual = os.path.dirname(os.path.abspath(__file__))
+            self.ruta_data = os.path.join(os.path.dirname(dir_actual), "data")
         else:
-            directorio_actual = os.path.dirname(os.path.abspath(__file__))
-            self.ruta_data = os.path.join(os.path.dirname(directorio_actual), "data")
-
+            self.ruta_data = directorio_datos
         os.makedirs(self.ruta_data, exist_ok=True)
 
-        self.productos_hash = HashTableUniversal(tamano_tabla, primo_p, semilla_hash)
-        self.pedidos_hash = HashTableUniversal(tamano_tabla, primo_p, semilla_hash)
+        self.tamano_tabla = tamano_tabla
+        self.primo_p = primo_p
+        self.semilla_hash = semilla_hash
+
+        self.productos_hash = HashTableUniversal(
+            tamano_m=tamano_tabla, primo_p=primo_p, semilla=semilla_hash
+        )
+        self.pedidos_hash = HashTableUniversal(
+            tamano_m=tamano_tabla, primo_p=primo_p, semilla=semilla_hash
+        )
 
         self.warehouse_raw: Dict[str, Any] = {}
+        self.configuracion_raw: Dict[str, Any] = {}
+        self.digrafo: Optional[DigrafoEscenarioJSON] = None
         self.pickers: List[Picker] = []
-        self.wave_max_pedidos: Optional[int] = None
-        self.wave_max_productos: Optional[int] = None
+        self.wave_max_pedidos: int = 3
+        self.wave_max_productos: int = 15
 
-    def cargar_escenario_json(self, nombre_o_ruta_archivo: str) -> str:
-        if os.path.isabs(nombre_o_ruta_archivo) or os.path.exists(
-            nombre_o_ruta_archivo
-        ):
-            ruta_completa = os.path.abspath(nombre_o_ruta_archivo)
-        else:
-            ruta_completa = os.path.join(self.ruta_data, nombre_o_ruta_archivo)
+    def resolver_ruta_archivo(self, nombre_o_ruta: str) -> str:
+        if os.path.isfile(nombre_o_ruta):
+            return os.path.abspath(nombre_o_ruta)
+        candidato_en_data = os.path.join(self.ruta_data, nombre_o_ruta)
+        if os.path.isfile(candidato_en_data):
+            return os.path.abspath(candidato_en_data)
+        return os.path.abspath(candidato_en_data)
 
-        if not os.path.exists(ruta_completa):
-            raise FileNotFoundError(
-                f"No se encontró el archivo JSON en: {ruta_completa}"
-            )
-
+    def cargar_escenario_json(
+        self, nombre_o_ruta_archivo: str, norte_aumenta_y: bool = True
+    ) -> str:
+        ruta_completa = self.resolver_ruta_archivo(nombre_o_ruta_archivo)
         with open(ruta_completa, "r", encoding="utf-8") as archivo:
-            datos_json = json.load(archivo)
+            datos = json.load(archivo)
 
-        self.warehouse_raw = datos_json.get("warehouse", {})
+        # Reiniciar Tablas Hash
+        self.productos_hash = HashTableUniversal(
+            tamano_m=self.tamano_tabla, primo_p=self.primo_p, semilla=self.semilla_hash
+        )
+        self.pedidos_hash = HashTableUniversal(
+            tamano_m=self.tamano_tabla, primo_p=self.primo_p, semilla=self.semilla_hash
+        )
 
-        self.productos_hash.limpiar()
-        for item in datos_json.get("productos", []):
-            ubic = item["ubicacion"]
-            producto = Product(
-                id_producto=str(item["id"]),
-                nombre=str(item["nombre"]),
-                rack_id=str(item["rack_id"]),
-                ubicacion_x=int(ubic["x"]),
-                ubicacion_y=int(ubic["y"]),
-                altura_z=int(ubic["z"]),
-                cantidad_disponible=int(item["cantidad_disponible"]),
-                peso_kg=float(item["peso_kg"]),
-            )
-            self.productos_hash.insertar(producto.id_producto, producto)
+        # 1. Bloque warehouse y construcción del Dígrafo de pasillos
+        self.warehouse_raw = datos.get("warehouse", {})
+        self.digrafo = DigrafoEscenarioJSON(
+            self.warehouse_raw, norte_aumenta_y=norte_aumenta_y
+        )
 
-        self.pedidos_hash.limpiar()
-        for ped in datos_json.get("pedidos", []):
-            detalles = [
-                DetallePedido(
-                    producto_id=str(it["producto_id"]), cantidad=int(it["cantidad"])
-                )
-                for it in ped.get("items", [])
-            ]
-            pedido = Order(
-                id_pedido=str(ped["id"]),
-                prioridad=int(ped["prioridad"]),
-                estado=EstadoPedido(ped.get("estado", "PENDIENTE")),
-                items=detalles,
-            )
-            pedido.obtener_peso_total(self)
-            pedido.obtener_coordenadas_unicas(self)
-            self.pedidos_hash.insertar(pedido.id_pedido, pedido)
+        # 2. Bloque configuracion (wave_max_pedidos y wave_max_productos)
+        self.configuracion_raw = datos.get("configuracion", {})
+        self.wave_max_pedidos = int(self.configuracion_raw.get("wave_max_pedidos", 3))
+        self.wave_max_productos = int(
+            self.configuracion_raw.get("wave_max_productos", 15)
+        )
 
-        self.pickers.clear()
-        for pk in datos_json.get("pickers", []):
-            pos = (int(pk["posicion_inicial"]["x"]), int(pk["posicion_inicial"]["y"]))
+        # 3. Bloque pickers
+        self.pickers = []
+        for pk in datos.get("pickers", []):
+            pos_ini = pk.get("posicion_inicial", {"x": 0, "y": 0})
+            coord = (int(pos_ini["x"]), int(pos_ini["y"]))
             self.pickers.append(
                 Picker(
                     id_picker=str(pk["id"]),
-                    posicion_inicial=pos,
-                    posicion_actual=pos,
-                    capacidad_carga_kg=float(pk["capacidad_carga_kg"]),
+                    capacidad_carga_kg=float(pk.get("capacidad_carga_kg", 100.0)),
+                    posicion_actual=coord,
                 )
             )
 
-        config = datos_json.get("configuracion", {})
-        self.wave_max_pedidos = config.get("wave_max_pedidos")
-        self.wave_max_productos = config.get("wave_max_productos")
+        # 4. Bloque productos -> Tabla Hash en O(1)
+        for p_raw in datos.get("productos", []):
+            ubic = p_raw.get("ubicacion", {})
+            prod = Producto(
+                id_producto=str(p_raw["id"]),
+                nombre=str(p_raw.get("nombre", p_raw["id"])),
+                rack_id=str(p_raw.get("rack_id", "")),
+                ubicacion_x=int(ubic.get("x", 0)),
+                ubicacion_y=int(ubic.get("y", 0)),
+                ubicacion_z=int(ubic.get("z", 1)),
+                cantidad_disponible=int(p_raw.get("cantidad_disponible", 0)),
+                peso_kg=float(p_raw.get("peso_kg", 0.0)),
+            )
+            self.productos_hash.insertar(prod.id_producto, prod)
+
+        # 5. Bloque pedidos -> Tabla Hash en O(1)
+        for ped_raw in datos.get("pedidos", []):
+            estado_str = str(ped_raw.get("estado", "PENDIENTE")).upper()
+            estado_enum = (
+                EstadoPedido[estado_str]
+                if estado_str in EstadoPedido.__members__
+                else EstadoPedido.PENDIENTE
+            )
+            items = [
+                DetallePedido(
+                    producto_id=str(it["producto_id"]),
+                    cantidad=int(it["cantidad"]),
+                )
+                for it in ped_raw.get("items", [])
+            ]
+            pedido = Pedido(
+                id_pedido=str(ped_raw["id"]),
+                prioridad=int(ped_raw.get("prioridad", 1)),
+                items=items,
+                estado=estado_enum,
+            )
+            self.pedidos_hash.insertar(pedido.id_pedido, pedido)
 
         return ruta_completa
 
-    def buscar_producto_O1(self, id_producto: str) -> Optional[Product]:
+    # =========================================================================
+    # OPERACIONES O(1) SOBRE LAS TABLAS HASH
+    # =========================================================================
+    def buscar_producto_O1(self, id_producto: str) -> Optional[Producto]:
         return self.productos_hash.buscar(id_producto)
 
-    def buscar_pedido_O1(self, id_pedido: str) -> Optional[Order]:
+    def buscar_pedido_O1(self, id_pedido: str) -> Optional[Pedido]:
         return self.pedidos_hash.buscar(id_pedido)
 
-    def descontar_stock(self, id_producto: str, cantidad: int) -> bool:
-        producto = self.buscar_producto_O1(id_producto)
-        if producto is not None and producto.cantidad_disponible >= cantidad:
-            producto.cantidad_disponible -= cantidad
-            return True
-        return False
+    def obtener_todos_los_productos(self) -> List[Producto]:
+        productos = self.productos_hash.obtener_todos_los_valores()
+        productos.sort(key=lambda p: p.id_producto)
+        return productos
+
+    def obtener_todos_los_pedidos(self) -> List[Pedido]:
+        pedidos = self.pedidos_hash.obtener_todos_los_valores()
+        pedidos.sort(key=lambda p: p.id_pedido)
+        return pedidos
 
     def actualizar_estado_pedido_O1(
         self, id_pedido: str, nuevo_estado: EstadoPedido
     ) -> bool:
         pedido = self.buscar_pedido_O1(id_pedido)
-        if pedido is not None:
-            pedido.estado = nuevo_estado
-            return True
-        return False
+        if pedido is None:
+            return False
+        pedido.estado = nuevo_estado
+        return True
 
-    def obtener_todos_los_productos(self) -> List[Product]:
-        return self.productos_hash.obtener_todos_los_valores()
+    def descontar_stock(self, id_producto: str, cantidad: int) -> bool:
+        """
+        Método exclusivo para la etapa de recolección física del Picker.
+        NO se invoca durante el armado de las Waves.
+        """
+        prod = self.buscar_producto_O1(id_producto)
+        if prod is None or cantidad < 0 or prod.cantidad_disponible < cantidad:
+            return False
+        prod.cantidad_disponible -= cantidad
+        return True
 
-    def obtener_todos_los_pedidos(self) -> List[Order]:
-        return self.pedidos_hash.obtener_todos_los_valores()
-
-    def obtener_pedidos_pendientes(self, prioridad_minima: int = 1) -> List[Order]:
-        return [
-            ped
-            for ped in self.pedidos_hash.obtener_todos_los_valores()
-            if ped.estado == EstadoPedido.PENDIENTE
-            and ped.prioridad >= prioridad_minima
-        ]
-
-    def decodificar_productos_a_json(self) -> List[Dict[str, Any]]:
-        lista_productos = self.obtener_todos_los_productos()
-        lista_productos.sort(key=lambda p: p.id_producto)
-        return [p.to_dict() for p in lista_productos]
-
-    def decodificar_pedidos_a_json(self) -> List[Dict[str, Any]]:
-        lista_pedidos = self.obtener_todos_los_pedidos()
-        lista_pedidos.sort(key=lambda o: o.id_pedido)
-        return [o.to_dict() for o in lista_pedidos]
-
+    # =========================================================================
+    # DECODIFICACIÓN DE TABLAS HASH A JSON (PERSISTENCIA DE ESTADO)
+    # =========================================================================
     def guardar_estado_simulacion_json(
-        self,
-        nombre_archivo_salida: str,
-        pickers_actualizados: Optional[List[Picker]] = None,
+        self, nombre_archivo_salida: str = "estado_guardado.json"
     ) -> str:
-        lista_pickers = (
-            pickers_actualizados if pickers_actualizados is not None else self.pickers
-        )
-
-        config_guardada = {}
-        if self.wave_max_pedidos is not None:
-            config_guardada["wave_max_pedidos"] = self.wave_max_pedidos
-        if self.wave_max_productos is not None:
-            config_guardada["wave_max_productos"] = self.wave_max_productos
-
-        estado_actual = {
-            "warehouse": self.warehouse_raw,
-            "pickers": [pk.to_dict() for pk in lista_pickers],
-            "productos": self.decodificar_productos_a_json(),
-            "pedidos": self.decodificar_pedidos_a_json(),
-            "configuracion": config_guardada,
-        }
-
         ruta_salida = (
-            os.path.abspath(nombre_archivo_salida)
+            nombre_archivo_salida
             if os.path.isabs(nombre_archivo_salida)
             else os.path.join(self.ruta_data, nombre_archivo_salida)
         )
 
-        with open(ruta_salida, "w", encoding="utf-8") as archivo:
-            json.dump(estado_actual, archivo, indent=2, ensure_ascii=False)
+        productos_json = [
+            {
+                "id": p.id_producto,
+                "nombre": p.nombre,
+                "rack_id": p.rack_id,
+                "ubicacion": {
+                    "x": p.ubicacion_x,
+                    "y": p.ubicacion_y,
+                    "z": p.ubicacion_z,
+                },
+                "cantidad_disponible": p.cantidad_disponible,
+                "peso_kg": p.peso_kg,
+            }
+            for p in self.obtener_todos_los_productos()
+        ]
 
-        return ruta_salida
+        pedidos_json = [
+            {
+                "id": ped.id_pedido,
+                "prioridad": ped.prioridad,
+                "estado": ped.estado.value,
+                "items": [
+                    {"producto_id": it.producto_id, "cantidad": it.cantidad}
+                    for it in ped.items
+                ],
+            }
+            for ped in self.obtener_todos_los_pedidos()
+        ]
+
+        pickers_json = [
+            {
+                "id": pk.id_picker,
+                "posicion_inicial": {
+                    "x": pk.posicion_actual[0],
+                    "y": pk.posicion_actual[1],
+                },
+                "capacidad_carga_kg": pk.capacidad_carga_kg,
+            }
+            for pk in self.pickers
+        ]
+
+        estado_exportado = {
+            "warehouse": self.warehouse_raw,
+            "pickers": pickers_json,
+            "productos": productos_json,
+            "pedidos": pedidos_json,
+            "configuracion": {
+                "wave_max_pedidos": self.wave_max_pedidos,
+                "wave_max_productos": self.wave_max_productos,
+            },
+        }
+
+        with open(ruta_salida, "w", encoding="utf-8") as f:
+            json.dump(estado_exportado, f, indent=2, ensure_ascii=False)
+
+        return os.path.abspath(ruta_salida)

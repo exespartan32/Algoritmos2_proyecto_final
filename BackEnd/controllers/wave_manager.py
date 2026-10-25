@@ -1,471 +1,459 @@
-from typing import List, Optional, Tuple, Dict, Any
-from BackEnd.models.catalog_manager import CatalogManager
-from BackEnd.models.entities import Order, Picker, Wave
+from typing import List, Optional, Tuple, Set, Any, Dict
+from BackEnd.models.entities import Pedido, Wave
 from BackEnd.enums.enums import EstadoWave, EstadoPedido
-from BackEnd.data_structures.disjoint_set import DisjointSet
 from BackEnd.data_structures.max_heap_pedidos import MaxHeapPedidos
+from BackEnd.controllers.path_finding import Pathfinding
+
+CoordXY = Tuple[int, int]
 
 
 class WaveManager:
     """
-    Controlador de Generación de Waves 100% parametrizado (Sin dependencia del módulo de Laureano):
-    - Paso 1: Pre-filtro de imposibilidad física (peso_pedido > capacidad_max_picker).
-    - Paso 2: Selección de pedido ancla desde Max-Heap validando capacidad de picker y zona.
-    - Paso 3: Agrupamiento voraz (Greedy + MST) saltando pedidos pesados para evaluar más livianos.
-    - Paso 4: Cierre de ola, re-inserción en Max-Heap y reporte de remanentes por capacidad agotada.
+    Controlador de Generación de Waves mediante Max-Heap y Costo Marginal Promedio
+    (Average Linkage) utilizando las distancias dirigidas reales sobre el Dígrafo
+    provistas por el módulo Pathfinding de Leonel.
+    Garantiza que NO se modifique el stock físico (cantidad_disponible) al armar las Waves.
     """
 
     def __init__(
         self,
-        metodo_mst: str,
-        prefijo_id_wave: str,
-        wave_max_pedidos: Optional[int] = None,
-        wave_max_productos: Optional[int] = None,
-    ):
+        wave_max_pedidos: int,
+        wave_max_productos: int,
+        prefijo_id_wave: str = "WAVE",
+        incluir_altura_z_unica: bool = True,
+        proveedor_distancias: Optional[Any] = None,
+    ) -> None:
         self.cola_prioridad = MaxHeapPedidos()
-        self.wave_max_pedidos_override = wave_max_pedidos
-        self.wave_max_productos_override = wave_max_productos
-        self.metodo_mst = metodo_mst.upper()
+        self.wave_max_pedidos = wave_max_pedidos
+        self.wave_max_productos = wave_max_productos
         self.prefijo_id_wave = prefijo_id_wave
+        self.incluir_altura_z_unica = incluir_altura_z_unica
+        self.proveedor_distancias = proveedor_distancias
 
-        self.alertas_peso: List[str] = []
-        self.pedidos_irrealizables: List[Order] = []
-        self.pedidos_remanentes_capacidad: List[Order] = []
+        self.errores_validacion: List[str] = []
+        self.pedidos_descartados: List[Pedido] = []
+        # Traza detallada por wave: {id_wave: [diccionarios con paso, pedido, score, etc.]}
+        self.traza_armado: Dict[str, List[Dict[str, Any]]] = {}
 
-    def _mst_kruskal(self, puntos: List[Tuple[int, int]]) -> int:
-        n = len(puntos)
-        if n <= 1:
-            return 0
+    # =========================================================================
+    # 0. INTEGRACIÓN CON EL DÍGRAFO Y PATHFINDING DE LEONEL (CONSULTA O(1))
+    # =========================================================================
+    def _preparar_fuente_distancias_O1(
+        self,
+        pedidos_validos: List[Pedido],
+        tabla_productos: Any,
+        proveedor: Optional[Any],
+    ) -> Any:
+        fuente = proveedor if proveedor is not None else self.proveedor_distancias
+        if fuente is None:
+            return None
 
-        aristas = [
-            (abs(puntos[i][0] - puntos[j][0]) + abs(puntos[i][1] - puntos[j][1]), i, j)
-            for i in range(n)
-            for j in range(i + 1, n)
-        ]
-        aristas.sort(key=lambda a: a[0])
+        es_grafo_directo = hasattr(fuente, "obtener_vecinos_validos") or hasattr(
+            fuente, "lista_adyacencia"
+        )
+        if not es_grafo_directo:
+            return fuente
 
-        conjuntos_disjuntos = DisjointSet(n)
-        peso_mst = 0
-        aristas_usadas = 0
+        coords_xy_requeridas: Set[CoordXY] = set()
+        for pedido in pedidos_validos:
+            for x, y, _ in pedido.obtener_ubicaciones_xyz(tabla_productos):
+                coords_xy_requeridas.add((x, y))
 
-        for peso, u, v in aristas:
-            if conjuntos_disjuntos.unir(u, v):
-                peso_mst += peso
-                aristas_usadas += 1
-                if aristas_usadas == n - 1:
-                    break
+        if not coords_xy_requeridas:
+            return {}
 
-        return peso_mst
+        return Pathfinding.construir_matriz_distancias_productos(
+            coordenadas_productos_xy=coords_xy_requeridas,
+            grafo=fuente,
+        )
 
-    def _mst_prim(self, puntos: List[Tuple[int, int]]) -> float:
-        n = len(puntos)
-        if n <= 1:
+    def _obtener_distancia_dirigida(
+        self,
+        origen: CoordXY,
+        destino: CoordXY,
+        proveedor: Optional[Any] = None,
+    ) -> float:
+        if origen == destino:
             return 0.0
 
-        visitados = [False] * n
-        dist_min = [float("inf")] * n
-        dist_min[0] = 0.0
-        peso_mst = 0.0
+        fuente = proveedor if proveedor is not None else self.proveedor_distancias
 
-        for _ in range(n):
-            u = -1
-            menor = float("inf")
-            for i in range(n):
-                if not visitados[i] and dist_min[i] < menor:
-                    menor = dist_min[i]
-                    u = i
+        if fuente is not None:
+            if isinstance(fuente, dict):
+                if (origen, destino) in fuente:
+                    return float(fuente[(origen, destino)])
+                if origen in fuente and isinstance(fuente[origen], dict):
+                    return float(fuente[origen].get(destino, float("inf")))
+                return float("inf")
 
-            visitados[u] = True
-            peso_mst += menor
+            if hasattr(fuente, "obtener_distancia"):
+                return float(fuente.obtener_distancia(origen, destino))
+            if hasattr(fuente, "distancia_entre_ubicaciones"):
+                return float(fuente.distancia_entre_ubicaciones(origen, destino))
 
-            ux, uy = puntos[u]
-            for v in range(n):
-                if not visitados[v]:
-                    vx, vy = puntos[v]
-                    d = float(abs(ux - vx) + abs(uy - vy))
-                    if d < dist_min[v]:
-                        dist_min[v] = d
+            if callable(fuente):
+                return float(fuente(origen, destino))
 
-        return peso_mst
-
-    def calcular_costo_mst_puntos(self, puntos: List[Tuple[int, int]]) -> float:
-        if self.metodo_mst == "PRIM":
-            return self._mst_prim(puntos)
-        return float(self._mst_kruskal(puntos))
-
-    def evaluar_cercania_mst_kruskal_prim(
-        self,
-        pedidos_candidatos: List[Order],
-        catalogo: CatalogManager,
-        coord_despacho: Optional[Tuple[int, int]] = None,
-    ) -> float:
-        puntos: List[Tuple[int, int]] = []
-        vistos = set()
-        if coord_despacho is not None:
-            vistos.add(coord_despacho)
-            puntos.append(coord_despacho)
-
-        for ped in pedidos_candidatos:
-            for pt in ped.obtener_coordenadas_unicas(catalogo):
-                if pt not in vistos:
-                    vistos.add(pt)
-                    puntos.append(pt)
-
-        return self.calcular_costo_mst_puntos(puntos)
-
-    def _obtener_zonas_despacho_disponibles(
-        self, catalogo: CatalogManager, ids_zonas_activas: Optional[List[str]] = None
-    ) -> List[Dict[str, Any]]:
-        zonas_info: List[Dict[str, Any]] = []
-        filtro_zonas = set(ids_zonas_activas) if ids_zonas_activas else None
-
-        wh_raw = catalogo.warehouse_raw
-        puertas_salida = {
-            p["id"]
-            for p in wh_raw.get("puertas", [])
-            if p.get("tipo", "OUTBOUND") in ("OUTBOUND", "AMBOS")
-        }
-
-        for zd in wh_raw.get("zonas_despacho", []):
-            id_zd = str(zd["id"])
-            if filtro_zonas and id_zd not in filtro_zonas:
-                continue
-            if not puertas_salida or zd.get("puerta_id") in puertas_salida:
-                ux = int(zd["ubicacion"]["x"])
-                uy = int(zd["ubicacion"]["y"])
-                peso_max = float(zd.get("peso_max_kg", float("inf")))
-                zonas_info.append(
-                    {
-                        "id": id_zd,
-                        "coord_acceso": (ux, uy),
-                        "peso_max_kg": peso_max,
-                        "peso_disponible": peso_max,
-                    }
+            if hasattr(fuente, "obtener_vecinos_validos") or hasattr(
+                fuente, "lista_adyacencia"
+            ):
+                orig_pasillo = Pathfinding.obtener_celda_acceso_pasillo(origen, fuente)
+                dest_pasillo = Pathfinding.obtener_celda_acceso_pasillo(destino, fuente)
+                if orig_pasillo == dest_pasillo:
+                    return 0.0
+                ruta, _ = Pathfinding.calcular_ruta_dijkstra(
+                    orig_pasillo, dest_pasillo, fuente
                 )
+                return float(len(ruta) - 1) if ruta else float("inf")
 
-        if not zonas_info:
-            zonas_info.append(
-                {
-                    "id": "ZONA_DEFAULT",
-                    "coord_acceso": (0, 0),
-                    "peso_max_kg": float("inf"),
-                    "peso_disponible": float("inf"),
-                }
-            )
+        return float(abs(origen[0] - destino[0]) + abs(origen[1] - destino[1]))
 
-        return zonas_info
-
-    def _seleccionar_mejor_zona(
+    def _distancia_enlace_digrafo(
         self,
-        zonas_info: List[Dict[str, Any]],
-        picker: Picker,
-        pedido_ancla: Order,
-        catalogo: CatalogManager,
-    ) -> Optional[Dict[str, Any]]:
-        peso_ancla = pedido_ancla.obtener_peso_total(catalogo)
-        coords_ancla = pedido_ancla.obtener_coordenadas_unicas(catalogo)
-        mejor_zona = None
-        menor_costo = float("inf")
-        px, py = picker.posicion_actual
+        p_xy: CoordXY,
+        u_xy: CoordXY,
+        proveedor: Optional[Any] = None,
+    ) -> float:
+        d_ida = self._obtener_distancia_dirigida(u_xy, p_xy, proveedor)
+        d_vuelta = self._obtener_distancia_dirigida(p_xy, u_xy, proveedor)
+        return min(d_ida, d_vuelta)
 
-        for z in zonas_info:
-            if z["peso_disponible"] < peso_ancla:
-                continue
-
-            cx, cy = z["coord_acceso"]
-            dist_picker = abs(px - cx) + abs(py - cy)
-            puntos_eval = [(cx, cy)] + [pt for pt in coords_ancla if pt != (cx, cy)]
-            costo_total = dist_picker + self.calcular_costo_mst_puntos(puntos_eval)
-
-            if costo_total < menor_costo:
-                menor_costo = costo_total
-                mejor_zona = z
-
-        return mejor_zona
-
-    def _hay_stock_para_pedido(
+    def _es_pedido_internamente_alcanzable(
         self,
-        pedido: Order,
-        catalogo: CatalogManager,
-        stock_comprometido: Dict[str, int],
+        pedido: Pedido,
+        tabla_productos: Any,
+        proveedor: Optional[Any] = None,
     ) -> bool:
-        for item in pedido.items:
-            prod = catalogo.buscar_producto_O1(item.producto_id)
-            if prod is None:
-                return False
-            if (
-                prod.cantidad_disponible - stock_comprometido.get(item.producto_id, 0)
-            ) < item.cantidad:
+        fuente = proveedor if proveedor is not None else self.proveedor_distancias
+        if fuente is None:
+            return True
+
+        coords_xy = list(
+            {(x, y) for x, y, _ in pedido.obtener_ubicaciones_xyz(tabla_productos)}
+        )
+        if len(coords_xy) <= 1:
+            return True
+
+        ancla = coords_xy[0]
+        for otra in coords_xy[1:]:
+            if self._distancia_enlace_digrafo(otra, ancla, fuente) == float("inf"):
                 return False
         return True
 
-    def _comprometer_stock_pedido(
+    # =========================================================================
+    # 1. VALIDACIÓN DE ENTRADA Y CONTROL DE STOCK VIRTUAL (SIN DESCONTAR STOCK)
+    # =========================================================================
+    def _tiene_stock_suficiente_sin_modificar(
         self,
-        pedido: Order,
-        catalogo: CatalogManager,
+        pedido: Pedido,
+        tabla_productos: Any,
         stock_comprometido: Dict[str, int],
-        descontar_en_tabla_hash: bool,
+    ) -> bool:
+        """
+        Comprueba en O(1) por ítem que la cantidad disponible en el catálogo alcance
+        para cubrir el pedido considerando lo reservado virtualmente por otras Waves,
+        PERO SIN MODIFICAR producto.cantidad_disponible.
+        """
+        if tabla_productos is None:
+            return True
+
+        acumulado_pedido: Dict[str, int] = {}
+        for item in pedido.items:
+            acumulado_pedido[item.producto_id] = (
+                acumulado_pedido.get(item.producto_id, 0) + item.cantidad
+            )
+
+        for prod_id, cant_solicitada in acumulado_pedido.items():
+            prod = Pedido._buscar_producto(tabla_productos, prod_id)
+            if prod is None:
+                return False
+            reservado = stock_comprometido.get(prod_id, 0)
+            if (prod.cantidad_disponible - reservado) < cant_solicitada:
+                return False
+        return True
+
+    def _registrar_compromiso_virtual(
+        self, pedido: Pedido, stock_comprometido: Dict[str, int]
     ) -> None:
+        """Anota en memoria local del WaveManager las unidades comprometidas sin tocar Producto."""
         for item in pedido.items:
             stock_comprometido[item.producto_id] = (
                 stock_comprometido.get(item.producto_id, 0) + item.cantidad
             )
-            if descontar_en_tabla_hash:
-                catalogo.descontar_stock(item.producto_id, item.cantidad)
 
-    def validar_viabilidad_inicial_pedidos(
+    def validar_pedidos_entrada(
         self,
-        pedidos: List[Order],
-        lista_pickers: List[Picker],
-        zonas_info: List[Dict[str, Any]],
-        max_productos_wave: float,
-        catalogo: CatalogManager,
-        marcar_estado_irrealizable: bool = False,
-    ) -> List[Order]:
-        max_cap_picker = max(p.capacidad_carga_kg for p in lista_pickers)
-        max_cap_zona = max(z["peso_max_kg"] for z in zonas_info)
-        pedidos_viables: List[Order] = []
+        pedidos: List[Pedido],
+        tabla_productos: Any = None,
+        catalogo: Any = None,
+    ) -> List[Pedido]:
+        pedidos_validos: List[Pedido] = []
 
-        for ped in pedidos:
-            peso_ped = ped.obtener_peso_total(catalogo)
-            unidades_ped = ped.obtener_cantidad_unidades()
-
-            if peso_ped > max_cap_picker:
-                msg = (
-                    f"Error: El pedido {ped.id_pedido} ({peso_ped:.2f} kg) excede el límite "
-                    f"de carga física máxima de los pickers ({max_cap_picker:.2f} kg)."
-                )
-                self.alertas_peso.append(msg)
-                self.pedidos_irrealizables.append(ped)
-                if marcar_estado_irrealizable:
-                    catalogo.actualizar_estado_pedido_O1(
-                        ped.id_pedido, EstadoPedido.IRREALIZABLE
-                    )
+        for pedido in pedidos:
+            if pedido.estado != EstadoPedido.PENDIENTE:
                 continue
 
-            if peso_ped > max_cap_zona:
-                msg = (
-                    f"Error: El pedido {ped.id_pedido} ({peso_ped:.2f} kg) excede la capacidad "
-                    f"máxima de cualquier zona de despacho ({max_cap_zona:.2f} kg)."
+            cant_productos = pedido.obtener_cantidad_productos()
+            if cant_productos <= 0 or cant_productos > self.wave_max_productos:
+                mensaje_error = (
+                    f"Error de Caso Borde: El pedido '{pedido.id_pedido}' solicita "
+                    f"{cant_productos} productos, fuera del rango permitido "
+                    f"(1..{self.wave_max_productos})."
                 )
-                self.alertas_peso.append(msg)
-                self.pedidos_irrealizables.append(ped)
-                if marcar_estado_irrealizable:
-                    catalogo.actualizar_estado_pedido_O1(
-                        ped.id_pedido, EstadoPedido.IRREALIZABLE
-                    )
+                self._marcar_pedido_irrealizable(pedido, mensaje_error, catalogo)
                 continue
 
-            if unidades_ped > max_productos_wave:
-                msg = (
-                    f"Error: El pedido {ped.id_pedido} ({unidades_ped} unid.) excede el límite "
-                    f"máximo de productos por wave ({max_productos_wave} unid.)."
-                )
-                self.alertas_peso.append(msg)
-                self.pedidos_irrealizables.append(ped)
-                if marcar_estado_irrealizable:
-                    catalogo.actualizar_estado_pedido_O1(
-                        ped.id_pedido, EstadoPedido.IRREALIZABLE
+            if tabla_productos is not None:
+                ubicaciones = pedido.obtener_ubicaciones_xyz(tabla_productos)
+                if not ubicaciones:
+                    mensaje_error = (
+                        f"Error de Datos: El pedido '{pedido.id_pedido}' no tiene "
+                        f"ubicaciones válidas en el catálogo."
                     )
-                continue
+                    self._marcar_pedido_irrealizable(pedido, mensaje_error, catalogo)
+                    continue
 
-            pedidos_viables.append(ped)
+                if not self._tiene_stock_suficiente_sin_modificar(
+                    pedido, tabla_productos, {}
+                ):
+                    mensaje_error = (
+                        f"Error de Stock: El pedido '{pedido.id_pedido}' solicita "
+                        f"más unidades que el stock total inicial del Warehouse."
+                    )
+                    self._marcar_pedido_irrealizable(pedido, mensaje_error, catalogo)
+                    continue
 
-        return pedidos_viables
+            pedidos_validos.append(pedido)
 
+        return pedidos_validos
+
+    def _marcar_pedido_irrealizable(
+        self, pedido: Pedido, mensaje_error: str, catalogo: Any = None
+    ) -> None:
+        self.errores_validacion.append(mensaje_error)
+        self.pedidos_descartados.append(pedido)
+        pedido.estado = EstadoPedido.IRREALIZABLE
+
+        if catalogo is not None and hasattr(catalogo, "actualizar_estado_pedido_O1"):
+            catalogo.actualizar_estado_pedido_O1(
+                pedido.id_pedido, EstadoPedido.IRREALIZABLE
+            )
+
+    # =========================================================================
+    # 2. ALGORITMO DE CERCANÍA: COSTO MARGINAL PROMEDIO EN DÍGRAFO
+    # =========================================================================
+    def calcular_costo_marginal_promedio(
+        self,
+        wave: Wave,
+        pedido_candidato: Pedido,
+        tabla_productos: Any,
+        proveedor_distancias: Optional[Any] = None,
+    ) -> float:
+        u_cand: Set[Tuple[int, int, int]] = pedido_candidato.obtener_ubicaciones_xyz(
+            tabla_productos
+        )
+        if not u_cand:
+            return float("inf")
+
+        u_wave_xyz: Set[Tuple[int, int, int]] = wave.ubicaciones_xyz
+        u_wave_xy: Set[CoordXY] = wave.ubicaciones_xy
+
+        if not u_wave_xy:
+            return 0.0
+
+        suma_distancias_minimas = 0.0
+
+        for px, py, pz in u_cand:
+            if (px, py, pz) in u_wave_xyz:
+                dist_p = 0.0
+            else:
+                if (px, py) in u_wave_xy:
+                    dist_xy_min = 0.0
+                else:
+                    dist_xy_min = min(
+                        self._distancia_enlace_digrafo(
+                            (px, py), (ux, uy), proveedor_distancias
+                        )
+                        for ux, uy in u_wave_xy
+                    )
+
+                if dist_xy_min == float("inf"):
+                    return float("inf")
+
+                costo_z_unico = float(pz) if self.incluir_altura_z_unica else 0.0
+                dist_p = dist_xy_min + costo_z_unico
+
+            suma_distancias_minimas += dist_p
+
+        score = suma_distancias_minimas / len(u_cand)
+        return round(score, 6)
+
+    # =========================================================================
+    # 3. FLUJO PRINCIPAL DE CREACIÓN DE WAVES (SIN MODIFICAR STOCK REAL)
+    # =========================================================================
     def generar_waves(
         self,
-        catalogo: CatalogManager,
-        pickers: Optional[List[Picker]] = None,
-        descontar_stock_inmediato: bool = False,
-        prioridad_minima: int = 1,
-        ids_pickers_activos: Optional[List[str]] = None,
-        ids_zonas_activas: Optional[List[str]] = None,
-        marcar_irrealizables_en_catalogo: bool = False,
+        pedidos: Optional[List[Pedido]] = None,
+        tabla_productos: Any = None,
+        catalogo: Any = None,
+        proveedor_distancias: Optional[Any] = None,
     ) -> List[Wave]:
-        self.alertas_peso.clear()
-        self.pedidos_irrealizables.clear()
-        self.pedidos_remanentes_capacidad.clear()
+        self.errores_validacion.clear()
+        self.pedidos_descartados.clear()
+        self.traza_armado.clear()
 
-        lista_pickers = pickers if pickers is not None else catalogo.pickers
-        if ids_pickers_activos:
-            filtro_pk = set(ids_pickers_activos)
-            lista_pickers = [p for p in lista_pickers if p.id_picker in filtro_pk]
+        if (
+            pedidos is None
+            and catalogo is not None
+            and hasattr(catalogo, "obtener_todos_los_pedidos")
+        ):
+            pedidos = catalogo.obtener_todos_los_pedidos()
+        if tabla_productos is None and catalogo is not None:
+            tabla_productos = catalogo
+        if (
+            proveedor_distancias is None
+            and catalogo is not None
+            and getattr(catalogo, "digrafo", None) is not None
+        ):
+            proveedor_distancias = catalogo.digrafo
 
-        if not lista_pickers:
+        if not pedidos:
             return []
 
-        max_pedidos = (
-            self.wave_max_pedidos_override or catalogo.wave_max_pedidos or float("inf")
+        pedidos_validos = self.validar_pedidos_entrada(
+            pedidos, tabla_productos=tabla_productos, catalogo=catalogo
         )
-        max_productos = (
-            self.wave_max_productos_override
-            or catalogo.wave_max_productos
-            or float("inf")
+        if not pedidos_validos:
+            return []
+
+        fuente_dist = self._preparar_fuente_distancias_O1(
+            pedidos_validos, tabla_productos, proveedor_distancias
         )
 
-        zonas_info = self._obtener_zonas_despacho_disponibles(
-            catalogo, ids_zonas_activas
-        )
-        stock_comprometido: Dict[str, int] = {}
-
-        # Paso 1: Pre-filtro de Imposibilidad
-        pedidos_pendientes = catalogo.obtener_pedidos_pendientes(
-            prioridad_minima=prioridad_minima
-        )
-        pedidos_viables = self.validar_viabilidad_inicial_pedidos(
-            pedidos=pedidos_pendientes,
-            lista_pickers=lista_pickers,
-            zonas_info=zonas_info,
-            max_productos_wave=max_productos,
-            catalogo=catalogo,
-            marcar_estado_irrealizable=marcar_irrealizables_en_catalogo,
-        )
-
-        self.cola_prioridad.construir_monticulo(pedidos_viables)
+        self.cola_prioridad.construir_monticulo(pedidos_validos)
 
         waves_generadas: List[Wave] = []
+        stock_comprometido_virtual: Dict[str, int] = {}
         contador_wave = 1
-        idx_picker = 0
 
-        # Paso 2: Selección del Pedido Ancla
         while not self.cola_prioridad.esta_vacio():
-            pedido_ancla = self.cola_prioridad.extraer_maximo()
-            if pedido_ancla is None:
+            pedido_raiz = self.cola_prioridad.extraer_maximo()
+            if pedido_raiz is None:
                 break
 
-            if not self._hay_stock_para_pedido(
-                pedido_ancla, catalogo, stock_comprometido
+            if not self._es_pedido_internamente_alcanzable(
+                pedido_raiz, tabla_productos, fuente_dist
             ):
-                self.pedidos_remanentes_capacidad.append(pedido_ancla)
-                self.alertas_peso.append(
-                    f"Aviso: Pedido {pedido_ancla.id_pedido} permanece PENDIENTE por stock insuficiente."
+                self._marcar_pedido_irrealizable(
+                    pedido_raiz,
+                    f"Error de Topología: El pedido '{pedido_raiz.id_pedido}' "
+                    f"contiene ubicaciones inalcanzables en el dígrafo.",
+                    catalogo,
                 )
                 continue
 
-            peso_ancla = pedido_ancla.obtener_peso_total(catalogo)
-
-            picker_actual: Optional[Picker] = None
-            for offset in range(len(lista_pickers)):
-                pk_candidato = lista_pickers[(idx_picker + offset) % len(lista_pickers)]
-                if pk_candidato.capacidad_carga_kg >= peso_ancla:
-                    picker_actual = pk_candidato
-                    idx_picker = idx_picker + offset
-                    break
-
-            if picker_actual is None:
-                self.pedidos_remanentes_capacidad.append(pedido_ancla)
-                continue
-
-            zona_elegida = self._seleccionar_mejor_zona(
-                zonas_info, picker_actual, pedido_ancla, catalogo
-            )
-            if zona_elegida is None:
-                self.pedidos_remanentes_capacidad.append(pedido_ancla)
-                self.alertas_peso.append(
-                    f"Aviso: Pedido {pedido_ancla.id_pedido} ({peso_ancla:.2f} kg) permanece PENDIENTE "
-                    f"por capacidad insuficiente en zonas de despacho."
+            if not self._tiene_stock_suficiente_sin_modificar(
+                pedido_raiz, tabla_productos, stock_comprometido_virtual
+            ):
+                self._marcar_pedido_irrealizable(
+                    pedido_raiz,
+                    f"Stock Insuficiente: El pedido '{pedido_raiz.id_pedido}' "
+                    f"excede el stock remanente tras las Waves anteriores.",
+                    catalogo,
                 )
                 continue
 
-            coord_despacho = zona_elegida["coord_acceso"]
-
+            id_wave_actual = f"{self.prefijo_id_wave}_{contador_wave:02d}"
             nueva_wave = Wave(
-                id_wave=f"{self.prefijo_id_wave}_{contador_wave:02d}",
+                id_wave=id_wave_actual,
                 estado=EstadoWave.PENDIENTE,
-                id_picker_asignado=picker_actual.id_picker,
-                id_zona_despacho=zona_elegida["id"],
-                wave_max_pedidos=max_pedidos,
-                wave_max_productos=max_productos,
+                wave_max_pedidos=self.wave_max_pedidos,
+                wave_max_productos=self.wave_max_productos,
             )
 
-            nueva_wave.agregar_pedido(
-                pedido_ancla, picker_actual.capacidad_carga_kg, catalogo
-            )
-            zona_elegida["peso_disponible"] -= peso_ancla
-            self._comprometer_stock_pedido(
-                pedido_ancla, catalogo, stock_comprometido, descontar_stock_inmediato
-            )
+            nueva_wave.agregar_pedido(pedido_raiz, tabla_productos, catalogo=catalogo)
+            self._registrar_compromiso_virtual(pedido_raiz, stock_comprometido_virtual)
 
-            coords_wave_lista: List[Tuple[int, int]] = [coord_despacho]
-            coords_wave_set = {coord_despacho}
-            for pt in pedido_ancla.obtener_coordenadas_unicas(catalogo):
-                if pt not in coords_wave_set:
-                    coords_wave_set.add(pt)
-                    coords_wave_lista.append(pt)
+            self.traza_armado[id_wave_actual] = [
+                {
+                    "rol": "RAIZ_MAX_HEAP",
+                    "id_pedido": pedido_raiz.id_pedido,
+                    "prioridad": pedido_raiz.prioridad,
+                    "unidades": pedido_raiz.obtener_cantidad_productos(),
+                    "score_marginal": 0.0,
+                    "candidatos_evaluados": 1,
+                }
+            ]
 
-            candidatos_restantes: List[Order] = []
-            while not self.cola_prioridad.esta_vacio():
-                cand = self.cola_prioridad.extraer_maximo()
-                if cand is not None:
-                    candidatos_restantes.append(cand)
-
-            # Paso 3: Agrupamiento Voraz (Greedy)
-            while len(nueva_wave.pedidos) < max_pedidos and candidatos_restantes:
-                costo_mst_base = self.calcular_costo_mst_puntos(coords_wave_lista)
-                mejor_candidato: Optional[Order] = None
-                menor_delta_mst = float("inf")
-
-                for cand in candidatos_restantes:
-                    if not self._hay_stock_para_pedido(
-                        cand, catalogo, stock_comprometido
-                    ):
-                        continue
-
-                    if not nueva_wave.puede_agregar_pedido(
-                        cand,
-                        picker_actual.capacidad_carga_kg,
-                        catalogo,
-                        zona_elegida["peso_disponible"],
-                    ):
-                        continue
-
-                    nuevos_pts = [
-                        pt
-                        for pt in cand.obtener_coordenadas_unicas(catalogo)
-                        if pt not in coords_wave_set
-                    ]
-                    if not nuevos_pts:
-                        delta_mst = 0.0
-                    else:
-                        costo_mst_nuevo = self.calcular_costo_mst_puntos(
-                            coords_wave_lista + nuevos_pts
-                        )
-                        delta_mst = costo_mst_nuevo - costo_mst_base
-
-                    if delta_mst < menor_delta_mst:
-                        menor_delta_mst = delta_mst
-                        mejor_candidato = cand
-                        if delta_mst == 0.0:
-                            break
-
-                if mejor_candidato is not None:
-                    nueva_wave.agregar_pedido(
-                        mejor_candidato, picker_actual.capacidad_carga_kg, catalogo
-                    )
-                    zona_elegida[
-                        "peso_disponible"
-                    ] -= mejor_candidato.obtener_peso_total(catalogo)
-                    self._comprometer_stock_pedido(
-                        mejor_candidato,
-                        catalogo,
-                        stock_comprometido,
-                        descontar_stock_inmediato,
-                    )
-                    for pt in mejor_candidato.obtener_coordenadas_unicas(catalogo):
-                        if pt not in coords_wave_set:
-                            coords_wave_set.add(pt)
-                            coords_wave_lista.append(pt)
-                    candidatos_restantes.remove(mejor_candidato)
-                else:
+            while True:
+                if len(nueva_wave.pedidos) >= self.wave_max_pedidos:
                     break
 
-            # Paso 4: Cierre de la Ola y Re-inserción de Remanentes
-            for ped_restante in candidatos_restantes:
-                self.cola_prioridad.insertar(ped_restante)
+                capacidad_restante = (
+                    self.wave_max_productos - nueva_wave.unidades_totales
+                )
+                if capacidad_restante <= 0:
+                    break
+
+                candidatos_factibles = self.cola_prioridad.obtener_candidatos_factibles(
+                    capacidad_restante
+                )
+                if not candidatos_factibles:
+                    break
+
+                mejor_candidato: Optional[Pedido] = None
+                mejor_tupla_criterio: Optional[Tuple[float, int, str]] = None
+                mejor_score: float = float("inf")
+                evaluados_validos = 0
+
+                for cand in candidatos_factibles:
+                    if not self._tiene_stock_suficiente_sin_modificar(
+                        cand, tabla_productos, stock_comprometido_virtual
+                    ):
+                        continue
+
+                    score = self.calcular_costo_marginal_promedio(
+                        nueva_wave, cand, tabla_productos, fuente_dist
+                    )
+                    if score == float("inf"):
+                        continue
+
+                    evaluados_validos += 1
+                    criterio_actual = (score, -cand.prioridad, cand.id_pedido)
+                    if (
+                        mejor_tupla_criterio is None
+                        or criterio_actual < mejor_tupla_criterio
+                    ):
+                        mejor_tupla_criterio = criterio_actual
+                        mejor_candidato = cand
+                        mejor_score = score
+
+                if mejor_candidato is None:
+                    break
+
+                nueva_wave.agregar_pedido(
+                    mejor_candidato, tabla_productos, catalogo=catalogo
+                )
+                self._registrar_compromiso_virtual(
+                    mejor_candidato, stock_comprometido_virtual
+                )
+                nueva_wave.costo_mst_total = round(
+                    nueva_wave.costo_mst_total + mejor_score, 4
+                )
+                self.cola_prioridad.eliminar_pedido(mejor_candidato.id_pedido)
+
+                self.traza_armado[id_wave_actual].append(
+                    {
+                        "rol": "CERCANIA_DIGRAFO",
+                        "id_pedido": mejor_candidato.id_pedido,
+                        "prioridad": mejor_candidato.prioridad,
+                        "unidades": mejor_candidato.obtener_cantidad_productos(),
+                        "score_marginal": mejor_score,
+                        "candidatos_evaluados": evaluados_validos,
+                    }
+                )
 
             waves_generadas.append(nueva_wave)
             contador_wave += 1
-            idx_picker += 1
 
         return waves_generadas

@@ -1,303 +1,344 @@
+import os
 import time
 import argparse
 from dataclasses import dataclass
-from typing import Optional, List
+from typing import Optional, List, Dict
 
 from BackEnd.models.catalog_manager import CatalogManager
 from BackEnd.controllers.wave_manager import WaveManager
-from BackEnd.enums.enums import EstadoPedido, EstadoWave
+from BackEnd.controllers.path_finding import Pathfinding
 
 
 # =============================================================================
-# PANEL CENTRAL DE PARÁMETROS DE EJECUCIÓN (MODIFICAR ÚNICAMENTE AQUÍ)
+# PANEL CENTRAL DE PARÁMETROS DE EJECUCIÓN
 # =============================================================================
 @dataclass
 class ConfiguracionSimulacion:
-    # 1. Directorio y Archivos JSON de Entrada / Salida
-    directorio_datos: Optional[str] = None  # None = usa "BackEnd/data" automáticamente
+    # 1. Selección del archivo JSON de entrada en BackEnd/data/:
+    #    - Si 'preguntar_archivo_en_consola = True', te deja elegir entre
+    #      escenario_basico.json y escenario_grande.json al ejecutar.
+    #    - Si es False, usa directamente 'archivo_entrada'.
+    preguntar_archivo_en_consola: bool = True
     archivo_entrada: str = (
-        "escenario_basico.json"  # Ej: "escenario_basico.json", "escenario_grande.json", "estado_guardado.json"
+        "escenario_basico.json"  # "escenario_basico.json" o "escenario_grande.json"
     )
-    archivo_salida: str = (
-        "estado_guardado.json"  # Archivo donde se guarda la Tabla Hash decodificada
-    )
+    archivo_salida: str = "estado_guardado.json"
 
-    # 2. Parámetros del Gestor de Waves (Cercanía Espacial MST y Filtros)
-    metodo_mst: str = "KRUSKAL"  # Opciones: "KRUSKAL" (usa disjoint_set.py) o "PRIM"
-    prefijo_id_wave: str = "WAVE"  # Prefijo para nombrar las olas (ej. WAVE_01)
-    prioridad_minima_pedidos: int = (
-        1  # Filtra pedidos con prioridad >= a este valor (1 a 5)
-    )
+    # 2. Parámetros de Capacidad de las Waves (None = usa los del bloque "configuracion" del JSON)
+    wave_max_pedidos: Optional[int] = None
+    wave_max_productos: Optional[int] = None
+    prefijo_id_wave: str = "WAVE"
+    incluir_altura_z_unica: bool = True
 
-    # 3. Parámetros de Capacidad de las Waves (None = usa los del JSON cargado)
-    wave_max_pedidos: Optional[int] = None  # Ej: None, 2, 4, 6
-    wave_max_productos: Optional[int] = None  # Ej: None, 10, 20, 30
+    # 3. Orientación del eje Y para el Dígrafo (en ambos JSON del profe: Norte es y + 1 -> True)
+    norte_aumenta_y: bool = True
 
-    # 4. Parámetros Físicos de Pickers y Zonas de Despacho (None = usa los del JSON)
-    capacidad_carga_picker_kg: Optional[float] = (
-        None  # Sobrescribe capacidad_carga_kg de los pickers
-    )
-    peso_max_zona_despacho_kg: Optional[float] = (
-        None  # Sobrescribe peso_max_kg de las zonas de despacho
-    )
-    ids_pickers_activos: Optional[List[str]] = (
-        None  # Ej: ["PK_01"] o None para usar todos los del JSON
-    )
-    ids_zonas_activas: Optional[List[str]] = (
-        None  # Ej: ["ZONA_A"] o None para usar todas las de salida
-    )
+    # 4. Parámetros de la Tabla Hash Universal en CatalogManager
+    tamano_tabla_hash: int = 1009
+    primo_p_hash: int = 999983
+    semilla_hash: Optional[int] = 42
+    directorio_datos: Optional[str] = None
 
-    # 5. Parámetros de la Tabla Hash Universal (CatalogManager)
-    tamano_tabla_hash: int = 1009  # Cantidad de listas enlazadas (m)
-    primo_p_hash: int = 999983  # Número primo p > m para Hashing Universal
-    semilla_hash: Optional[int] = (
-        42  # Semilla para coeficientes a y b (None = aleatoria)
-    )
-
-    # 6. Control de Simulación y Descuento de Stock
-    descontar_stock_al_crear_wave: bool = (
-        False  # True = descuenta en Tabla Hash al armar la Wave
-    )
-    modo_ejecucion_waves: str = (
-        "SOLO_PRIMERA"  # Opciones: "TODAS", "SOLO_PRIMERA", "NINGUNA"
-    )
-    cantidad_waves_a_ejecutar: Optional[int] = (
-        None  # Si defines un número (ej. 2), ejecuta exactamente 2 waves
-    )
-    mostrar_detalle_productos_stock: bool = (
-        True  # Muestra tabla de cambios de stock en consola
-    )
+    # 5. Visualización de trazas y pruebas de ruteo con el módulo de Leonel
+    mostrar_traza_cercania: bool = True
+    mostrar_comparativa_rutas_leonel: bool = True
+    verificar_invariancia_stock: bool = True
 
 
-# =============================================================================
-# CONFIGURACIÓN ACTIVA (CAMBIA LOS VALORES AQUÍ PARA TUS PRUEBAS)
-# =============================================================================
 PARAMETROS_EJECUCION = ConfiguracionSimulacion(
+    preguntar_archivo_en_consola=True,
     archivo_entrada="escenario_basico.json",
     archivo_salida="estado_guardado.json",
-    metodo_mst="KRUSKAL",
-    prefijo_id_wave="WAVE",
-    prioridad_minima_pedidos=1,
     wave_max_pedidos=None,
     wave_max_productos=None,
-    capacidad_carga_picker_kg=None,
-    peso_max_zona_despacho_kg=None,
-    ids_pickers_activos=None,
-    ids_zonas_activas=None,
+    prefijo_id_wave="WAVE",
+    incluir_altura_z_unica=True,
+    norte_aumenta_y=True,
     tamano_tabla_hash=1009,
     primo_p_hash=999983,
     semilla_hash=42,
-    descontar_stock_al_crear_wave=False,
-    modo_ejecucion_waves="SOLO_PRIMERA",
-    cantidad_waves_a_ejecutar=None,
-    mostrar_detalle_productos_stock=True,
+    mostrar_traza_cercania=True,
+    mostrar_comparativa_rutas_leonel=True,
+    verificar_invariancia_stock=True,
 )
 
 
-# =============================================================================
-# MOTOR DE EJECUCIÓN PARAMETRIZADO (100% INDEPENDIENTE DEL GRAFO)
-# =============================================================================
-def aplicar_parametros_personalizados(
-    catalogo: CatalogManager, config: ConfiguracionSimulacion
-) -> None:
-    if config.capacidad_carga_picker_kg is not None:
-        for picker in catalogo.pickers:
-            picker.capacidad_carga_kg = float(config.capacidad_carga_picker_kg)
+def elegir_escenario_interactivo(
+    catalogo: CatalogManager, archivo_por_defecto: str
+) -> str:
+    escenarios_base = ["escenario_basico.json", "escenario_grande.json"]
+    disponibles: List[str] = []
 
-    if config.peso_max_zona_despacho_kg is not None:
-        for zd in catalogo.warehouse_raw.get("zonas_despacho", []):
-            zd["peso_max_kg"] = float(config.peso_max_zona_despacho_kg)
+    for nombre in escenarios_base:
+        ruta = catalogo.resolver_ruta_archivo(nombre)
+        if os.path.isfile(ruta):
+            disponibles.append(nombre)
+
+    if os.path.isdir(catalogo.ruta_data):
+        for arch in sorted(os.listdir(catalogo.ruta_data)):
+            if arch.lower().endswith(".json") and arch not in disponibles:
+                disponibles.append(arch)
+
+    if not disponibles:
+        return archivo_por_defecto
+
+    print("=" * 85)
+    print(" SELECCIÓN DE ESCENARIO BASE DEL WAREHOUSE (BackEnd/data/)")
+    print("=" * 85)
+    for idx, nombre in enumerate(disponibles, start=1):
+        marca = " (por defecto)" if nombre == archivo_por_defecto else ""
+        print(f"  [{idx}] {nombre}{marca}")
+    print("-" * 85)
+
+    try:
+        respuesta = input(
+            f"Elija el número de escenario [1-{len(disponibles)}] "
+            f"o presione Enter para '{archivo_por_defecto}': "
+        ).strip()
+    except EOFError:
+        return archivo_por_defecto
+
+    if not respuesta:
+        return archivo_por_defecto
+    if respuesta.isdigit() and 1 <= int(respuesta) <= len(disponibles):
+        return disponibles[int(respuesta) - 1]
+    return respuesta
 
 
-def ejecutar_simulacion(config: ConfiguracionSimulacion) -> None:
-    t_inicio_total = time.perf_counter()
+def ejecutar_prueba_armado_waves(config: ConfiguracionSimulacion) -> None:
+    Pathfinding.NORTE_AUMENTA_Y = config.norte_aumenta_y
 
-    # 1. Inicializar CatalogManager y cargar el JSON en las Tablas Hash O(1)
+    # 1. Inicializar CatalogManager y cargar el JSON elegido
     catalogo = CatalogManager(
         tamano_tabla=config.tamano_tabla_hash,
         primo_p=config.primo_p_hash,
         semilla_hash=config.semilla_hash,
         directorio_datos=config.directorio_datos,
     )
-    ruta_entrada = catalogo.cargar_escenario_json(config.archivo_entrada)
 
-    aplicar_parametros_personalizados(catalogo, config)
-
-    max_ped_efectivo = config.wave_max_pedidos or catalogo.wave_max_pedidos
-    max_prod_efectivo = config.wave_max_productos or catalogo.wave_max_productos
-    zonas_json = [z["id"] for z in catalogo.warehouse_raw.get("zonas_despacho", [])]
-
-    print("=" * 75)
-    print("1. CONFIGURACIÓN ACTIVA Y CARGA EN TABLAS HASH O(1)")
-    print("=" * 75)
-    print(f"  * Archivo de Entrada          : {ruta_entrada}")
-    print(f"  * Archivo de Salida           : {config.archivo_salida}")
-    print(f"  * Método Gestor de Waves (MST): {config.metodo_mst.upper()}")
-    print(
-        f"  * Límites por Wave            : máx {max_ped_efectivo} pedidos | máx {max_prod_efectivo} unidades"
-    )
-    print(f"  * Prioridad Mínima Pedidos    : >= {config.prioridad_minima_pedidos}")
-    print(f"  * Zonas Despacho (del JSON)   : {zonas_json}")
-    print(
-        f"  * Pickers en Escenario        : {[(p.id_picker, f'{p.capacidad_carga_kg}kg') for p in catalogo.pickers]}"
-    )
-    print(
-        f"  * Productos en Tabla Hash     : {catalogo.productos_hash.cantidad_elementos} (m={config.tamano_tabla_hash})"
-    )
-    print(
-        f"  * Pedidos en Tabla Hash       : {catalogo.pedidos_hash.cantidad_elementos} "
-        f"({len(catalogo.obtener_pedidos_pendientes(config.prioridad_minima_pedidos))} PENDIENTES elegibles)"
+    archivo_a_cargar = (
+        elegir_escenario_interactivo(catalogo, config.archivo_entrada)
+        if config.preguntar_archivo_en_consola
+        else config.archivo_entrada
     )
 
-    stock_inicial = {
+    t0 = time.perf_counter()
+    ruta_cargada = catalogo.cargar_escenario_json(
+        archivo_a_cargar, norte_aumenta_y=config.norte_aumenta_y
+    )
+    t_carga_ms = (time.perf_counter() - t0) * 1000.0
+
+    # Tomar snapshot del stock inicial ANTES de armar las Waves
+    stock_inicial: Dict[str, int] = {
         p.id_producto: p.cantidad_disponible
         for p in catalogo.obtener_todos_los_productos()
     }
 
-    # 2. Ejecutar el Gestor de Waves usando únicamente CatalogManager
-    t_inicio_waves = time.perf_counter()
+    max_pedidos = (
+        config.wave_max_pedidos
+        if config.wave_max_pedidos is not None
+        else catalogo.wave_max_pedidos
+    )
+    max_productos = (
+        config.wave_max_productos
+        if config.wave_max_productos is not None
+        else catalogo.wave_max_productos
+    )
+
+    print("\n" + "=" * 85)
+    print(" 1. RESUMEN DEL ESCENARIO CARGADO EN TABLAS HASH O(1) Y DÍGRAFO")
+    print("=" * 85)
+    print(f"  * Archivo de Entrada          : {ruta_cargada} ({t_carga_ms:.2f} ms)")
+    print(
+        f"  * Dimensiones del Warehouse   : {catalogo.digrafo.ancho_x} x {catalogo.digrafo.largo_y}"
+    )
+    print(
+        f"  * Nodos de Pasillo (Dígrafo)  : {len(catalogo.digrafo.lista_adyacencia)} celdas transitables"
+    )
+    print(
+        f"  * Celdas de Rack (Obstáculos) : {len(catalogo.digrafo.racks_ocupados)} celdas"
+    )
+    print(
+        f"  * Zonas de Despacho           : {list(catalogo.digrafo.zonas_despacho.keys())}"
+    )
+    print(
+        f"  * Pickers Disponibles         : "
+        f"{[(p.id_picker, p.posicion_actual, f'{p.capacidad_carga_kg}kg') for p in catalogo.pickers]}"
+    )
+    print(
+        f"  * Productos en Tabla Hash     : {catalogo.productos_hash.cantidad_elementos}"
+    )
+    print(
+        f"  * Pedidos en Tabla Hash       : {catalogo.pedidos_hash.cantidad_elementos}"
+    )
+    print(
+        f"  * Límites por Wave aplicados  : máx {max_pedidos} pedidos | máx {max_productos} unidades"
+    )
+
+    # 2. Precalcular matriz de distancias dirigidas usando el Pathfinding de Leonel
+    t_pre = time.perf_counter()
+    coords_productos = {
+        p.coordenadas_xy for p in catalogo.obtener_todos_los_productos()
+    }
+    matriz_distancias = Pathfinding.construir_matriz_distancias_productos(
+        coordenadas_productos_xy=coords_productos,
+        grafo=catalogo.digrafo,
+    )
+    t_pre_ms = (time.perf_counter() - t_pre) * 1000.0
+    print(
+        f"  * Matriz Dígrafo (Leonel)     : {len(matriz_distancias)} pares precalculados en {t_pre_ms:.2f} ms"
+    )
+
+    # 3. Ejecutar WaveManager (SIN modificar el stock de los productos)
+    t_wave = time.perf_counter()
     gestor_waves = WaveManager(
-        metodo_mst=config.metodo_mst,
+        wave_max_pedidos=max_pedidos,
+        wave_max_productos=max_productos,
         prefijo_id_wave=config.prefijo_id_wave,
-        wave_max_pedidos=config.wave_max_pedidos,
-        wave_max_productos=config.wave_max_productos,
+        incluir_altura_z_unica=config.incluir_altura_z_unica,
+        proveedor_distancias=matriz_distancias,
     )
 
     waves = gestor_waves.generar_waves(
         catalogo=catalogo,
-        descontar_stock_inmediato=config.descontar_stock_al_crear_wave,
-        prioridad_minima=config.prioridad_minima_pedidos,
-        ids_pickers_activos=config.ids_pickers_activos,
-        ids_zonas_activas=config.ids_zonas_activas,
+        proveedor_distancias=matriz_distancias,
     )
-    t_waves_ms = (time.perf_counter() - t_inicio_waves) * 1000.0
+    t_wave_ms = (time.perf_counter() - t_wave) * 1000.0
 
-    print("\n" + "=" * 75)
+    print("\n" + "=" * 85)
     print(
-        f"2. RESULTADO DEL ARMADO DE WAVES ({len(waves)} olas en {t_waves_ms:.3f} ms)"
+        f" 2. DESARROLLO PASO A PASO DE LA ESTRATEGIA DE WAVES "
+        f"({len(waves)} olas en {t_wave_ms:.3f} ms)"
     )
-    print("=" * 75)
+    print("=" * 85)
+
+    origen_picker = catalogo.pickers[0].posicion_actual if catalogo.pickers else (1, 3)
+
     for w in waves:
-        pedidos_info = [f"{p.id_pedido}(P:{p.prioridad})" for p in w.pedidos]
         print(
-            f"  -> {w.id_wave} | Picker: {w.id_picker_asignado} | Zona: {w.id_zona_despacho} | "
-            f"Peso: {w.peso_total_kg:6.2f} kg | Unid: {w.unidades_totales:2d} | Pedidos: {pedidos_info}"
+            f"\n-> {w.id_wave} | Estado: {w.estado.value} | "
+            f"Pedidos: {len(w.pedidos)}/{w.wave_max_pedidos} | "
+            f"Unidades: {w.unidades_totales}/{w.wave_max_productos} | "
+            f"Peso: {w.peso_total_kg:.2f} kg | "
+            f"Costo Marginal Total: {w.costo_mst_total:.4f}"
         )
 
-    if gestor_waves.alertas_peso:
-        print("\n  [Alertas de Restricciones Físicas y Capacidad]:")
-        for alerta in gestor_waves.alertas_peso:
-            print(f"    ! {alerta}")
-
-    # 3. Simular recolección y modificación de stock en O(1) en la Tabla Hash
-    modo = config.modo_ejecucion_waves.upper()
-    if config.cantidad_waves_a_ejecutar is not None:
-        waves_a_procesar = waves[: config.cantidad_waves_a_ejecutar]
-    elif modo == "TODAS":
-        waves_a_procesar = waves
-    elif modo == "SOLO_PRIMERA":
-        waves_a_procesar = waves[:1]
-    else:
-        waves_a_procesar = []
-
-    if waves_a_procesar:
-        print("\n" + "=" * 75)
-        print(
-            f"3. SIMULACIÓN DE RECOLECCIÓN Y DESCUENTO EN TABLA HASH ({len(waves_a_procesar)} waves)"
-        )
-        print("=" * 75)
-        for w in waves_a_procesar:
-            w.estado = EstadoWave.FINALIZADA
-            for pedido in w.pedidos:
-                if not config.descontar_stock_al_crear_wave:
-                    for item in pedido.items:
-                        catalogo.descontar_stock(item.producto_id, item.cantidad)
-                catalogo.actualizar_estado_pedido_O1(
-                    pedido.id_pedido, EstadoPedido.PREPARADO
+        if config.mostrar_traza_cercania:
+            pasos_wave = gestor_waves.traza_armado.get(w.id_wave, [])
+            for idx_paso, info in enumerate(pasos_wave, start=1):
+                ped_obj = catalogo.buscar_pedido_O1(info["id_pedido"])
+                ubics = (
+                    sorted(ped_obj.obtener_ubicaciones_xyz(catalogo)) if ped_obj else []
                 )
+                accesos_pasillo = [
+                    Pathfinding.obtener_celda_acceso_pasillo((x, y), catalogo.digrafo)
+                    for (x, y, _) in ubics
+                ]
+                if info["rol"] == "RAIZ_MAX_HEAP":
+                    print(
+                        f"   Paso {idx_paso} [Semilla Max-Heap] : {info['id_pedido']} "
+                        f"(Prioridad={info['prioridad']}, Unidades={info['unidades']}) "
+                        f"-> Racks(x,y,z)={ubics} | Acceso Pasillo={accesos_pasillo}"
+                    )
+                else:
+                    print(
+                        f"   Paso {idx_paso} [Average Linkage]  : {info['id_pedido']} "
+                        f"(Prioridad={info['prioridad']}, Unidades={info['unidades']}, "
+                        f"Score Marginal={info['score_marginal']:.4f}, "
+                        f"Candidatos factibles evaluados={info['candidatos_evaluados']}) "
+                        f"-> Racks(x,y,z)={ubics} | Acceso Pasillo={accesos_pasillo}"
+                    )
+
+        if config.mostrar_comparativa_rutas_leonel:
+            # En Estrategia A respetamos el orden de los pedidos de la Wave
+            destinos_orden_pedidos = []
+            for ped in w.pedidos:
+                for it in ped.items:
+                    prod = catalogo.buscar_producto_O1(it.producto_id)
+                    if prod is not None:
+                        destinos_orden_pedidos.append(prod.coordenadas_xy)
+
+            res_a = Pathfinding.calcular_estrategia_orden_pedidos(
+                catalogo.digrafo, origen_picker, destinos_orden_pedidos
+            )
+            res_b = Pathfinding.calcular_estrategia_cercania_multidestino(
+                catalogo.digrafo, origen_picker, list(w.ubicaciones_xy)
+            )
             print(
-                f"  * {w.id_wave} completada -> Pedidos {[p.id_pedido for p in w.pedidos]} marcados como PREPARADO."
+                f"   [Ruteo de Leonel desde Picker en {origen_picker}]: "
+                f"Estrategia A (Orden Pedidos) = {res_a.distancia_total} pasos ({res_a.tiempo_ejecucion_ms:.3f} ms) | "
+                f"Estrategia B (Greedy Multidestino) = {res_b.distancia_total} pasos ({res_b.tiempo_ejecucion_ms:.3f} ms)"
             )
 
-    if config.mostrar_detalle_productos_stock:
-        print("\n  [Cambios de Stock registrados en la Tabla Hash O(1)]:")
-        hubo_cambios = False
-        for prod in sorted(
-            catalogo.obtener_todos_los_productos(), key=lambda x: x.id_producto
-        ):
-            ant = stock_inicial[prod.id_producto]
-            act = prod.cantidad_disponible
-            if ant != act:
-                hubo_cambios = True
+    if gestor_waves.errores_validacion:
+        print("\n  [Avisos / Pedidos Descartados en Validación]:")
+        for err in gestor_waves.errores_validacion:
+            print(f"    ! {err}")
+
+    # 4. Verificar que el stock NO fue modificado durante el armado de las Waves
+    if config.verificar_invariancia_stock:
+        print("\n" + "=" * 85)
+        print(
+            " 3. VERIFICACIÓN DE INVARIANCIA DE STOCK (EL ARMADO DE WAVES NO DESCUENTA STOCK)"
+        )
+        print("=" * 85)
+        cambios_detectados = 0
+        for p in catalogo.obtener_todos_los_productos():
+            if p.cantidad_disponible != stock_inicial[p.id_producto]:
+                cambios_detectados += 1
                 print(
-                    f"    - {prod.id_producto} ({prod.nombre}): {ant} -> {act} unidades (-{ant - act})"
+                    f"  [!] Diferencia en {p.id_producto}: "
+                    f"antes={stock_inicial[p.id_producto]}, ahora={p.cantidad_disponible}"
                 )
-        if not hubo_cambios:
-            print("    - Sin descuentos de stock en esta ejecución.")
 
-    # 4. Decodificar las Tablas Hash y guardar en el archivo JSON de salida
-    ruta_salida = catalogo.guardar_estado_simulacion_json(
-        nombre_archivo_salida=config.archivo_salida
-    )
-    t_total_ms = (time.perf_counter() - t_inicio_total) * 1000.0
+        if cambios_detectados == 0:
+            print(
+                f"  [OK] Stock 100% intacto en los {len(stock_inicial)} productos de la Tabla Hash."
+            )
+            print(
+                "       Ninguna unidad fue descontada durante el armado de las Waves (solo se actualizaron"
+            )
+            print("       los estados de los pedidos de PENDIENTE -> EN_WAVE).")
 
-    print("\n" + "=" * 75)
-    print("4. PERSISTENCIA Y DECODIFICACIÓN DE TABLA HASH A JSON")
-    print("=" * 75)
-    print(f"  * Estado guardado en : {ruta_salida}")
-    print(f"  * Tiempo total       : {t_total_ms:.3f} ms")
-    print("=" * 75)
+    # 5. Guardar el estado actual (pedidos en EN_WAVE y stock intacto) en estado_guardado.json
+    ruta_salida = catalogo.guardar_estado_simulacion_json(config.archivo_salida)
+    print(f"\n  * Estado exportado en: {ruta_salida}")
 
 
-def leer_argumentos_consola(
-    config_base: ConfiguracionSimulacion,
-) -> ConfiguracionSimulacion:
+def parsear_cli() -> None:
     parser = argparse.ArgumentParser(
-        description="Ejecutor parametrizado de Tablas Hash y Wave Picking"
-    )
-    parser.add_argument("-i", "--input", type=str, help="Archivo JSON de entrada")
-    parser.add_argument("-o", "--output", type=str, help="Archivo JSON de salida")
-    parser.add_argument(
-        "-m", "--metodo", type=str, choices=["KRUSKAL", "PRIM"], help="Método MST"
-    )
-    parser.add_argument("--max-pedidos", type=int, help="Sobrescribir wave_max_pedidos")
-    parser.add_argument(
-        "--max-productos", type=int, help="Sobrescribir wave_max_productos"
+        description="Prueba de la estrategia de armado de Waves con escenario_basico.json y escenario_grande.json"
     )
     parser.add_argument(
-        "--prio-min", type=int, help="Prioridad mínima de pedidos (1..5)"
-    )
-    parser.add_argument(
-        "--cap-picker", type=float, help="Capacidad de carga del picker en kg"
-    )
-    parser.add_argument(
-        "--modo",
+        "-i",
+        "--input",
         type=str,
-        choices=["TODAS", "SOLO_PRIMERA", "NINGUNA"],
-        help="Waves a recolectar",
+        default=None,
+        help="Archivo JSON en BackEnd/data/ (ej. escenario_basico.json o escenario_grande.json)",
     )
-
+    parser.add_argument(
+        "--max-pedidos",
+        type=int,
+        default=None,
+        help="Sobrescribir wave_max_pedidos del JSON",
+    )
+    parser.add_argument(
+        "--max-productos",
+        type=int,
+        default=None,
+        help="Sobrescribir wave_max_productos del JSON",
+    )
     args = parser.parse_args()
-    if args.input:
-        config_base.archivo_entrada = args.input
-    if args.output:
-        config_base.archivo_salida = args.output
-    if args.metodo:
-        config_base.metodo_mst = args.metodo
-    if args.max_pedidos is not None:
-        config_base.wave_max_pedidos = args.max_pedidos
-    if args.max_productos is not None:
-        config_base.wave_max_productos = args.max_productos
-    if args.prio_min is not None:
-        config_base.prioridad_minima_pedidos = args.prio_min
-    if args.cap_picker is not None:
-        config_base.capacidad_carga_picker_kg = args.cap_picker
-    if args.modo:
-        config_base.modo_ejecucion_waves = args.modo
 
-    return config_base
+    if args.input is not None:
+        PARAMETROS_EJECUCION.archivo_entrada = args.input
+        PARAMETROS_EJECUCION.preguntar_archivo_en_consola = False
+    if args.max_pedidos is not None:
+        PARAMETROS_EJECUCION.wave_max_pedidos = args.max_pedidos
+    if args.max_productos is not None:
+        PARAMETROS_EJECUCION.wave_max_productos = args.max_productos
 
 
 if __name__ == "__main__":
-    config_final = leer_argumentos_consola(PARAMETROS_EJECUCION)
-    ejecutar_simulacion(config_final)
+    parsear_cli()
+    ejecutar_prueba_armado_waves(PARAMETROS_EJECUCION)

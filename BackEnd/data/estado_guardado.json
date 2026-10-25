@@ -166,7 +166,7 @@
         "y": 5,
         "z": 1
       },
-      "cantidad_disponible": 18,
+      "cantidad_disponible": 20,
       "peso_kg": 6.5
     },
     {
@@ -178,7 +178,7 @@
         "y": 5,
         "z": 2
       },
-      "cantidad_disponible": 14,
+      "cantidad_disponible": 15,
       "peso_kg": 1.2
     },
     {
@@ -190,7 +190,7 @@
         "y": 7,
         "z": 1
       },
-      "cantidad_disponible": 28,
+      "cantidad_disponible": 30,
       "peso_kg": 0.3
     },
     {
@@ -202,7 +202,7 @@
         "y": 6,
         "z": 1
       },
-      "cantidad_disponible": 9,
+      "cantidad_disponible": 10,
       "peso_kg": 2.1
     },
     {
@@ -214,7 +214,7 @@
         "y": 9,
         "z": 1
       },
-      "cantidad_disponible": 24,
+      "cantidad_disponible": 25,
       "peso_kg": 0.4
     },
     {
@@ -226,7 +226,7 @@
         "y": 8,
         "z": 1
       },
-      "cantidad_disponible": 7,
+      "cantidad_disponible": 8,
       "peso_kg": 9.8
     },
     {
@@ -250,7 +250,7 @@
         "y": 10,
         "z": 2
       },
-      "cantidad_disponible": 9,
+      "cantidad_disponible": 12,
       "peso_kg": 0.5
     }
   ],
@@ -258,7 +258,7 @@
     {
       "id": "PED_01",
       "prioridad": 5,
-      "estado": "PREPARADO",
+      "estado": "EN_WAVE",
       "items": [
         {
           "producto_id": "P001",
@@ -273,7 +273,7 @@
     {
       "id": "PED_02",
       "prioridad": 3,
-      "estado": "PREPARADO",
+      "estado": "EN_WAVE",
       "items": [
         {
           "producto_id": "P003",
@@ -288,7 +288,7 @@
     {
       "id": "PED_03",
       "prioridad": 4,
-      "estado": "PREPARADO",
+      "estado": "EN_WAVE",
       "items": [
         {
           "producto_id": "P004",
