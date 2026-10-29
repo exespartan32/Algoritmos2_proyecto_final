@@ -102,12 +102,9 @@ class TurnAndCollisionManager:
                 picker_cedente, prohibidas, grafo
             )
             if celda_escape is not None:
-                destino_final = picker_cedente.ruta_asignada[-1]
-                tramo_retorno, _ = Pathfinding.calcular_ruta_dijkstra(
-                    celda_escape, destino_final, grafo
-                )
-                if tramo_retorno:
-                    picker_cedente.ruta_asignada = [celda_escape] + tramo_retorno[1:]
+                nueva_ruta = Pathfinding.desviar_por(picker_cedente, celda_escape, grafo)
+                if nueva_ruta:
+                    picker_cedente.ruta_asignada = nueva_ruta
                     self.total_desvios_recalculados += 1
                     self.eventos_colision.append(
                         f"[Turno {paso_actual}] Head-on Deadlock evitado: {picker_cedente.id_picker} "
@@ -124,14 +121,9 @@ class TurnAndCollisionManager:
                 picker_prioritario, prohibidas_prio, grafo
             )
             if escape_prio is not None and picker_prioritario.ruta_asignada:
-                destino_final_prio = picker_prioritario.ruta_asignada[-1]
-                tramo_ret_prio, _ = Pathfinding.calcular_ruta_dijkstra(
-                    escape_prio, destino_final_prio, grafo
-                )
-                if tramo_ret_prio:
-                    picker_prioritario.ruta_asignada = [escape_prio] + tramo_ret_prio[
-                        1:
-                    ]
+                nueva_ruta = Pathfinding.desviar_por(picker_prioritario, escape_prio, grafo)
+                if nueva_ruta:
+                    picker_prioritario.ruta_asignada = nueva_ruta
                     self.total_desvios_recalculados += 1
                     return
 
