@@ -12,6 +12,7 @@ class RutaResultado:
         nodos_explorados: List[CoordXY],
         tiempo_ejecucion_ms: float,
         destinos_inalcanzables: Optional[List[CoordXY]] = None,
+        expansiones: int = 0,
     ) -> None:
         self.camino_completo = camino_completo
         self.nodos_explorados = nodos_explorados
@@ -19,6 +20,8 @@ class RutaResultado:
         self.aristas_recorridas = self.distancia_total
         self.tiempo_ejecucion_ms = tiempo_ejecucion_ms
         self.destinos_inalcanzables = destinos_inalcanzables or []
+        # Suma de nodos que sacó de la cola cada búsqueda (trabajo total).
+        self.expansiones = expansiones
 
 
 class Pathfinding:
@@ -110,6 +113,7 @@ class Pathfinding:
         tiempo_inicio = time.perf_counter()
         nodos_explorados_totales: Set[CoordXY] = set()
         destinos_inalcanzables: List[CoordXY] = []
+        expansiones = 0
 
         origen_pasillo = Pathfinding.obtener_celda_acceso_pasillo(
             origen, grafo, warehouse
@@ -138,6 +142,7 @@ class Pathfinding:
                 posicion_actual, destino, grafo
             )
             nodos_explorados_totales.update(explorados_tramo)
+            expansiones += len(explorados_tramo)
 
             if not ruta_tramo:
                 destinos_inalcanzables.append(destino_raw)
@@ -151,6 +156,7 @@ class Pathfinding:
                 posicion_actual, cierre_pasillo, grafo
             )
             nodos_explorados_totales.update(explorados_regreso)
+            expansiones += len(explorados_regreso)
             if ruta_regreso:
                 ruta_total.extend(ruta_regreso[1:])
             else:
@@ -162,6 +168,7 @@ class Pathfinding:
             list(nodos_explorados_totales),
             tiempo_ms,
             destinos_inalcanzables,
+            expansiones,
         )
 
     @staticmethod
@@ -175,6 +182,7 @@ class Pathfinding:
         tiempo_inicio = time.perf_counter()
         nodos_explorados_totales: Set[CoordXY] = set()
         destinos_inalcanzables: List[CoordXY] = []
+        expansiones = 0
 
         origen_pasillo = Pathfinding.obtener_celda_acceso_pasillo(
             origen, grafo, warehouse
@@ -203,6 +211,7 @@ class Pathfinding:
                 Pathfinding.calcular_ruta_greedy(posicion_actual, pendientes, grafo)
             )
             nodos_explorados_totales.update(explorados_tramo)
+            expansiones += len(explorados_tramo)
 
             if not destino_alcanzado or not ruta_tramo:
                 destinos_inalcanzables.extend(pendientes)
@@ -217,6 +226,7 @@ class Pathfinding:
                 posicion_actual, cierre_pasillo, grafo
             )
             nodos_explorados_totales.update(explorados_regreso)
+            expansiones += len(explorados_regreso)
             if ruta_regreso:
                 ruta_total.extend(ruta_regreso[1:])
             else:
@@ -228,6 +238,7 @@ class Pathfinding:
             list(nodos_explorados_totales),
             tiempo_ms,
             destinos_inalcanzables,
+            expansiones,
         )
 
     @staticmethod
