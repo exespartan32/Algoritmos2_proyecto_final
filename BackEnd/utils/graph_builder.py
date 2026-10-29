@@ -314,6 +314,11 @@ class GraphBuilder:
 
     @staticmethod
     def validar_grafo(wh: Warehouse, posiciones_pickers=None) -> List[str]:
+        """Valida que el mapa sea transitable con las CFC de Kosaraju.
+
+        No lanza excepciones: devuelve advertencias. Además deja como acceso
+        principal de cada celda de rack uno que esté en la red principal.
+        """
         advertencias: List[str] = []
         componentes = GraphBuilder.componentes_fuertemente_conexas(wh)
         principal = set(componentes[0]) if componentes else set()
@@ -325,7 +330,42 @@ class GraphBuilder:
 
         if len(componentes) > 1:
             fuera = [c for comp in componentes[1:] for c in comp]
+            xs = [c[0] for c in fuera]
+            ys = [c[1] for c in fuera]
             advertencias.append(
-                f"Hay {len(componentes)} componentes fuertemente conexas ({len(fuera)} celdas fuera de la red principal)."
+                f"Hay {len(componentes)} componentes fuertemente conexas: "
+                f"{len(fuera)} celdas de pasillo no pertenecen a la red principal "
+                f"(x={min(xs)}..{max(xs)}, y={min(ys)}..{max(ys)})."
             )
+
+        for prod in wh.catalogo_productos.values():
+            accesos = wh.accesos_rack_a_pasillo.get((prod.x, prod.y), [])
+            if not accesos:
+                advertencias.append(
+                    f"El producto {prod.id} en ({prod.x},{prod.y}) no tiene pasillo de acceso."
+                )
+            elif not any(a in principal for a in accesos):
+                advertencias.append(
+                    f"El producto {prod.id} no tiene acceso en la red principal."
+                )
+
+        for zona_id in wh.zonas_despacho:
+            accesos = wh.accesos_zona_a_pasillo.get(zona_id, [])
+            if not accesos:
+                advertencias.append(f"La zona {zona_id} no tiene pasillos adyacentes.")
+            elif not any(a in principal for a in accesos):
+                advertencias.append(
+                    f"La zona {zona_id} no tiene pasillo en la red principal."
+                )
+
+        for picker_id, pos in posiciones_pickers or []:
+            pos = tuple(pos)
+            if pos not in wh.grafo_pasillos.nodos:
+                advertencias.append(
+                    f"Picker {picker_id} arranca en {pos}, que no es pasillo."
+                )
+            elif pos not in principal:
+                advertencias.append(
+                    f"Picker {picker_id} arranca fuera de la red principal."
+                )
         return advertencias
