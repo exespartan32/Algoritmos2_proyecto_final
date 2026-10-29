@@ -19,6 +19,7 @@ class TurnAndCollisionManager:
         self.reservas_celdas: Dict[Tuple[int, int, int], str] = {}
         self.pathfinding = Pathfinding()
         self.max_turnos_bloqueo_recalculo = max_turnos_bloqueo_recalculo
+        self.turnos_para_ceder = max_turnos_bloqueo_recalculo + 1
         self.eventos_colision: List[str] = []
         self.total_esperas_aplicadas: int = 0
         self.total_desvios_recalculados: int = 0
@@ -226,6 +227,39 @@ class TurnAndCollisionManager:
                     cambio = True
                 else:
                     celdas_reservadas_turno[sig] = p
+
+        # Pasada 3 (anti-atasco): si un picker lleva varios turnos sin poder
+        # avanzar y ni siquiera el recálculo encontró desvío (por ejemplo, una
+        # fila de pickers trabada en un pasillo), cede el lugar: se corre a una
+        # celda vecina libre y desde ahí retoma la ruta hacia su próximo
+        # producto. Así se rompen los ciclos de espera (deadlocks).
+        reservadas = {
+            (p.ruta_asignada[0] if p.ruta_asignada else p.posicion_actual)
+            for p in pickers_ordenados
+        }
+        for p in pickers_ordenados:
+            if (
+                not p.ruta_asignada
+                or p.ruta_asignada[0] != p.posicion_actual
+                or p.turnos_bloqueado < self.turnos_para_ceder
+            ):
+                continue
+            mejor: Optional[List[CoordXY]] = None
+            for vecino in Pathfinding._obtener_vecinos(grafo, p.posicion_actual, 0):
+                if vecino in reservadas or vecino in ocupadas_actuales:
+                    continue
+                ruta = Pathfinding.desviar_por(p, vecino, grafo)
+                if ruta and (mejor is None or len(ruta) < len(mejor)):
+                    mejor = ruta
+            if mejor is not None:
+                reservadas.discard(p.posicion_actual)
+                reservadas.add(mejor[0])
+                p.ruta_asignada = mejor
+                self.total_desvios_recalculados += 1
+                self.eventos_colision.append(
+                    f"[Turno {paso_actual}] {p.id_picker} cede el lugar hacia {mejor[0]} "
+                    f"para destrabar un atasco ({p.turnos_bloqueado} turnos sin avanzar)."
+                )
 
         # Registrar reservas definitivas del turno t + 1
         for p in pickers_ordenados:

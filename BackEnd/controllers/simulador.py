@@ -99,6 +99,11 @@ class Simulador:
         self._pre_waves: Optional[EstadoSimulacion] = None
 
         warehouse = GraphBuilder.construir_warehouse_desde_dict(datos)
+        # Un pedido que quedó "en wave" en un archivo exportado vuelve a estar
+        # pendiente: al cargar todavía no existe ninguna wave.
+        for pedido in warehouse.pedidos.values():
+            if pedido.estado in (EstadoPedido.EN_WAVE, EstadoPedido.EN_PREPARACION):
+                pedido.estado = EstadoPedido.PENDIENTE
         self.advertencias = list(warehouse.advertencias)
         self.estado = EstadoSimulacion(warehouse)
         self.estado.siguiente_pedido = self._numero_siguiente_pedido(warehouse)
@@ -134,9 +139,9 @@ class Simulador:
             horizontal = (x - 1, y) in vecinos or (x + 1, y) in vecinos
             vertical = (x, y - 1) in vecinos or (x, y + 1) in vecinos
             if horizontal and vertical and len(vecinos) >= 3:
-                pasillo = grafo.nodos[(x, y)].pasillo_id
-                ids_vecinos = {grafo.nodos[v].pasillo_id for v in vecinos}
-                if len(ids_vecinos | {pasillo}) > 1:
+                # Se cruzan al menos dos pasillos declarados distintos.
+                ids = {grafo.nodos[v].pasillo_id for v in vecinos} | {grafo.nodos[(x, y)].pasillo_id}
+                if len(ids - {None}) >= 2:
                     self.intersecciones.add((x, y))
         self.n_nodos = len(grafo.nodos)
         self.n_aristas = sum(len(v) for v in grafo.lista_adyacencia.values())
@@ -251,7 +256,7 @@ class Simulador:
             parte = parte.strip()
             if not parte:
                 continue
-            m = re.fullmatch(r"([A-Za-z0-9_\-]+)\s*(?:[xX\*]\s*(\d+))?", parte)
+            m = re.fullmatch(r"([A-Za-z0-9_\-]+?)\s*(?:[xX\*]\s*(\d+))?", parte)
             if not m:
                 raise ValueError(f"No entiendo '{parte}'. Usá el formato P001x2, P004x1.")
             pid, cant = m.group(1).upper(), int(m.group(2) or 1)
@@ -356,14 +361,25 @@ class Simulador:
         })
 
     def iniciar_waves(self, ids_waves: List[str], estrategia: Optional[str] = None) -> Dict[str, Any]:
+        """Asigna las waves elegidas a los pickers libres más cercanos.
+
+        Las que no consiguen picker quedan EN ESPERA dentro de la tanda y se
+        asignan solas en cuanto un picker termina y descarga.
+        """
         gestor = self.estado.gestor_waves
         if gestor is None:
             raise ValueError("Primero generá las waves.")
         estrategia = estrategia or self.estrategia
         if estrategia not in ESTRATEGIAS:
             raise ValueError("Estrategia desconocida.")
-        ids = [w for w in ids_waves if w in gestor.waves_por_id]
-        pendientes = [w for w in ids if gestor.waves_por_id[w].estado == EstadoWave.PENDIENTE]
+        en_espera = {w for t in self.estado.tandas for w in t["en_espera"]}
+        pendientes = [
+            w
+            for w in dict.fromkeys(ids_waves)
+            if w in gestor.waves_por_id
+            and gestor.waves_por_id[w].estado == EstadoWave.PENDIENTE
+            and w not in en_espera
+        ]
         if not pendientes:
             raise ValueError("Elegí al menos una wave pendiente.")
         if not gestor.obtener_pickers_libres(self.warehouse.pickers):
@@ -371,33 +387,43 @@ class Simulador:
 
         antes = self._copiar(self.estado)
         self.historial.append(antes)
-        wh = self.warehouse
-        posiciones = {p.id_picker: p.posicion_actual for p in wh.pickers}
-        resultado = gestor.asignar_y_ejecutar_waves_seleccionadas(
-            pendientes, wh, ESTRATEGIAS[estrategia]
-        )
-        if not resultado["asignaciones"]:
+        tanda = {
+            "numero": len(self.estado.tandas) + 1,
+            "waves": [],
+            "en_espera": [],
+            "estrategia": estrategia,
+            "paso_inicio": self.estado.paso,
+            "paso_fin": None,
+            "planes": [],
+        }
+        self._asignar(tanda, pendientes)
+        if not tanda["waves"]:
             self.estado = self.historial.pop()
             raise ValueError(
                 "Ninguna wave pudo asignarse: no hay pickers libres con capacidad suficiente."
             )
+        for wid in tanda["en_espera"]:
+            self._evento(f"{wid} queda en espera hasta que se libere un picker.")
+        self.estado.tandas.append(tanda)
+        self._inicio_tanda[len(self.estado.tandas) - 1] = (antes, self._copiar(self.estado))
+        self._registrar("iniciar_waves", list(ids_waves), estrategia)
+        return tanda
 
+    def _asignar(self, tanda: Dict[str, Any], ids: List[str]) -> None:
+        """Llama al WaveManager y registra plan, productos a recoger y eventos."""
+        gestor = self.estado.gestor_waves
+        wh = self.warehouse
+        estrategia = tanda["estrategia"]
+        posiciones = {p.id_picker: p.posicion_actual for p in wh.pickers}
+        resultado = gestor.asignar_y_ejecutar_waves_seleccionadas(ids, wh, ESTRATEGIAS[estrategia])
+        tanda["en_espera"] = list(resultado["waves_sin_picker_disponible"])
         pickers = {p.id_picker: p for p in wh.pickers}
-        tanda = {
-            "numero": len(self.estado.tandas) + 1,
-            "waves": [a["id_wave"] for a in resultado["asignaciones"]],
-            "sin_picker": list(resultado["waves_sin_picker_disponible"]),
-            "estrategia": estrategia,
-            "paso_inicio": self.estado.paso,
-            "paso_fin": None,
-            "planes": {},
-        }
         for asig in resultado["asignaciones"]:
             wave = gestor.waves_por_id[asig["id_wave"]]
+            tanda["waves"].append(wave.id_wave)
             for pid in asig["ids_pickers"]:
                 picker = pickers[pid]
                 tarea_ruta = asig["rutas_por_picker"][pid]
-                destinos_rack = wave.destinos_xy_por_picker.get(pid, [])
                 tarea = TareaWavePicker(
                     id_wave=wave.id_wave,
                     id_zona_despacho=wave.id_zona_despacho,
@@ -405,7 +431,7 @@ class Simulador:
                     pedidos_asignados=wave.pedidos_por_picker.get(pid, []),
                     destinos_recoleccion_pasillo=[
                         Pathfinding.obtener_celda_acceso_pasillo(c, wh.grafo_pasillos, wh)
-                        for c in destinos_rack
+                        for c in wave.destinos_xy_por_picker.get(pid, [])
                     ],
                     peso_lote_kg=wave.peso_por_picker.get(pid, 0.0),
                     ruta_calculada=tarea_ruta,
@@ -415,17 +441,12 @@ class Simulador:
                 plan["pedidos"] = list(tarea.pedidos_asignados)
                 plan["distancia_inicial"] = asig["distancias_picker_a_wave"].get(pid, 0)
                 self.estado.planes[pid] = plan
-                tanda["planes"][pid] = {
+                resumen = {
                     k: plan[k]
-                    for k in (
-                        "wave",
-                        "distancia",
-                        "aristas",
-                        "nodos_visitados",
-                        "nodos_explorados",
-                        "tiempo_ms",
-                    )
+                    for k in ("wave", "distancia", "aristas", "nodos_visitados", "nodos_explorados", "tiempo_ms")
                 }
+                resumen["picker"] = pid
+                tanda["planes"].append(resumen)
                 # Qué producto se recoge en cada celda de pasillo.
                 por_celda: Dict[Coord, List[Tuple[str, int, str]]] = {}
                 for id_ped in tarea.pedidos_asignados:
@@ -433,12 +454,8 @@ class Simulador:
                     pedido.estado = EstadoPedido.EN_PREPARACION
                     for item in pedido.items:
                         prod = wh.buscar_producto_O1(item.producto_id)
-                        celda = Pathfinding.obtener_celda_acceso_pasillo(
-                            prod.coordenadas_xy, wh.grafo_pasillos, wh
-                        )
-                        por_celda.setdefault(celda, []).append(
-                            (item.producto_id, item.cantidad, id_ped)
-                        )
+                        celda = Pathfinding.obtener_celda_acceso_pasillo(prod.coordenadas_xy, wh.grafo_pasillos, wh)
+                        por_celda.setdefault(celda, []).append((item.producto_id, item.cantidad, id_ped))
                 self.estado.por_recoger[pid] = por_celda
                 picker.productos_recogidos = {}
                 self.estado.pasos_movidos.setdefault(pid, 0)
@@ -447,15 +464,8 @@ class Simulador:
                     f"{pid} toma {wave.id_wave} ({NOMBRE_ESTRATEGIA[estrategia]}): "
                     f"{plan['distancia']} pasos planificados, {plan['nodos_explorados']} nodos explorados."
                 )
-        # Si un producto está en la celda donde arranca el picker, se recoge ya.
-        for pid in list(self.estado.por_recoger):
-            self._recoger(pickers[pid])
-        for wid in tanda["sin_picker"]:
-            self._evento(f"{wid} queda pendiente: no hay pickers libres suficientes.")
-        self.estado.tandas.append(tanda)
-        self._inicio_tanda[len(self.estado.tandas) - 1] = (antes, self._copiar(self.estado))
-        self._registrar("iniciar_waves", list(ids_waves), estrategia)
-        return tanda
+                # Si un producto está justo donde arranca el picker, se recoge ya.
+                self._recoger(picker)
 
     def cambiar_estrategia(self, estrategia: str) -> bool:
         """Cambia la estrategia. Si la tanda actual no avanzó, la vuelve a planificar."""
@@ -470,7 +480,7 @@ class Simulador:
             and tanda["paso_inicio"] == self.estado.paso
             and indice in self._inicio_tanda
         ):
-            ids = tanda["waves"] + tanda["sin_picker"]
+            ids = tanda["waves"] + tanda["en_espera"]
             self.estado = self._copiar(self._inicio_tanda[indice][0])
             del self._inicio_tanda[indice]
             if self.historial:
@@ -533,8 +543,15 @@ class Simulador:
             if wave_antes is not None and p.id_wave_actual is None:
                 self._entregar(p, wave_antes)
         est.eventos.extend(f"[t={est.paso}] {e}" for e in self._eventos_colision_nuevos())
+        tanda = self.tanda_actual
+        if tanda and tanda["en_espera"] and est.gestor_waves.obtener_pickers_libres(wh.pickers):
+            esperando = list(tanda["en_espera"])
+            self._asignar(tanda, esperando)
+            for wid in esperando:
+                if wid not in tanda["en_espera"] and wid in tanda["waves"]:
+                    self._evento(f"{wid} sale de la espera: se liberó un picker.")
         for tanda in est.tandas:
-            if tanda["paso_fin"] is None and all(
+            if tanda["paso_fin"] is None and not tanda["en_espera"] and all(
                 est.gestor_waves.waves_por_id[w].estado == EstadoWave.FINALIZADA
                 for w in tanda["waves"]
             ):
@@ -625,7 +642,7 @@ class Simulador:
             tanda = self.tanda_actual
             if tanda is None or indice not in self._inicio_tanda:
                 raise ValueError("Seleccioná waves (o iniciá una tanda) para comparar.")
-            ids_waves = tanda["waves"] + tanda["sin_picker"]
+            ids_waves = tanda["waves"] + tanda["en_espera"]
             base = self._inicio_tanda[indice][0]
         else:
             base = self.estado
@@ -645,11 +662,12 @@ class Simulador:
             pasos = 0
             while pasos < MAX_PASOS_TANDA and clon.avanzar(guardar_historial=False):
                 pasos += 1
-            planes = tanda["planes"].values()
+            planes = tanda["planes"]
             resultados[clave] = {
                 "nombre": NOMBRE_ESTRATEGIA[clave],
                 "waves": tanda["waves"],
-                "pickers": len(tanda["planes"]),
+                "pickers": len({p["picker"] for p in planes}),
+                "viajes": len(planes),
                 "distancia": sum(p["distancia"] for p in planes),
                 "aristas": sum(p["aristas"] for p in planes),
                 "nodos_visitados": sum(p["nodos_visitados"] for p in planes),
