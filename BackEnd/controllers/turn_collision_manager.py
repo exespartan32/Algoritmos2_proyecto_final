@@ -1,5 +1,5 @@
 from typing import Dict, List, Tuple, Set, Optional, Any
-from BackEnd.models.entities import Picker
+from BackEnd.models.entities import ListaDeInmutables, Picker
 from BackEnd.controllers.path_finding import Pathfinding
 
 CoordXY = Tuple[int, int]
@@ -20,7 +20,7 @@ class TurnAndCollisionManager:
         self.pathfinding = Pathfinding()
         self.max_turnos_bloqueo_recalculo = max_turnos_bloqueo_recalculo
         self.turnos_para_ceder = max_turnos_bloqueo_recalculo + 1
-        self.eventos_colision: List[str] = []
+        self.eventos_colision: List[str] = ListaDeInmutables()
         self.total_esperas_aplicadas: int = 0
         self.total_desvios_recalculados: int = 0
 
@@ -166,6 +166,10 @@ class TurnAndCollisionManager:
         """
         if hasattr(grafo, "limpiar_bloqueos_antiguos"):
             grafo.limpiar_bloqueos_antiguos(paso_actual)
+        # Las reservas de turnos que ya pasaron no se usan más.
+        self.reservas_celdas = {
+            k: v for k, v in self.reservas_celdas.items() if k[2] > paso_actual
+        }
 
         pickers_activos = [
             p for p in pickers if p.id_wave_actual is not None or p.ruta_asignada

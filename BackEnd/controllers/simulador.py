@@ -31,7 +31,7 @@ from BackEnd.controllers.path_finding import Pathfinding
 from BackEnd.controllers.turn_collision_manager import TurnAndCollisionManager
 from BackEnd.controllers.wave_manager import WaveManager
 from BackEnd.enums.enums import EstadoPedido, EstadoWave, EstrategiaRuteo
-from BackEnd.models.entities import DetallePedido, Pedido, TareaWavePicker
+from BackEnd.models.entities import DetallePedido, ListaDeInmutables, Pedido, TareaWavePicker
 from BackEnd.utils.graph_builder import GraphBuilder
 
 Coord = Tuple[int, int]
@@ -45,8 +45,8 @@ VERSION_SESION = 2
 MAX_PASOS_TANDA = 5000
 # Cada cuántos turnos se guarda una copia completa del estado. Para retroceder
 # a un turno intermedio se parte de la copia anterior y se re-simula (la
-# simulación es determinista), así el historial ocupa ~10 veces menos memoria.
-INTERVALO_COPIA = 10
+# simulación es determinista), así el historial ocupa ~20 veces menos memoria.
+INTERVALO_COPIA = 20
 
 
 class Plan(dict):
@@ -72,7 +72,7 @@ class EstadoSimulacion:
         # picker -> celda de pasillo -> [(producto, cantidad, pedido)] por recoger
         self.por_recoger: Dict[str, Dict[Coord, List[Tuple[str, int, str]]]] = {}
         self.planes: Dict[str, Dict[str, Any]] = {}
-        self.eventos: List[str] = []
+        self.eventos: List[str] = ListaDeInmutables()
         self.entregas: List[Dict[str, Any]] = []
         self.pasos_movidos: Dict[str, int] = {}
         self.esperas: Dict[str, int] = {}
@@ -545,9 +545,12 @@ class Simulador:
                 self._entregar(p, wave_antes)
         est.eventos.extend(f"[t={est.paso}] {e}" for e in self._eventos_colision_nuevos())
         tanda = self.tanda_actual
-        if tanda and tanda["en_espera"] and est.gestor_waves.obtener_pickers_libres(wh.pickers):
+        libres = len(est.gestor_waves.obtener_pickers_libres(wh.pickers)) if est.gestor_waves else 0
+        if tanda and tanda["en_espera"] and libres:
+            # Cola FIFO: se ofrecen tantas waves como pickers libres hay.
             esperando = list(tanda["en_espera"])
-            self._asignar(tanda, esperando)
+            self._asignar(tanda, esperando[:libres])
+            tanda["en_espera"] += esperando[libres:]
             for wid in esperando:
                 if wid not in tanda["en_espera"] and wid in tanda["waves"]:
                     self._evento(f"{wid} sale de la espera: se liberó un picker.")

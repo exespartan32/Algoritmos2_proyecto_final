@@ -416,9 +416,10 @@ class App(UIElements):
         self.mensaje = texto
 
     def a_lienzo(self, pos):
+        """Convierte una posición de la ventana a coordenadas del lienzo fijo."""
         return (
-            (pos[0] - self.desplazamiento[0]) / self.escala,
-            (pos[1] - self.desplazamiento[1]) / self.escala,
+            int((pos[0] - self.desplazamiento[0]) / self.escala),
+            int((pos[1] - self.desplazamiento[1]) / self.escala),
         )
 
     # ------------------------------------------------------------------
