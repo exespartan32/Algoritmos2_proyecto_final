@@ -362,12 +362,9 @@ class Pathfinding:
         if not picker.ruta_asignada:
             return []
 
-        # Determinar el próximo objetivo importante (waypoint o final de ruta)
-        objetivo_inmediato = (
-            picker.objetivos_pendientes[0]
-            if getattr(picker, "objetivos_pendientes", None)
-            else picker.ruta_asignada[-1]
-        )
+        # Próximo objetivo importante: el primer producto pendiente que aparece
+        # en la ruta (o el final de la ruta, que es el despacho).
+        objetivo_inmediato = Pathfinding.proximo_objetivo_en_ruta(picker)
 
         bloqueos_previos = set(getattr(grafo, "nodos_evasion_actual", set()))
         if hasattr(grafo, "nodos_evasion_actual") and celdas_bloqueadas:
@@ -395,6 +392,32 @@ class Pathfinding:
 
         # Si no hay desvío válido, el picker espera 1 turno en su celda actual
         return [picker.posicion_actual] + list(picker.ruta_asignada)
+
+    @staticmethod
+    def proximo_objetivo_en_ruta(picker: Any) -> CoordXY:
+        """Primer destino pendiente según el orden en que la ruta lo visita.
+
+        Al desviar a un picker hay que ir a este objetivo y seguir con el resto
+        de la ruta; si se fuera directo al final se saltearía productos.
+        """
+        pendientes = set(getattr(picker, "objetivos_pendientes", None) or [])
+        for celda in picker.ruta_asignada:
+            if celda in pendientes:
+                return celda
+        return picker.ruta_asignada[-1]
+
+    @staticmethod
+    def desviar_por(picker: Any, celda_escape: CoordXY, grafo: Any) -> Optional[List[CoordXY]]:
+        """Ruta que pasa primero por ``celda_escape`` y retoma el recorrido
+        en el próximo objetivo, sin perder ningún producto pendiente."""
+        if not picker.ruta_asignada:
+            return None
+        objetivo = Pathfinding.proximo_objetivo_en_ruta(picker)
+        tramo, _ = Pathfinding.calcular_ruta_dijkstra(celda_escape, objetivo, grafo)
+        if not tramo:
+            return None
+        idx = picker.ruta_asignada.index(objetivo)
+        return [celda_escape] + tramo[1:] + picker.ruta_asignada[idx + 1 :]
 
     @staticmethod
     def _reconstruir_ruta(
