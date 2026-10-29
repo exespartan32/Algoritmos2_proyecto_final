@@ -24,7 +24,6 @@ class TestInterfaz(unittest.TestCase):
     def setUp(self):
         self.carpeta = Path(tempfile.mkdtemp())
         self.app = App(self.carpeta)
-        self.app.animar_busqueda = False  # la animación se prueba aparte
 
     def tearDown(self):
         shutil.rmtree(self.carpeta, ignore_errors=True)
@@ -217,21 +216,41 @@ class TestInterfaz(unittest.TestCase):
         self.hacer(("campo", indice))
         self.hacer("enviar")
         self.assertEqual(self.app.sim.config["estrategia_waves"], "PASILLO")
-        # Animación de búsqueda al asignar
-        self.app.animar_busqueda = True
+        # Búsqueda de ruta: el picker que la recibe espera unos turnos y los
+        # demás siguen trabajando en paralelo.
         self.hacer("generar_waves")
-        self.hacer(("marcar_todas", True))
+        self.hacer(("marcar", "WAVE_01"))
         self.hacer("iniciar_seleccion")
-        self.app.dibujar()
-        self.assertTrue(self.app.busquedas_activas())
-        self.hacer("iniciar")
-        paso = self.app.sim.estado.paso
-        self.app.paso_automatico(5.0)
-        self.assertEqual(self.app.sim.estado.paso, paso)  # espera mientras busca la ruta
-        self.hacer("adelante")  # termina la animación
-        self.assertFalse(self.app.busquedas_activas())
+        buscando = self.app.busquedas_activas()
+        self.assertEqual(len(buscando), 1)
+        pid = next(iter(buscando))
+        picker = next(p for p in self.app.sim.warehouse.pickers if p.id_picker == pid)
+        inicio = picker.posicion_actual
+        for _ in range(3):
+            self.hacer("adelante")
+        self.assertEqual(picker.posicion_actual, inicio)
+        self.assertIn(pid, self.app.busquedas_activas())
+        # Mientras tanto se asigna otra wave y ese otro picker también busca;
+        # cuando el primero termina de buscar, empieza a caminar.
+        self.hacer("elegir_waves")
+        self.hacer(("marcar", "WAVE_02"))
+        self.hacer("iniciar_seleccion")
+        self.assertEqual(len(self.app.busquedas_activas()), 2)
+        while pid in self.app.busquedas_activas():
+            self.hacer("adelante")
         self.hacer("adelante")
-        self.assertEqual(self.app.sim.estado.paso, paso + 1)
+        self.assertNotEqual(picker.posicion_actual, inicio)
+        # Otro picker se pone a buscar y el primero sigue caminando.
+        self.hacer("elegir_waves")
+        self.hacer(("marcar", "WAVE_03"))
+        self.hacer("iniciar_seleccion")
+        nuevos = set(self.app.busquedas_activas()) - {pid}
+        self.assertTrue(nuevos)
+        antes = picker.posicion_actual
+        self.hacer("adelante")
+        self.hacer("adelante")
+        self.assertTrue(picker.posicion_actual != antes or picker.turnos_pausa > 0)
+        self.assertTrue(nuevos <= set(self.app.busquedas_activas()))
 
     def test_arranque_con_cuadros(self):
         self.app.run(3)

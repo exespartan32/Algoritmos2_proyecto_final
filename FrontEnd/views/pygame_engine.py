@@ -35,15 +35,6 @@ from FrontEnd.views.ui_elements import (
 # durante ese tiempo (animación), así se ve el recorrido y no saltos.
 VELOCIDADES = [(0.70, "x0.5"), (0.35, "x1"), (0.18, "x2"), (0.07, "x5"), (0.02, "x20")]
 DURACION_PASO_MANUAL = 0.30
-# Ritmo de la animación de "buscando ruta": (nombre, celdas pintadas por
-# segundo, duración mínima y máxima en segundos). No depende de la velocidad
-# de la simulación, así se puede mirar con calma qué hace Dijkstra.
-RITMOS_BUSQUEDA = [
-    ("muy lenta", 25, 10.0, 40.0),
-    ("lenta", 50, 7.0, 25.0),
-    ("normal", 120, 4.0, 12.0),
-    ("rápida", 400, 1.5, 4.0),
-]
 # Campos de formulario que se eligen con un clic entre opciones fijas.
 OPCIONES = {"localizacion": LOCALIZACIONES, "estrategia_waves": ESTRATEGIAS_ARMADO}
 PESTANAS = ["Productos", "Pedidos", "Waves", "Pickers", "Métricas", "Eventos"]
@@ -97,10 +88,6 @@ class App(UIElements):
         self.angulos = {}
         self.inicio_animacion = 0.0
         self.duracion_animacion = 0.0
-        self.busquedas = {}
-        self.planes_vistos = {}
-        self.animar_busqueda = True
-        self.ritmo_busqueda = 1  # "lenta"
         self.arrastre = None
         self.comparacion_armado = None
         self.productos_por_celda = {}
@@ -132,8 +119,6 @@ class App(UIElements):
         self.comparacion = None
         self.pag_tabla = 0
         self.animacion, self.angulos = {}, {}
-        self.busquedas = {}
-        self.planes_vistos = dict(sim.estado.planes)  # lo ya calculado no se anima
         self.comparacion_armado = None
         self.mapa.centrar()
         self.pestana = "Productos" if not sim.waves else "Pickers"
@@ -188,32 +173,27 @@ class App(UIElements):
         self.duracion_animacion = duracion
         return resultado
 
-    def detectar_planes_nuevos(self):
-        """Si un picker recibió una ruta nueva, arranca su animación de búsqueda."""
-        nuevos = False
-        for pid, plan in self.sim.estado.planes.items():
-            if self.planes_vistos.get(pid) is plan:
-                continue
-            self.planes_vistos[pid] = plan
-            picker = next((p for p in self.sim.warehouse.pickers if p.id_picker == pid), None)
-            if self.animar_busqueda and picker is not None and picker.id_wave_actual == plan["wave"]:
-                _, por_segundo, minimo, maximo = RITMOS_BUSQUEDA[self.ritmo_busqueda]
-                celdas = len(self.mapa.orden_unico(plan))
-                duracion = max(minimo, min(maximo, celdas / por_segundo))
-                self.busquedas[pid] = (plan, time.perf_counter(), duracion)
-                nuevos = True
-        return nuevos
-
     def busquedas_activas(self):
-        """{picker: (plan, progreso 0..1)} de las búsquedas que se están mostrando."""
-        ahora = time.perf_counter()
+        """{picker: (plan, progreso 0..1)} de los pickers que están calculando su ruta.
+
+        La búsqueda dura unos turnos de la simulación (el picker queda quieto y
+        los demás siguen trabajando). El progreso se interpola dentro del turno
+        para que la exploración se pinte de forma continua.
+        """
+        if self.sim is None:
+            return {}
+        if self.duracion_animacion > 0:
+            t = min(1.0, (time.perf_counter() - self.inicio_animacion) / self.duracion_animacion)
+        else:
+            t = 1.0
         activas = {}
-        for pid, (plan, inicio, duracion) in list(self.busquedas.items()):
-            progreso = (ahora - inicio) / duracion if duracion > 0 else 1.0
-            if progreso >= 1.0:
-                del self.busquedas[pid]
-            else:
-                activas[pid] = (plan, progreso)
+        for p in self.sim.warehouse.pickers:
+            plan = self.sim.estado.planes.get(p.id_picker)
+            if p.turnos_busqueda <= 0 or plan is None:
+                continue
+            total = max(1, plan.get("turnos_busqueda", 1))
+            hechos = total - p.turnos_busqueda
+            activas[p.id_picker] = (plan, min(1.0, (hechos + t) / total))
         return activas
 
     def posicion_animada(self, pid, posicion):
@@ -455,15 +435,11 @@ class App(UIElements):
 
     def _a_adelante(self):
         self.reproduciendo = False
-        if self.busquedas:  # el primer paso termina la animación de búsqueda
-            self.busquedas = {}
-            return
         if not self.mover(self.sim.avanzar):
             raise ValueError("No hay pickers trabajando. Seleccioná waves e iniciá.")
 
     def _a_atras(self):
         self.reproduciendo = False
-        self.busquedas = {}
         if not self.mover(self.sim.retroceder):
             raise ValueError("No hay pasos para deshacer.")
 
@@ -501,10 +477,6 @@ class App(UIElements):
         self.reproduciendo = False
         self.comparacion_armado = self.sim.comparar_armado()
         self.dialogo = "armado"
-
-    def _a_ritmo_busqueda(self):
-        self.ritmo_busqueda = (self.ritmo_busqueda + 1) % len(RITMOS_BUSQUEDA)
-        self.mensaje = "Animación de búsqueda de ruta: " + RITMOS_BUSQUEDA[self.ritmo_busqueda][0] + "."
 
     def _a_ampliar(self):
         self.mapa_ampliado = not self.mapa_ampliado
@@ -599,7 +571,6 @@ class App(UIElements):
             ("Reiniciar", 115, "reiniciar", m.tanda_actual is not None),
             ("Velocidad " + VELOCIDADES[self.velocidad][1], 140, "velocidad", True),
             ("Ver paneles" if self.mapa_ampliado else "Ampliar mapa", 150, "ampliar", True),
-            ("Búsqueda: " + RITMOS_BUSQUEDA[self.ritmo_busqueda][0], 190, "ritmo_busqueda", True),
         ]
         x = 20
         for etiqueta, w, accion, habilitado in fila2:
@@ -716,7 +687,7 @@ class App(UIElements):
             rect = self.caja(x - 4, yy, 700, alto, AZUL_CLARO if seleccionado else BLANCO)
             self.zona_clic(rect, ("foco_picker", p["id"]))
             pygame.draw.circle(self.lienzo, color_picker(i), (x + 12, yy + 18), 9)
-            estado_p = "buscando ruta" if p["id"] in self.busquedas else p["estado"]
+            estado_p = p["estado"]
             estado = f"{estado_p} · {p['wave']}" if p["wave"] else "libre"
             self.texto(f"{p['id']} · {estado} · en {tuple(p['pos'])}", x + 30, yy + 8, 17, negrita=True)
             self.texto(f"Carga {p['carga']:.1f}/{p['capacidad']:g} kg · {p['pasos']} pasos · {p['esperas']} esperas", x + 380, yy + 10, 15, GRIS)
@@ -966,7 +937,6 @@ class App(UIElements):
         if self.pagina == "inicio" or self.sim is None:
             self.pantalla_inicio()
         else:
-            self.detectar_planes_nuevos()
             self.pantalla_simulacion()
         if self.dialogo:
             self.dialogo_actual()
@@ -990,9 +960,6 @@ class App(UIElements):
     def paso_automatico(self, dt):
         if not (self.reproduciendo and self.sim and not self.dialogo):
             return
-        if self.busquedas_activas():
-            self.acumulado = 0.0  # todos esperan mientras se calcula la ruta
-            return
         self.acumulado += dt
         intervalo = VELOCIDADES[self.velocidad][0]
         pasos = 0
@@ -1001,8 +968,6 @@ class App(UIElements):
             pasos += 1
             try:
                 avanzo = self.mover(self.sim.avanzar, intervalo)
-                if avanzo and self.detectar_planes_nuevos():
-                    break  # un picker recibió una wave: se muestra la búsqueda
                 if not avanzo:
                     self.reproduciendo = False
                     tanda = self.sim.tanda_actual

@@ -199,5 +199,7 @@ class TestReglasDeMovimiento(unittest.TestCase):
             self.assertEqual(recorrido[i:i + carga + 1], [celda] * (carga + 1))
         # Termina en el despacho y se queda descargando antes de terminar.
         self.assertEqual(recorrido[-(descarga + 1):], [plan["despacho"]] * (descarga + 1))
-        self.assertEqual(len(recorrido) - 1, plan["distancia"] + carga * len(destinos) + descarga)
+        busqueda = plan["turnos_busqueda"]
+        self.assertEqual(recorrido[: busqueda + 1], [recorrido[0]] * (busqueda + 1))
+        self.assertEqual(len(recorrido) - 1, busqueda + plan["distancia"] + carga * len(destinos) + descarga)
         self.assertEqual(sim.metricas()["esperas"], 0)

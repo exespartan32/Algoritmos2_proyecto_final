@@ -197,6 +197,36 @@ class TurnAndCollisionManager:
         }
         if not pickers_activos:
             return
+        # Si un picker ya terminó de recoger, está trabado y su celda ya toca la
+        # zona de despacho a la que va, descarga desde ahí (evita quedar
+        # bailando con otro picker en un pasillito junto a la zona).
+        nodos = getattr(grafo, "nodos", {})
+        for p in pickers_activos:
+            if (
+                p.ruta_asignada
+                and p.turnos_bloqueado >= 2
+                and not p.objetivos_pendientes
+                and p.id_wave_actual is not None
+                and any(
+                    q is not p and q.posicion_actual in p.ruta_asignada
+                    for q in pickers_activos
+                )
+            ):
+                aca = nodos.get(p.posicion_actual)
+                destino = nodos.get(p.ruta_asignada[-1])
+                if (
+                    aca is not None
+                    and destino is not None
+                    and set(aca.zonas_despacho_adyacentes) & set(destino.zonas_despacho_adyacentes)
+                ):
+                    p.ruta_asignada = []
+                    p.destino_despacho_actual = p.posicion_actual
+                    p.turnos_bloqueado = 0
+                    self.eventos_colision.append(
+                        f"[Turno {paso_actual}] {p.id_picker} descarga en {p.posicion_actual}: "
+                        f"ya está junto a la zona y el paso estaba trabado."
+                    )
+
         # Si un picker libre estorba a otro que lleva 2 turnos esperando, se
         # corre a una celda vecina libre para dejarlo pasar.
         for p in pickers_activos:
@@ -406,7 +436,9 @@ class TurnAndCollisionManager:
             siguiente_celda = p.ruta_asignada.pop(0)
 
             if siguiente_celda == p.posicion_actual:
-                if p.turnos_pausa > 0:
+                if p.turnos_busqueda > 0:
+                    p.turnos_busqueda -= 1  # está calculando su ruta, no bloqueado
+                elif p.turnos_pausa > 0:
                     p.turnos_pausa -= 1  # está recogiendo, no bloqueado
                 else:
                     p.turnos_bloqueado += 1

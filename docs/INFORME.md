@@ -178,10 +178,13 @@ descarga se elige para que no queden dos pickers apilados, evitando los
 rincones sin salida. Si un picker libre estorba a otro durante 2 turnos, se
 corre a una celda vecina. Si no tiene adónde correrse, el otro descarga desde
 una celda pegada a la misma zona. Como último recurso, se lo atraviesa. En las
-pruebas de estrés, eso pasó en 10 de 108 escenarios, todos con 10 pickers en
+pruebas de estrés, eso pasó en 6 de 108 escenarios, todos con 10 pickers en
 almacenes muy chicos, y nunca más de unos pocos turnos.
 
-Al llegar a un producto, el picker se queda **4 turnos quieto cargando**
+Al recibir una wave, el picker se queda quieto **calculando su ruta** unos
+turnos (uno cada 12 celdas que explora Dijkstra, entre 4 y 30) mientras los
+demás siguen trabajando; la interfaz pinta esa exploración de a poco. Al
+llegar a un producto, el picker se queda **4 turnos quieto cargando**
 (mirando hacia el rack), y al llegar al despacho se queda **3 turnos
 descargando**. Esos turnos no cuentan
 como esperas por colisión. Las tres duraciones (estela, recogida y descarga)
@@ -302,9 +305,9 @@ pedidos:
   los destinos quedan lejos entre sí y cualquier orden se parece. También baja
   con pocos pasillos (3), donde casi no hay caminos alternativos.
 - Menos distancia significa **menos turnos** de simulación (por ejemplo,
-  654 → 403 y 4318 → 3365). Los turnos incluyen el tiempo de recoger y de
-  descargar. También hay algo menos de esperas por colisión con Cercanía
-  (1514 contra 1706 en total), porque los pickers pasan menos tiempo en los
+  724 → 456 y 5000 → 4140). Los turnos incluyen el tiempo de buscar la ruta,
+  recoger y descargar. También hay algo menos de esperas por colisión con Cercanía
+  (1946 contra 2207 en total), porque los pickers pasan menos tiempo en los
   pasillos, aunque la diferencia es más chica que en distancia.
 
 ### 5.3 Estrategias de armado de waves
@@ -316,17 +319,17 @@ todas con Cercanía. La tabla completa está en `resultados.md`.
 
 | Escenario | Distancia: Cercanía / Por pasillo / Solo prioridad | Pasillos por wave | Armado (ms) |
 |---|---|---|---|
-| 40 pedidos | 1587 / 1527 / 1780 | 4,5 / 4,5 / 5,8 | 8,7 / 2,7 / 1,9 |
-| 160 pedidos | 5504 / 5645 / 7744 | 3,9 / 3,8 / 6,1 | 96 / 31 / 33 |
-| Por rack | 1449 / 1341 / 1897 | 4,7 / 4,1 / 7,1 | 8,6 / 3,7 / 2,1 |
+| 40 pedidos | 1603 / 1527 / 1780 | 4,5 / 4,5 / 5,8 | 8,4 / 4,6 / 2,7 |
+| 160 pedidos | 5547 / 5584 / 7734 | 3,9 / 3,8 / 6,1 | 83 / 29 / 22 |
+| Por rack | 1449 / 1356 / 1897 | 4,7 / 4,1 / 7,1 | 5,8 / 3,5 / 3,0 |
 
 - **Agrupar por ubicación vale la pena.** Solo prioridad recorre entre 17 % y
-  42 % más que la mejor estrategia y visita entre 1,3 y 1,7 veces más
+  40 % más que la mejor estrategia y visita entre 1,3 y 1,7 veces más
   pasillos por wave.
 - **Cercanía y Por pasillo quedan muy parejas.** Cercanía fue la mejor en 4 de
   6 escenarios y Por pasillo en 2 (cuando los productos están agrupados por
   rack, contar pasillos es casi tan bueno como medir distancias).
-- **Por pasillo es entre 2 y 4 veces más rápida de armar**, porque no consulta la
+- **Por pasillo es entre 1,6 y 3 veces más rápida de armar**, porque no consulta la
   matriz de distancias. Sigue siendo O(n²) en pedidos.
 - **Solo prioridad atiende antes lo urgente.** Su primera wave tiene mayor
   prioridad media (3,7 contra 2,3–3,3). Es el *trade-off* entre urgencia y
@@ -404,7 +407,7 @@ Max-Heap. Después se suma, uno por vez, el pedido con menor costo marginal
 promedio (el más cercano a lo que ya tiene la wave), siempre que respete la
 cantidad máxima de pedidos y de unidades, el stock, la capacidad de la zona y
 la de los pickers. Ver sección 3.3. Se compararon otras dos estrategias,
-Por pasillo y Solo prioridad. Agrupar por ubicación ahorra hasta un 42 % de
+Por pasillo y Solo prioridad. Agrupar por ubicación ahorra hasta un 40 % de
 recorrido (sección 5.3).
 
 **9. ¿Qué estrategia utilizaron para ordenar las ubicaciones de una wave?**
@@ -439,7 +442,7 @@ garantiza el recorrido óptimo, que sería un problema del viajante.
 **14. ¿Qué trade-offs encontraron entre tiempo y calidad?**
 
 - **Armado de waves:** Cercanía da los mejores recorridos casi siempre. Por
-  pasillo queda muy cerca y arma entre 2 y 4 veces más rápido. Solo prioridad es la más
+  pasillo queda muy cerca y arma entre 1,6 y 3 veces más rápido. Solo prioridad es la más
   rápida y la que más rápido atiende lo urgente, pero recorre bastante más.
 
 - **Precalcular la matriz de distancias** cuesta tiempo al cargar y memoria

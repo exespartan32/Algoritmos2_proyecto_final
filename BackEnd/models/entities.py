@@ -283,6 +283,8 @@ class Picker:
     turnos_bloqueado: int = 0
     # Turnos que le quedan quieto recogiendo productos (no cuenta como bloqueo).
     turnos_pausa: int = 0
+    # Turnos que le quedan quieto calculando su ruta (animación de Dijkstra).
+    turnos_busqueda: int = 0
     # Turnos que lleva descargando en la zona de despacho.
     turnos_descargando: int = 0
     historial_recorrido: List[Tuple[int, int]] = field(default_factory=ListaDeInmutables)

@@ -47,6 +47,11 @@ MAX_PASOS_TANDA = 5000
 # a un turno intermedio se parte de la copia anterior y se re-simula (la
 # simulación es determinista), así el historial ocupa ~20 veces menos memoria.
 INTERVALO_COPIA = 20
+# Mientras "busca la ruta", el picker se queda quieto unos turnos (los demás
+# siguen trabajando). Se usa para mostrar la exploración de Dijkstra de a poco:
+# unas CELDAS_POR_TURNO_BUSQUEDA celdas por turno, entre un mínimo y un máximo.
+CELDAS_POR_TURNO_BUSQUEDA = 12
+TURNOS_BUSQUEDA_MIN, TURNOS_BUSQUEDA_MAX = 4, 30
 
 
 class Plan(dict):
@@ -454,6 +459,11 @@ class Simulador:
                 plan["ruta"] = list(tarea_ruta)
                 plan["pedidos"] = list(tarea.pedidos_asignados)
                 plan["distancia_inicial"] = asig["distancias_picker_a_wave"].get(pid, 0)
+                celdas = len(set(plan["orden_exploracion"]))
+                turnos = max(TURNOS_BUSQUEDA_MIN, min(TURNOS_BUSQUEDA_MAX, -(-celdas // CELDAS_POR_TURNO_BUSQUEDA)))
+                plan["turnos_busqueda"] = turnos
+                picker.ruta_asignada[0:0] = [picker.posicion_actual] * turnos
+                picker.turnos_busqueda = turnos
                 self.estado.planes[pid] = plan
                 resumen = {
                     k: plan[k]
@@ -542,7 +552,9 @@ class Simulador:
         trabajando = {
             p.id_picker
             for p in wh.pickers
-            if p.turnos_pausa > 0 or (p.id_wave_actual is not None and not p.ruta_asignada)
+            if p.turnos_pausa > 0
+            or p.turnos_busqueda > 0
+            or (p.id_wave_actual is not None and not p.ruta_asignada)
         }
         est.colisiones.avanzar_un_turno_simulacion(
             pickers=wh.pickers,
@@ -832,13 +844,15 @@ class Simulador:
                     "ruta_restante": list(p.ruta_asignada),
                     "recorrido": list(p.historial_recorrido),
                     "estado": (
-                        "cargando" if p.turnos_pausa > 0
+                        "buscando ruta" if p.turnos_busqueda > 0
+                        else "cargando" if p.turnos_pausa > 0
                         else "descargando" if p.id_wave_actual and not p.ruta_asignada
                         else "esperando" if p.turnos_bloqueado > 0
                         else "caminando" if p.id_wave_actual
                         else "libre"
                     ),
                     "mirando": est.mirando.get(p.id_picker) if p.turnos_pausa > 0 else None,
+                    "busqueda_restante": p.turnos_busqueda,
                     "pasos": est.pasos_movidos.get(p.id_picker, 0),
                     "esperas": est.esperas.get(p.id_picker, 0),
                     "plan": est.planes.get(p.id_picker) if p.id_wave_actual else None,
