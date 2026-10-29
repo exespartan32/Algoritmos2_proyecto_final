@@ -281,6 +281,10 @@ class Picker:
     cola_waves_asignadas: List[TareaWavePicker] = field(default_factory=list)
     productos_recogidos: Dict[str, int] = field(default_factory=dict)
     turnos_bloqueado: int = 0
+    # Turnos que le quedan quieto recogiendo productos (no cuenta como bloqueo).
+    turnos_pausa: int = 0
+    # Turnos que lleva descargando en la zona de despacho.
+    turnos_descargando: int = 0
     historial_recorrido: List[Tuple[int, int]] = field(default_factory=ListaDeInmutables)
 
     def puede_cargar(self, peso_adicional: float) -> bool:

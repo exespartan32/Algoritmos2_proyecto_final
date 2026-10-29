@@ -640,11 +640,9 @@ class WaveManager:
                     Pathfinding.obtener_celda_acceso_pasillo(c, grafo, warehouse)
                     for c in destinos_rack
                 ]
-                nodo_despacho = (
-                    accesos_despacho[idx_pk % len(accesos_despacho)]
-                    if accesos_despacho
-                    else pk.posicion_actual
-                )
+                nodo_despacho = self._elegir_celda_despacho(
+                    accesos_despacho, pk, destinos_pasillo, pickers, warehouse
+                ) or pk.posicion_actual
 
                 if estrategia_ruteo == EstrategiaRuteo.ORDEN_PEDIDOS_DIJKSTRA:
                     res_ruta = Pathfinding.calcular_estrategia_orden_pedidos(
@@ -693,6 +691,46 @@ class WaveManager:
             )
 
         return resultado
+
+    @staticmethod
+    def _elegir_celda_despacho(
+        accesos: List[CoordXY],
+        picker: Picker,
+        destinos: List[CoordXY],
+        pickers: List[Picker],
+        warehouse: Warehouse,
+    ) -> Optional[CoordXY]:
+        """Celda donde el picker descarga (y después queda estacionado).
+
+        Se evita una celda donde ya hay otro picker estacionado o que otro
+        picker activo tiene como destino, para que no terminen apilados.
+        Entre las libres se prefieren las que no están sobre un pasillo
+        declarado (no estorban el tránsito) y las más cercanas al último
+        producto del recorrido.
+        """
+        if not accesos:
+            return None
+        ocupadas = set()
+        for otro in pickers:
+            if otro is picker:
+                continue
+            if otro.id_wave_actual is None and not otro.ruta_asignada:
+                ocupadas.add(otro.posicion_actual)
+            elif otro.destino_despacho_actual is not None:
+                ocupadas.add(otro.destino_despacho_actual)
+        libres = [c for c in accesos if c not in ocupadas] or list(accesos)
+        ref = destinos[-1] if destinos else picker.posicion_actual
+        nodos = warehouse.grafo_pasillos.nodos
+        ady = warehouse.grafo_pasillos.lista_adyacencia
+        return min(
+            libres,
+            key=lambda c: (
+                len(ady.get(c, [])) < 2,  # evitar rincones sin salida
+                nodos[c].pasillo_id is not None if c in nodos else True,
+                abs(c[0] - ref[0]) + abs(c[1] - ref[1]),
+                c,
+            ),
+        )
 
     def notificar_picker_descargo_en_despacho(
         self,

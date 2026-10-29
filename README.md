@@ -46,9 +46,14 @@ hace falta además `matplotlib` (opcional).
 6. **Ejecutar y ver los algoritmos.** En el mapa se ven la ruta planificada,
    los destinos numerados en orden de visita y las celdas que exploró
    Dijkstra (celeste).
-7. **Recorrido del picker.** Se controla con *Iniciar*, *Pausar*,
-   *Continuar*, *Paso adelante* (→), *Paso atrás* (←) y *Reiniciar*. La
-   barra espaciadora pausa y continúa.
+7. **Recorrido del picker.** Cada picker camina de celda en celda, girando
+   hacia donde va, con su nombre arriba y el borde de su color. Se frena
+   2 turnos al recoger y 2 al descargar. Deja una "estela" de 2 turnos
+   donde nadie puede entrar, así no se camina pegado a otro. Para usar un
+   dibujo propio, poné `FrontEnd/sprites/picker.png` (fondo transparente,
+   mirando hacia arriba).
+   Se controla con *Iniciar*, *Pausar*, *Continuar*, *Paso adelante* (→),
+   *Paso atrás* (←) y *Reiniciar*. La barra espaciadora pausa y continúa.
 8. **Productos recogidos.** La pestaña *Pickers* muestra la carga, lo
    recogido y lo que falta. *Eventos* registra cada recogida y descarga.
 9. **Comparar estrategias.** *Estrategia* alterna entre *Orden de pedidos*

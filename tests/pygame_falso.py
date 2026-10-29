@@ -106,6 +106,10 @@ def _lines(superficie, color, cerrado, puntos, ancho=1):
         _punto(p)
 
 
+def _ellipse(superficie, color, rect, ancho=0):
+    assert isinstance(rect, Rect)
+
+
 def _circle(superficie, color, centro, radio, ancho=0):
     _punto(centro)
     assert radio >= 0
@@ -135,11 +139,16 @@ def instalar():
         set_caption=lambda t: None,
         set_mode=lambda size, flags=0: Surface(size),
         flip=lambda: None,
+        get_surface=lambda: None,
         Info=lambda: types.SimpleNamespace(current_w=1920, current_h=1080),
     )
     m.font = types.SimpleNamespace(SysFont=_Font)
-    m.draw = types.SimpleNamespace(rect=_rect, line=_line, lines=_lines, circle=_circle)
-    m.transform = types.SimpleNamespace(smoothscale=lambda s, size: Surface(size), scale=lambda s, size: Surface(size))
+    m.draw = types.SimpleNamespace(rect=_rect, line=_line, lines=_lines, circle=_circle, ellipse=_ellipse)
+    m.transform = types.SimpleNamespace(
+        smoothscale=lambda s, size: Surface(size),
+        scale=lambda s, size: Surface(size),
+        rotate=lambda s, angulo: Surface(s.size),
+    )
     m.time = types.SimpleNamespace(Clock=_Clock)
     m.event = types.SimpleNamespace(get=lambda: [cola_eventos.pop(0) for _ in list(cola_eventos)], Event=Event)
     m.key = types.SimpleNamespace(start_text_input=lambda: None, stop_text_input=lambda: None)

@@ -134,3 +134,52 @@ class TestSimuladorVariosPickers(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestReglasDeMovimiento(unittest.TestCase):
+    def simular(self):
+        datos = ScenarioGenerator.generar_escenario_dict(12, 4, 80, "DISTRIBUIDA", 40, 4, 4, 16, 6)
+        sim = Simulador(datos)
+        sim.generar_waves()
+        sim.iniciar_waves([w.id_wave for w in sim.waves], "CERCANIA")
+        posiciones = [{p.id_picker: p.posicion_actual for p in sim.warehouse.pickers}]
+        self.trabajando = [{p.id_picker for p in sim.warehouse.pickers if p.id_wave_actual}]
+        while sim.avanzar():
+            posiciones.append({p.id_picker: p.posicion_actual for p in sim.warehouse.pickers})
+            self.trabajando.append({p.id_picker for p in sim.warehouse.pickers if p.id_wave_actual})
+        return sim, posiciones
+
+    def test_nadie_entra_a_la_estela_de_otro(self):
+        sim, pos = self.simular()
+        self.assertEqual(sim.metricas()["pedidos_preparados"], 40)
+        salidas = {}  # celda -> (picker, turno en que la dejó)
+        for k in range(1, len(pos)):
+            for pid, celda in pos[k].items():
+                antes = pos[k - 1][pid]
+                if celda == antes:
+                    continue
+                dueno, turno = salidas.get(celda, (None, -99))
+                if dueno not in (None, pid):
+                    self.assertGreaterEqual(k - turno, 3, f"{pid} entró a {celda} pegado a {dueno}")
+                if pid in self.trabajando[k - 1]:  # un picker libre que se corre no deja estela
+                    salidas[antes] = (pid, k)
+        for k in range(len(pos)):
+            self.assertEqual(len(set(pos[k].values())), len(pos[k]), "dos pickers en la misma celda")
+
+    def test_se_frena_al_recoger_y_al_descargar(self):
+        sim = Simulador(FileParser.leer_json("escenario_basico.json"))
+        sim.generar_waves()
+        sim.iniciar_waves(["WAVE_01"], "ORDEN")
+        plan = sim.estado.planes["PK_01"]
+        destinos = set(plan["destinos"])
+        recorrido = [sim.warehouse.pickers[0].posicion_actual]
+        while sim.avanzar():
+            recorrido.append(sim.warehouse.pickers[0].posicion_actual)
+        # En cada destino se queda al menos 2 turnos más (recogiendo).
+        for celda in destinos:
+            i = recorrido.index(celda)
+            self.assertEqual(recorrido[i:i + 3], [celda] * 3)
+        # Termina en el despacho y se queda descargando antes de terminar.
+        self.assertEqual(recorrido[-3:], [plan["despacho"]] * 3)
+        self.assertEqual(len(recorrido) - 1, plan["distancia"] + 2 * len(destinos) + 2)
+        self.assertEqual(sim.metricas()["esperas"], 0)
