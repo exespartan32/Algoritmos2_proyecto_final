@@ -134,6 +134,7 @@ En `BackEnd/data`:
 ## Documentación
 
 - `docs/ARQUITECTURA.md`: módulos, diagrama de clases y flujo de una simulación.
+- `docs/UML.md`: UML completo (vista general, modelo, lógica e interfaz), con imágenes en `docs/uml/`.
 - `docs/EXPLICACION_GRAFO.md`: el modelo del almacén (dígrafo, accesos, Kosaraju).
 - `docs/INFORME.md`: análisis algorítmico, complejidad, experimentos y respuestas
   a las preguntas del enunciado.
