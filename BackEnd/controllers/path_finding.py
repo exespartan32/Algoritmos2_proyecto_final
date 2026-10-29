@@ -13,6 +13,7 @@ class RutaResultado:
         tiempo_ejecucion_ms: float,
         destinos_inalcanzables: Optional[List[CoordXY]] = None,
         expansiones: int = 0,
+        orden_exploracion: Optional[List[CoordXY]] = None,
     ) -> None:
         self.camino_completo = camino_completo
         self.nodos_explorados = nodos_explorados
@@ -22,6 +23,8 @@ class RutaResultado:
         self.destinos_inalcanzables = destinos_inalcanzables or []
         # Suma de nodos que sacó de la cola cada búsqueda (trabajo total).
         self.expansiones = expansiones
+        # Celdas en el orden en que Dijkstra las sacó de la cola (para animar).
+        self.orden_exploracion = orden_exploracion or []
 
 
 class Pathfinding:
@@ -114,6 +117,7 @@ class Pathfinding:
         nodos_explorados_totales: Set[CoordXY] = set()
         destinos_inalcanzables: List[CoordXY] = []
         expansiones = 0
+        orden: List[CoordXY] = []
 
         origen_pasillo = Pathfinding.obtener_celda_acceso_pasillo(
             origen, grafo, warehouse
@@ -139,7 +143,7 @@ class Pathfinding:
                 continue
 
             ruta_tramo, explorados_tramo = Pathfinding.calcular_ruta_dijkstra(
-                posicion_actual, destino, grafo
+                posicion_actual, destino, grafo, orden_exploracion=orden
             )
             nodos_explorados_totales.update(explorados_tramo)
             expansiones += len(explorados_tramo)
@@ -153,7 +157,7 @@ class Pathfinding:
 
         if posicion_actual != cierre_pasillo:
             ruta_regreso, explorados_regreso = Pathfinding.calcular_ruta_dijkstra(
-                posicion_actual, cierre_pasillo, grafo
+                posicion_actual, cierre_pasillo, grafo, orden_exploracion=orden
             )
             nodos_explorados_totales.update(explorados_regreso)
             expansiones += len(explorados_regreso)
@@ -169,6 +173,7 @@ class Pathfinding:
             tiempo_ms,
             destinos_inalcanzables,
             expansiones,
+            orden,
         )
 
     @staticmethod
@@ -183,6 +188,7 @@ class Pathfinding:
         nodos_explorados_totales: Set[CoordXY] = set()
         destinos_inalcanzables: List[CoordXY] = []
         expansiones = 0
+        orden: List[CoordXY] = []
 
         origen_pasillo = Pathfinding.obtener_celda_acceso_pasillo(
             origen, grafo, warehouse
@@ -208,7 +214,9 @@ class Pathfinding:
 
         while pendientes:
             ruta_tramo, destino_alcanzado, explorados_tramo = (
-                Pathfinding.calcular_ruta_greedy(posicion_actual, pendientes, grafo)
+                Pathfinding.calcular_ruta_greedy(
+                    posicion_actual, pendientes, grafo, orden_exploracion=orden
+                )
             )
             nodos_explorados_totales.update(explorados_tramo)
             expansiones += len(explorados_tramo)
@@ -223,7 +231,7 @@ class Pathfinding:
 
         if posicion_actual != cierre_pasillo:
             ruta_regreso, explorados_regreso = Pathfinding.calcular_ruta_dijkstra(
-                posicion_actual, cierre_pasillo, grafo
+                posicion_actual, cierre_pasillo, grafo, orden_exploracion=orden
             )
             nodos_explorados_totales.update(explorados_regreso)
             expansiones += len(explorados_regreso)
@@ -239,6 +247,7 @@ class Pathfinding:
             tiempo_ms,
             destinos_inalcanzables,
             expansiones,
+            orden,
         )
 
     @staticmethod
@@ -272,6 +281,7 @@ class Pathfinding:
         grafo: Any,
         paso_tiempo_inicial: int = 0,
         picker_id: Optional[str] = None,
+        orden_exploracion: Optional[List[CoordXY]] = None,
     ) -> Tuple[List[CoordXY], Set[CoordXY]]:
         if origen == destino:
             return [origen], {origen}
@@ -287,6 +297,8 @@ class Pathfinding:
                 continue
 
             nodos_explorados.add(nodo_actual)
+            if orden_exploracion is not None:
+                orden_exploracion.append(nodo_actual)
             if nodo_actual == destino:
                 return Pathfinding._reconstruir_ruta(padres, destino), nodos_explorados
 
@@ -312,6 +324,7 @@ class Pathfinding:
         destinos_pendientes: Any,
         grafo: Any,
         paso_tiempo_inicial: int = 0,
+        orden_exploracion: Optional[List[CoordXY]] = None,
     ) -> Tuple[List[CoordXY], Optional[CoordXY], Set[CoordXY]]:
         if not destinos_pendientes:
             return [], None, set()
@@ -335,6 +348,8 @@ class Pathfinding:
                 continue
 
             nodos_explorados.add(nodo_actual)
+            if orden_exploracion is not None:
+                orden_exploracion.append(nodo_actual)
             if nodo_actual in set_destinos:
                 return (
                     Pathfinding._reconstruir_ruta(padres, nodo_actual),

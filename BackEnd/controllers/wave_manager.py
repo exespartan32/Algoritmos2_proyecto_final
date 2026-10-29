@@ -8,6 +8,16 @@ from BackEnd.controllers.path_finding import Pathfinding
 CoordXY = Tuple[int, int]
 
 
+# Estrategias para elegir qué pedido se suma a una wave abierta. En las tres,
+# la wave arranca con el pedido de mayor prioridad (raíz del Max-Heap) y se
+# respetan capacidad, stock, zona de despacho y pickers.
+ESTRATEGIAS_ARMADO = {
+    "CERCANIA": "Cercanía en el dígrafo (costo marginal promedio)",
+    "PASILLO": "Por pasillo (el que agrega menos pasillos nuevos)",
+    "PRIORIDAD": "Solo prioridad (sin mirar la ubicación)",
+}
+
+
 class WaveManager:
     """
     Controlador de Generación, Selección Interactiva y Asignación de Waves:
@@ -25,7 +35,11 @@ class WaveManager:
         incluir_altura_z_unica: bool = True,
         max_pickers_por_wave: int = 2,
         proveedor_distancias: Optional[Any] = None,
+        estrategia_armado: str = "CERCANIA",
     ) -> None:
+        if estrategia_armado not in ESTRATEGIAS_ARMADO:
+            raise ValueError("Estrategia de armado desconocida: " + str(estrategia_armado))
+        self.estrategia_armado = estrategia_armado
         self.cola_prioridad = MaxHeapPedidos()
         self.wave_max_pedidos = wave_max_pedidos
         self.wave_max_productos = wave_max_productos
@@ -444,6 +458,11 @@ class WaveManager:
                 if not candidatos_factibles:
                     break
 
+                pasillos_wave: Set[str] = set()
+                if self.estrategia_armado == "PASILLO":
+                    for ped in nueva_wave.pedidos:
+                        pasillos_wave |= self._pasillos_de(ped, warehouse)
+
                 mejor_candidato: Optional[Pedido] = None
                 mejor_tupla_criterio: Optional[Tuple[float, int, str]] = None
                 mejor_score: float = float("inf")
@@ -466,9 +485,16 @@ class WaveManager:
                         if not es_repartible:
                             continue
 
-                    score = self.calcular_costo_marginal_promedio(
-                        nueva_wave, cand, warehouse, fuente_dist
-                    )
+                    if self.estrategia_armado == "CERCANIA":
+                        score = self.calcular_costo_marginal_promedio(
+                            nueva_wave, cand, warehouse, fuente_dist
+                        )
+                    elif self.estrategia_armado == "PASILLO":
+                        score = float(
+                            len(self._pasillos_de(cand, warehouse) - pasillos_wave)
+                        )
+                    else:  # PRIORIDAD: gana el de mayor prioridad (desempate abajo)
+                        score = 0.0
                     if score == float("inf"):
                         continue
 
@@ -499,7 +525,7 @@ class WaveManager:
 
                 self.traza_armado[id_wave_actual].append(
                     {
-                        "rol": "CERCANIA_DIGRAFO",
+                        "rol": self.estrategia_armado,
                         "id_pedido": mejor_candidato.id_pedido,
                         "prioridad": mejor_candidato.prioridad,
                         "unidades": mejor_candidato.obtener_cantidad_productos(),
@@ -514,6 +540,16 @@ class WaveManager:
             contador_wave += 1
 
         return self.waves_creadas
+
+    @staticmethod
+    def _pasillos_de(pedido: Pedido, warehouse: Warehouse) -> Set[str]:
+        """Pasillos (tramos declarados) desde donde se recogen los productos del pedido."""
+        pasillos: Set[str] = set()
+        for x, y, _ in pedido.obtener_ubicaciones_xyz(warehouse):
+            acceso = warehouse.obtener_celda_acceso_pasillo(x, y)
+            nodo = warehouse.grafo_pasillos.nodos.get(acceso) if acceso else None
+            pasillos.add(nodo.pasillo_id if nodo and nodo.pasillo_id else f"x{x}")
+        return pasillos
 
     def obtener_waves_disponibles(self) -> List[Wave]:
         return [w for w in self.waves_creadas if w.estado == EstadoWave.PENDIENTE]

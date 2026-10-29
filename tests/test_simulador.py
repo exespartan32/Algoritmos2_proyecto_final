@@ -78,6 +78,21 @@ class TestSimuladorBasico(unittest.TestCase):
             self.assertEqual(r["distancia"], r["aristas"])
             self.assertGreaterEqual(r["turnos"], r["distancia"])
 
+    def test_comparar_estrategias_de_armado(self):
+        sim = Simulador(FileParser.leer_json("escenario_gen_mediano.json"))
+        antes = foto(sim)
+        comp = sim.comparar_armado()
+        self.assertEqual(foto(sim), antes)
+        self.assertEqual(set(comp), {"CERCANIA", "PASILLO", "PRIORIDAD"})
+        for r in comp.values():
+            self.assertEqual(r["pedidos_preparados"], 40)
+        # Agrupar por cercanía o por pasillo visita menos pasillos que solo prioridad.
+        self.assertLess(comp["CERCANIA"]["pasillos_por_wave"], comp["PRIORIDAD"]["pasillos_por_wave"])
+        self.assertLess(comp["PASILLO"]["pasillos_por_wave"], comp["PRIORIDAD"]["pasillos_por_wave"])
+        sim.configurar(4, 20, 2, "PASILLO")
+        sim.generar_waves()
+        self.assertEqual(sim.estado.gestor_waves.estrategia_armado, "PASILLO")
+
     def test_pedido_nuevo_y_configuracion(self):
         nuevo = self.sim.agregar_pedido(5, Simulador.interpretar_items("P006x1, P007x2"))
         self.assertEqual(nuevo, "PED_04")
@@ -166,7 +181,7 @@ class TestReglasDeMovimiento(unittest.TestCase):
         for k in range(len(pos)):
             self.assertEqual(len(set(pos[k].values())), len(pos[k]), "dos pickers en la misma celda")
 
-    def test_se_frena_al_recoger_y_al_descargar(self):
+    def test_se_frena_al_cargar_y_al_descargar(self):
         sim = Simulador(FileParser.leer_json("escenario_basico.json"))
         sim.generar_waves()
         sim.iniciar_waves(["WAVE_01"], "ORDEN")
@@ -175,11 +190,14 @@ class TestReglasDeMovimiento(unittest.TestCase):
         recorrido = [sim.warehouse.pickers[0].posicion_actual]
         while sim.avanzar():
             recorrido.append(sim.warehouse.pickers[0].posicion_actual)
-        # En cada destino se queda al menos 2 turnos más (recogiendo).
+        col = sim.estado.colisiones
+        carga, descarga = col.turnos_recogida, col.turnos_descarga
+        self.assertEqual((carga, descarga), (4, 3))
+        # En cada destino se queda quieto cargando.
         for celda in destinos:
             i = recorrido.index(celda)
-            self.assertEqual(recorrido[i:i + 3], [celda] * 3)
+            self.assertEqual(recorrido[i:i + carga + 1], [celda] * (carga + 1))
         # Termina en el despacho y se queda descargando antes de terminar.
-        self.assertEqual(recorrido[-3:], [plan["despacho"]] * 3)
-        self.assertEqual(len(recorrido) - 1, plan["distancia"] + 2 * len(destinos) + 2)
+        self.assertEqual(recorrido[-(descarga + 1):], [plan["despacho"]] * (descarga + 1))
+        self.assertEqual(len(recorrido) - 1, plan["distancia"] + carga * len(destinos) + descarga)
         self.assertEqual(sim.metricas()["esperas"], 0)

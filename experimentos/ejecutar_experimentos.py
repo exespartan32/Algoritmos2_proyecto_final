@@ -207,6 +207,68 @@ def tabla_etapas(filas):
     return lineas
 
 
+ARMADO = [("pedidos", 20), ("pedidos", 40), ("pedidos", 80), ("pedidos", 160),
+          ("localizacion", "CERCA_DESPACHO"), ("localizacion", "POR_RACK")]
+
+
+def medir_armado():
+    """Compara las tres estrategias de armado de waves (recorrido: Cercanía)."""
+    filas = []
+    for clave, valor in ARMADO:
+        params = dict(BASE)
+        params["cantidad_" + clave if clave == "pedidos" else clave] = valor
+        sim = Simulador(ScenarioGenerator.generar_escenario_dict(**params))
+        for estrategia, r in sim.comparar_armado().items():
+            filas.append(dict(variable=clave, valor=valor, armado=estrategia,
+                              **{k: v for k, v in r.items() if k != "nombre"}))
+        print(f"armado {clave:12s} {str(valor):15s} listo")
+    return filas
+
+
+def escribir_armado(filas):
+    with open(SALIDA / "armado.csv", "w", newline="", encoding="utf-8") as f:
+        escritor = csv.DictWriter(f, fieldnames=list(filas[0]))
+        escritor.writeheader()
+        escritor.writerows(filas)
+    nombres = {"CERCANIA": "Cercanía", "PASILLO": "Por pasillo", "PRIORIDAD": "Solo prioridad"}
+    lineas = [
+        "### Estrategias de armado de waves (recorrido con Cercanía)",
+        "",
+        "| Escenario | Armado | Waves | Pedidos/wave | Pasillos/wave | Prioridad 1.ª wave | Distancia | Turnos | Armado (ms) | Candidatos |",
+        "|---|---|---|---|---|---|---|---|---|---|",
+    ]
+    for f in filas:
+        lineas.append(
+            f"| {f['variable']}={f['valor']} | {nombres[f['armado']]} | {f['waves']} | {f['pedidos_por_wave']} | "
+            f"{f['pasillos_por_wave']} | {f['prioridad_primera_wave']} | {f['distancia']} | {f['turnos']} | "
+            f"{f['tiempo_armado_ms']:.2f} | {f['candidatos_evaluados']} |"
+        )
+    try:
+        import matplotlib
+
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+    except ImportError:
+        return lineas + [""]
+    sub = [f for f in filas if f["variable"] == "pedidos"]
+    fig, ejes = plt.subplots(1, 3, figsize=(15, 4.2))
+    colores = {"CERCANIA": "#2563a6", "PASILLO": "#1f8062", "PRIORIDAD": "#c4581e"}
+    for est in nombres:
+        xs = [f["valor"] for f in sub if f["armado"] == est]
+        for eje, campo in zip(ejes, ("distancia", "pasillos_por_wave", "tiempo_armado_ms")):
+            eje.plot(xs, [f[campo] for f in sub if f["armado"] == est], "o-", color=colores[est], label=nombres[est])
+    for eje, etiqueta in zip(ejes, ("Distancia total (pasos)", "Pasillos distintos por wave", "Tiempo de armado (ms)")):
+        eje.set_xlabel("Cantidad de pedidos")
+        eje.set_ylabel(etiqueta)
+        eje.grid(alpha=0.3)
+        eje.legend()
+    fig.suptitle("Estrategias de armado de waves")
+    fig.tight_layout()
+    fig.savefig(SALIDA / "armado.png", dpi=110)
+    plt.close(fig)
+    return lineas + ["", "![Armado de waves](armado.png)", ""]
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--rapido", action="store_true", help="Solo los 3 primeros valores de cada serie")
@@ -237,6 +299,7 @@ def main():
     for serie, (titulo, *_rest) in SERIES.items():
         md += tabla_md(filas, serie, titulo)
     md += tabla_etapas(filas)
+    md += escribir_armado(medir_armado())
     (SALIDA / "resultados.md").write_text("\n".join(md), encoding="utf-8")
     for ruta in graficar(filas):
         print("Gráfico:", ruta.relative_to(RAIZ))

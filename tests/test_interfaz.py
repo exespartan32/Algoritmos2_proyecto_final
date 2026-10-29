@@ -24,6 +24,7 @@ class TestInterfaz(unittest.TestCase):
     def setUp(self):
         self.carpeta = Path(tempfile.mkdtemp())
         self.app = App(self.carpeta)
+        self.app.animar_busqueda = False  # la animación se prueba aparte
 
     def tearDown(self):
         shutil.rmtree(self.carpeta, ignore_errors=True)
@@ -48,6 +49,7 @@ class TestInterfaz(unittest.TestCase):
         e = self.app.escala
         pos = (int(x * e + self.app.desplazamiento[0]) + 1, int(y * e + self.app.desplazamiento[1]) + 1)
         manejar_evento(self.app, evento(pygame.MOUSEBUTTONDOWN, button=1, pos=pos))
+        manejar_evento(self.app, evento(pygame.MOUSEBUTTONUP, button=1, pos=pos))
         self.app.dibujar()
 
     def test_inicio_y_generador(self):
@@ -181,6 +183,55 @@ class TestInterfaz(unittest.TestCase):
             self.hacer("adelante")
         for pestana in PESTANAS:
             self.hacer(("pestana", pestana))
+
+    def test_zoom_arrastre_busqueda_y_armado(self):
+        self.hacer(("abrir", self.carpeta / "escenario_gen_mediano.json"))
+        mapa = self.app.mapa
+        celda = (5, 10)
+        centro = mapa.centro(celda)
+        mapa.zoom_en(centro, 3)
+        self.assertEqual(mapa.celda_en(centro), celda)  # el punto bajo el cursor queda fijo
+        self.assertAlmostEqual(mapa.zoom, 3)
+        self.app.dibujar()
+        # Rueda del mouse sobre el mapa
+        import tests.pygame_falso as falso
+        falso.posicion_mouse[0] = centro
+        if hasattr(falso, "Rect") and pygame.Rect is falso.Rect:
+            manejar_evento(self.app, evento(pygame.MOUSEWHEEL, y=1))
+            self.assertGreater(mapa.zoom, 3)
+        # Arrastrar mueve el mapa y no cuenta como clic
+        antes = list(mapa.desplazamiento)
+        x, y = centro
+        manejar_evento(self.app, evento(pygame.MOUSEBUTTONDOWN, button=1, pos=(x, y)))
+        manejar_evento(self.app, evento(pygame.MOUSEMOTION, pos=(x + 40, y + 30), buttons=(1, 0, 0)))
+        manejar_evento(self.app, evento(pygame.MOUSEBUTTONUP, button=1, pos=(x + 40, y + 30)))
+        self.assertNotEqual(mapa.desplazamiento, antes)
+        self.hacer("centrar_mapa")
+        self.assertEqual(mapa.zoom, 1.0)
+        # Comparar armado y cambiar la estrategia de armado
+        self.hacer("comparar_armado")
+        self.assertEqual(self.app.dialogo, "armado")
+        self.hacer("cerrar")
+        self.hacer("config")
+        indice = [c[0] for c in self.app.formulario["campos"]].index("estrategia_waves")
+        self.hacer(("campo", indice))
+        self.hacer("enviar")
+        self.assertEqual(self.app.sim.config["estrategia_waves"], "PASILLO")
+        # Animación de búsqueda al asignar
+        self.app.animar_busqueda = True
+        self.hacer("generar_waves")
+        self.hacer(("marcar_todas", True))
+        self.hacer("iniciar_seleccion")
+        self.app.dibujar()
+        self.assertTrue(self.app.busquedas_activas())
+        self.hacer("iniciar")
+        paso = self.app.sim.estado.paso
+        self.app.paso_automatico(5.0)
+        self.assertEqual(self.app.sim.estado.paso, paso)  # espera mientras busca la ruta
+        self.hacer("adelante")  # termina la animación
+        self.assertFalse(self.app.busquedas_activas())
+        self.hacer("adelante")
+        self.assertEqual(self.app.sim.estado.paso, paso + 1)
 
     def test_arranque_con_cuadros(self):
         self.app.run(3)
