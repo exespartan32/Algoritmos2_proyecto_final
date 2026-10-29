@@ -169,7 +169,7 @@ class VistaMapa:
         """Pinta de a poco lo que explora Dijkstra y después el camino elegido."""
         lienzo = self.app.lienzo
         orden = self.orden_unico(plan)
-        fase_exploracion = 0.7
+        fase_exploracion = 0.8
         cantidad = int(len(orden) * min(1.0, progreso / fase_exploracion))
         # Capa semitransparente: se siguen viendo las flechas de los pasillos.
         capa = pygame.Surface(self.area.size, pygame.SRCALPHA)
@@ -186,6 +186,7 @@ class VistaMapa:
             puntos = [self.rect_celda(c).center for c in ruta[:hasta]]
             if len(puntos) > 1:
                 pygame.draw.lines(lienzo, color, False, puntos, max(2, min(8, int(lado * 0.2))))
+        return cantidad, len(orden), progreso > fase_exploracion
 
     # ------------------------------------------------------------------
     # Dibujo completo
@@ -215,10 +216,12 @@ class VistaMapa:
         indices = {p["id"]: i for i, p in enumerate(pickers)}
         animadas = {p["id"]: app.posicion_animada(p["id"], p["pos"]) for p in pickers}
 
+        resumen_busqueda = []
         for p in pickers:
             if p["id"] in buscando:
                 plan_b, progreso = buscando[p["id"]]
-                self.dibujar_busqueda(color_picker(indices[p["id"]]), plan_b, progreso, lado)
+                hechas, total, ruta_lista = self.dibujar_busqueda(color_picker(indices[p["id"]]), plan_b, progreso, lado)
+                resumen_busqueda.append((p["id"], indices[p["id"]], hechas, total, ruta_lista, plan_b))
 
         for p in pickers:
             color = color_picker(indices[p["id"]])
@@ -270,6 +273,17 @@ class VistaMapa:
             )
         lienzo.set_clip(None)
         app.zona_clic(self.area, ("mapa",))
+
+        # Cartel con el avance de cada búsqueda de ruta.
+        for i, (pid, indice, hechas, total, ruta_lista, plan_b) in enumerate(resumen_busqueda[:4]):
+            texto = (
+                f"{pid}: ruta encontrada · {plan_b['distancia']} pasos"
+                if ruta_lista
+                else f"{pid}: buscando ruta con Dijkstra · {hechas}/{total} celdas exploradas"
+            )
+            y = self.area.bottom - 30 - i * 28
+            app.caja(self.area.x + 6, y, 470, 24, (255, 255, 255), color_picker(indice))
+            app.texto(texto, self.area.x + 14, y + 3, 15, color_picker(indice), True, max_ancho=455)
 
         # Controles de la vista (arriba a la derecha del mapa).
         x = self.area.right - 128

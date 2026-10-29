@@ -51,7 +51,8 @@ hace falta además `matplotlib` (opcional).
 7. **Recorrido del picker.** Cada picker camina de celda en celda, girando
    hacia donde va, con su nombre arriba y el borde de su color. Al recibir una wave
    se ve cómo Dijkstra explora el mapa ("buscando ruta") hasta quedarse con el
-   camino. Se frena 4 turnos a cargar, mirando al rack, y 3 a descargar. Deja una "estela" de 2 turnos
+   camino (el botón *Búsqueda* cambia el ritmo: muy lenta, lenta, normal o
+   rápida). Se frena 4 turnos a cargar, mirando al rack, y 3 a descargar. Deja una "estela" de 2 turnos
    donde nadie puede entrar, así no se camina pegado a otro. Para usar un
    dibujo propio, poné `FrontEnd/sprites/picker.png` (fondo transparente,
    mirando hacia arriba).

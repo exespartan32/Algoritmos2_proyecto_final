@@ -35,8 +35,15 @@ from FrontEnd.views.ui_elements import (
 # durante ese tiempo (animación), así se ve el recorrido y no saltos.
 VELOCIDADES = [(0.70, "x0.5"), (0.35, "x1"), (0.18, "x2"), (0.07, "x5"), (0.02, "x20")]
 DURACION_PASO_MANUAL = 0.30
-# Segundos que dura la animación de "buscando ruta" a velocidad x1.
-DURACION_BUSQUEDA = 2.4
+# Ritmo de la animación de "buscando ruta": (nombre, celdas pintadas por
+# segundo, duración mínima y máxima en segundos). No depende de la velocidad
+# de la simulación, así se puede mirar con calma qué hace Dijkstra.
+RITMOS_BUSQUEDA = [
+    ("muy lenta", 25, 10.0, 40.0),
+    ("lenta", 50, 7.0, 25.0),
+    ("normal", 120, 4.0, 12.0),
+    ("rápida", 400, 1.5, 4.0),
+]
 # Campos de formulario que se eligen con un clic entre opciones fijas.
 OPCIONES = {"localizacion": LOCALIZACIONES, "estrategia_waves": ESTRATEGIAS_ARMADO}
 PESTANAS = ["Productos", "Pedidos", "Waves", "Pickers", "Métricas", "Eventos"]
@@ -93,6 +100,7 @@ class App(UIElements):
         self.busquedas = {}
         self.planes_vistos = {}
         self.animar_busqueda = True
+        self.ritmo_busqueda = 1  # "lenta"
         self.arrastre = None
         self.comparacion_armado = None
         self.productos_por_celda = {}
@@ -183,14 +191,16 @@ class App(UIElements):
     def detectar_planes_nuevos(self):
         """Si un picker recibió una ruta nueva, arranca su animación de búsqueda."""
         nuevos = False
-        factor = max(0.05, min(2.0, VELOCIDADES[self.velocidad][0] / 0.35))
         for pid, plan in self.sim.estado.planes.items():
             if self.planes_vistos.get(pid) is plan:
                 continue
             self.planes_vistos[pid] = plan
             picker = next((p for p in self.sim.warehouse.pickers if p.id_picker == pid), None)
             if self.animar_busqueda and picker is not None and picker.id_wave_actual == plan["wave"]:
-                self.busquedas[pid] = (plan, time.perf_counter(), DURACION_BUSQUEDA * factor)
+                _, por_segundo, minimo, maximo = RITMOS_BUSQUEDA[self.ritmo_busqueda]
+                celdas = len(self.mapa.orden_unico(plan))
+                duracion = max(minimo, min(maximo, celdas / por_segundo))
+                self.busquedas[pid] = (plan, time.perf_counter(), duracion)
                 nuevos = True
         return nuevos
 
@@ -492,6 +502,10 @@ class App(UIElements):
         self.comparacion_armado = self.sim.comparar_armado()
         self.dialogo = "armado"
 
+    def _a_ritmo_busqueda(self):
+        self.ritmo_busqueda = (self.ritmo_busqueda + 1) % len(RITMOS_BUSQUEDA)
+        self.mensaje = "Animación de búsqueda de ruta: " + RITMOS_BUSQUEDA[self.ritmo_busqueda][0] + "."
+
     def _a_ampliar(self):
         self.mapa_ampliado = not self.mapa_ampliado
 
@@ -585,6 +599,7 @@ class App(UIElements):
             ("Reiniciar", 115, "reiniciar", m.tanda_actual is not None),
             ("Velocidad " + VELOCIDADES[self.velocidad][1], 140, "velocidad", True),
             ("Ver paneles" if self.mapa_ampliado else "Ampliar mapa", 150, "ampliar", True),
+            ("Búsqueda: " + RITMOS_BUSQUEDA[self.ritmo_busqueda][0], 190, "ritmo_busqueda", True),
         ]
         x = 20
         for etiqueta, w, accion, habilitado in fila2:
