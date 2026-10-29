@@ -198,7 +198,7 @@ m = destinos de un viaje, K = pickers, T = turnos simulados.
 | Ruta Orden de pedidos | O(m · (N + E) log N) | O(N + longitud de la ruta) | Destinos contiguos | Cada tramo cruza el almacén |
 | Ruta Cercanía | O(m · (N + E) log N) | O(N + longitud de la ruta) | El más cercano siempre está al lado | Igual que Orden; en la práctica expande 20–60 % menos |
 | Un turno de simulación | O(K²) sin desvíos | O(K) reservas | Un solo picker activo | Desvíos: suma Dijkstras O(N log N) |
-| Simulación completa | O(T · K²) + desvíos | O(T/10 · estado) de historial | — | — |
+| Simulación completa | O(T · K²) + desvíos | O(T/20 · estado) de historial | — | — |
 | Generador | O(W·H + P + n·L) + validación O(W·H) | O(W·H + P + n·L) | — | — |
 
 Observaciones:
@@ -389,7 +389,7 @@ garantiza el recorrido óptimo, que sería un problema del viajante.
   primero se espera y recién después de 2 o 3 turnos se recalcula o se cede
   el lugar.
 - Guardar una copia del estado en cada turno haría que retroceder cueste
-  O(1), pero usaría mucha memoria. Se guarda cada 10 turnos y se re-simula el
+  O(1), pero usaría mucha memoria. Se guarda cada 20 turnos y se re-simula el
   resto.
 
 **15. ¿Qué modificaciones harían para usarlo en un Warehouse real?**

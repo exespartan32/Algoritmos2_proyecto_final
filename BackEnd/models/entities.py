@@ -9,6 +9,19 @@ from BackEnd.enums.enums import (
 )
 
 
+class ListaDeInmutables(list):
+    """Lista cuyos elementos no cambian nunca (tuplas, textos).
+
+    Al copiarla en profundidad alcanza con copiar la lista: los elementos se
+    pueden compartir. Hace que el historial de la simulación sea barato.
+    """
+
+    def __deepcopy__(self, memo):
+        copia = type(self)(self)
+        memo[id(self)] = copia
+        return copia
+
+
 class Celda:
     def __init__(
         self, x: int, y: int, tipo: TipoCelda, elemento_id: Optional[str] = None
@@ -268,7 +281,7 @@ class Picker:
     cola_waves_asignadas: List[TareaWavePicker] = field(default_factory=list)
     productos_recogidos: Dict[str, int] = field(default_factory=dict)
     turnos_bloqueado: int = 0
-    historial_recorrido: List[Tuple[int, int]] = field(default_factory=list)
+    historial_recorrido: List[Tuple[int, int]] = field(default_factory=ListaDeInmutables)
 
     def puede_cargar(self, peso_adicional: float) -> bool:
         return (self.peso_actual_kg + peso_adicional) <= self.capacidad_carga_kg

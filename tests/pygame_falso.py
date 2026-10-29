@@ -37,6 +37,14 @@ class Rect:
     center = property(lambda s: (s.x + s.w // 2, s.y + s.h // 2))
     topleft = property(lambda s: (s.x, s.y))
 
+    size = property(lambda s: (s.w, s.h))
+
+    def __iter__(self):
+        return iter((self.x, self.y, self.w, self.h))
+
+    def move(self, dx, dy):
+        return Rect(self.x + dx, self.y + dy, self.w, self.h)
+
     def collidepoint(self, pos):
         return self.x <= pos[0] < self.x + self.w and self.y <= pos[1] < self.y + self.h
 

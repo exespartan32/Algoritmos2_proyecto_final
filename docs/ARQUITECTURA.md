@@ -206,12 +206,12 @@ sequenceDiagram
 
 ## Decisiones de la capa de simulación
 
-- **Historial para retroceder.** Cada 10 turnos se guarda una copia completa
+- **Historial para retroceder.** Cada 20 turnos se guarda una copia completa
   del estado. El grafo, los obstáculos y la matriz de distancias no se
   copian, porque no cambian. Para volver a un turno intermedio se parte de la
   copia anterior y se re-simula; la simulación es determinista, así que se
-  llega exactamente al mismo estado. El historial ocupa unas 10 veces menos
-  memoria y retroceder un paso cuesta a lo sumo 9 turnos de simulación.
+  llega exactamente al mismo estado. El historial ocupa unas 20 veces menos
+  memoria y retroceder un paso cuesta a lo sumo 19 turnos de simulación (sin copias, unos pocos milisegundos).
 - **Sesiones.** Al guardar se escribe el escenario inicial más la lista de
   acciones (generar waves, iniciar, avanzar *n*, retroceder…). Al cargar, las
   acciones se repiten y se llega al mismo turno, con el historial completo.

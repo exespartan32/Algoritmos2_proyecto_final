@@ -40,6 +40,45 @@ class VistaMapa:
             return (x, y)
         return None
 
+    def _fondo(self, plan, explorados):
+        """Celdas, intersecciones, productos y zonas dibujados una sola vez.
+
+        Se vuelve a dibujar solo si cambia el escenario, el tamaño del mapa o
+        la ruta cuya exploración se muestra. Así cada cuadro cuesta un blit en
+        lugar de miles de rectángulos.
+        """
+        app, m = self.app, self.app.sim
+        clave = (id(m), tuple(self.area), id(plan) if explorados else None)
+        if getattr(self, "_clave_fondo", None) == clave:
+            return self._superficie_fondo
+        superficie = pygame.Surface(self.area.size)
+        superficie.fill((255, 255, 255))
+        dx, dy = -self.area.x, -self.area.y
+        for coord, (tipo, sentido, _) in m.celdas.items():
+            dibujar_celda(
+                superficie,
+                self.rect_celda(coord).move(dx, dy),
+                tipo,
+                sentido,
+                app.fuente,
+                explorado=coord in explorados,
+                interseccion=coord in m.intersecciones,
+                productos=app.productos_por_celda.get(coord, 0),
+            )
+        # Nombre de cada zona de despacho sobre su rectángulo.
+        for zona in m.warehouse.zonas_despacho.values():
+            r1 = self.rect_celda((zona.x, zona.y + zona.alto - 1))
+            r2 = self.rect_celda((zona.x + zona.ancho - 1, zona.y))
+            rect = r1.union(r2).move(dx, dy)
+            tam = max(9, min(18, rect.height // 2))
+            while tam > 9 and app.fuente(tam, True).size(zona.id)[0] > rect.width - 4:
+                tam -= 1
+            if app.fuente(tam, True).size(zona.id)[0] <= rect.width + 8:
+                imagen = app.fuente(tam, True).render(zona.id, True, (30, 90, 50))
+                superficie.blit(imagen, imagen.get_rect(center=rect.center))
+        self._clave_fondo, self._superficie_fondo = clave, superficie
+        return superficie
+
     def dibujar(self):
         app, m = self.app, self.app.sim
         lienzo = app.lienzo
@@ -49,30 +88,10 @@ class VistaMapa:
         explorados = set(plan["explorados"]) if plan and app.ver_exploracion else set()
         resaltadas = app.celdas_resaltadas()
 
-        for coord, (tipo, sentido, _) in m.celdas.items():
-            dibujar_celda(
-                lienzo,
-                self.rect_celda(coord),
-                tipo,
-                sentido,
-                app.fuente,
-                explorado=coord in explorados,
-                interseccion=coord in m.intersecciones,
-                productos=app.productos_por_celda.get(coord, 0),
-                resaltada=coord in resaltadas,
-            )
-
-        # Nombre de cada zona de despacho sobre su rectángulo.
-        for zona in m.warehouse.zonas_despacho.values():
-            r1 = self.rect_celda((zona.x, zona.y + zona.alto - 1))
-            r2 = self.rect_celda((zona.x + zona.ancho - 1, zona.y))
-            rect = r1.union(r2)
-            tam = max(9, min(18, rect.height // 2))
-            while tam > 9 and app.fuente(tam, True).size(zona.id)[0] > rect.width - 4:
-                tam -= 1
-            if app.fuente(tam, True).size(zona.id)[0] <= rect.width + 8:
-                imagen = app.fuente(tam, True).render(zona.id, True, (30, 90, 50))
-                lienzo.blit(imagen, imagen.get_rect(center=rect.center))
+        lienzo.blit(self._fondo(plan, explorados), self.area.topleft)
+        lado = self.geometria()[0]
+        for coord in resaltadas:
+            pygame.draw.rect(lienzo, AMBAR, self.rect_celda(coord), max(2, int(lado) // 7))
 
         lado = self.geometria()[0]
         grosor = max(2, int(lado * 0.16))
