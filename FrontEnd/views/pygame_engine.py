@@ -369,6 +369,10 @@ class App(UIElements):
         self.dialogo = "waves"
         self.reproduciendo = False
 
+    def _a_pickers_por_wave(self):
+        maximo = min(4, len(self.sim.warehouse.pickers))
+        self.sim.pickers_por_wave = self.sim.pickers_por_wave % maximo + 1
+
     def _a_marcar(self, wid):
         self.seleccion ^= {wid}
 
@@ -379,7 +383,7 @@ class App(UIElements):
         ids = [w["id"] for w in self.waves_pendientes() if w["id"] in self.seleccion]
         if not ids:
             raise ValueError("Marcá al menos una wave pendiente.")
-        tanda = self.sim.iniciar_waves(ids, self.sim.estrategia)
+        tanda = self.sim.iniciar_waves(ids, self.sim.estrategia, self.sim.pickers_por_wave)
         self.seleccion = set()
         self.dialogo = None
         self.comparacion = None
@@ -408,7 +412,7 @@ class App(UIElements):
             ids = [w["id"] for w in self.waves_pendientes() if w["id"] in self.seleccion]
             if not ids:
                 raise ValueError("Marcá waves pendientes en 'Seleccionar waves' o iniciá una tanda para comparar.")
-        self.comparacion = self.sim.comparar_estrategias(ids)
+        self.comparacion = self.sim.comparar_estrategias(ids, self.sim.pickers_por_wave if ids else None)
         self.dialogo = "comparar"
 
     # --- simulación ---
@@ -584,6 +588,7 @@ class App(UIElements):
             linea += (
                 f" · Tanda {tanda['numero']} ({NOMBRE_ESTRATEGIA[tanda['estrategia']]}): "
                 f"{len(tanda['waves'])} waves asignadas, {hechas} terminadas, {len(tanda['en_espera'])} en espera"
+                f" · {tanda.get('pickers_por_wave', 1)} picker(s) por wave"
             )
         self.texto(linea, 20, 152, 17, AZUL if self.reproduciendo else TINTA, max_ancho=1470)
 
@@ -865,7 +870,13 @@ class App(UIElements):
         hay = bool(self.seleccion)
         self.boton("Asignar e iniciar", x, y + 600, 260, "iniciar_seleccion", hay and libres > 0, marcado=hay and libres > 0)
         self.boton("Comparar estrategias", x + 280, y + 600, 240, ("comparar", True), hay)
-        self.parrafo("Las waves marcadas se asignan a los pickers libres más cercanos y se mueven todos a la vez.", x + 540, y + 596, w - 560, 15)
+        n = m.pickers_por_wave
+        self.boton(f"Pickers por wave: {n}", x + 300, y + 540, 220, "pickers_por_wave", len(m.warehouse.pickers) > 1)
+        self.parrafo(
+            "Cada wave marcada se asigna al picker libre más cercano." if n == 1 else
+            f"Cada wave se reparte entre los {n} pickers libres más cercanos (se dividen los pedidos y cada uno hace su parte).",
+            x + 540, y + 596, w - 560, 15,
+        )
 
     FILAS_ARMADO = [
         ("Waves armadas", "waves"),

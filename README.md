@@ -42,8 +42,8 @@ hace falta además `matplotlib` (opcional).
    unidades, y la estrategia de armado (Cercanía, Por pasillo o Solo
    prioridad). *Comparar armado* prueba las tres. *Generar waves* las arma.
 5. **Seleccionar waves.** Se marcan una o varias y se pulsa *Asignar e
-   iniciar*: cada wave va al picker libre más cercano y las que no tienen
-   picker quedan en espera.
+   iniciar*. Cada wave va al picker libre más cercano, o se reparte entre
+   varios con *Pickers por wave*. Las que no tienen picker quedan en espera.
 6. **Ejecutar y ver los algoritmos.** El mapa se acerca y aleja con la rueda
    del mouse y se mueve arrastrando. En el mapa se ven la ruta planificada,
    los destinos numerados en orden de visita y las celdas que exploró

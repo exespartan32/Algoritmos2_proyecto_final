@@ -78,6 +78,26 @@ class TestSimuladorBasico(unittest.TestCase):
             self.assertEqual(r["distancia"], r["aristas"])
             self.assertGreaterEqual(r["turnos"], r["distancia"])
 
+    def test_una_wave_entre_varios_pickers(self):
+        sim = Simulador(FileParser.leer_json("escenario_gen_mediano.json"))
+        sim.generar_waves()
+        ids = [w.id_wave for w in sim.waves]
+        tanda = sim.iniciar_waves(ids, "CERCANIA", 2)
+        primera = sim.estado.gestor_waves.waves_por_id[ids[0]]
+        self.assertEqual(len(primera.ids_pickers_asignados), 2)
+        # Cada picker del equipo se lleva una parte distinta de los pedidos.
+        partes = [set(primera.pedidos_por_picker[p]) for p in primera.ids_pickers_asignados]
+        self.assertTrue(all(partes))
+        self.assertFalse(partes[0] & partes[1])
+        self.assertEqual(partes[0] | partes[1], {p.id_pedido for p in primera.pedidos})
+        sim.avanzar_hasta_terminar()
+        m = sim.metricas()
+        self.assertEqual((m["pedidos_preparados"], m["waves_finalizadas"]), (40, len(ids)))
+        # La sesión guarda cuántos pickers por wave se usaron.
+        copia = Simulador(json.loads(json.dumps(sim.a_json())))
+        self.assertEqual(foto(copia), foto(sim))
+        self.assertEqual(copia.tanda_actual["pickers_por_wave"], 2)
+
     def test_comparar_estrategias_de_armado(self):
         sim = Simulador(FileParser.leer_json("escenario_gen_mediano.json"))
         antes = foto(sim)

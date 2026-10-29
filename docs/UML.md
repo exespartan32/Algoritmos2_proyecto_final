@@ -401,13 +401,14 @@ classDiagram
         +validar_pedidos_entrada(pedidos, wh) List
         +calcular_costo_marginal_promedio(wave, pedido, wh, dist) float
         +seleccionar_zona_despacho_para_wave(wh, pedido) ZonaDespacho
-        +asignar_y_ejecutar_waves_seleccionadas(ids, wh, estrategia) Dict
+        +asignar_y_ejecutar_waves_seleccionadas(ids, wh, estrategia, pickers_por_wave) Dict
         +calcular_distancia_picker_a_wave(picker, wave, wh) float
         +notificar_picker_descargo_en_despacho(wave, picker, pickers, wh)
         +obtener_waves_disponibles() List
         +obtener_pickers_libres(pickers)$ List
         -_pasillos_de(pedido, wh)$ Set
         -_elegir_celda_despacho(accesos, picker, destinos, pickers, wh)$ Coord
+        -_equipo_puede_cargar(pedidos, equipo, wh)$ bool
         -_es_repartible_en_equipo_pickers(pedidos, pickers, wh) Tuple
         -_tiene_stock_suficiente_sin_modificar(pedido, wh, comprometido) bool
     }
@@ -458,6 +459,7 @@ classDiagram
         +Dict datos_base
         +Dict config
         +str estrategia
+        +int pickers_por_wave
         +EstadoSimulacion estado
         +List historial
         +List acciones
@@ -468,13 +470,13 @@ classDiagram
         +agregar_pedido(prioridad, items) str
         +interpretar_items(texto)$ List
         +generar_waves() List~Wave~
-        +iniciar_waves(ids, estrategia) Dict
+        +iniciar_waves(ids, estrategia, pickers_por_wave) Dict
         +cambiar_estrategia(estrategia) bool
         +avanzar(guardar_historial) bool
         +avanzar_hasta_terminar(max) int
         +retroceder() bool
         +reiniciar() bool
-        +comparar_estrategias(ids) Dict
+        +comparar_estrategias(ids, pickers_por_wave) Dict
         +comparar_armado() Dict
         +productos() List
         +pedidos() List

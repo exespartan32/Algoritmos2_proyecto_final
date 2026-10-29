@@ -100,6 +100,8 @@ class Simulador:
             "estrategia_waves": str(cfg.get("estrategia_waves", "CERCANIA")),
         }
         self.estrategia = "CERCANIA"
+        # Cuántos pickers se reparten cada wave al iniciarla (1 = uno solo).
+        self.pickers_por_wave = 1
         self.acciones: List[List[Any]] = []
         # None = turno sin copia (se reconstruye desde la copia anterior).
         self.historial: List[Optional[EstadoSimulacion]] = []
@@ -379,7 +381,9 @@ class Simulador:
             "orden_exploracion": list(res.orden_exploracion),
         })
 
-    def iniciar_waves(self, ids_waves: List[str], estrategia: Optional[str] = None) -> Dict[str, Any]:
+    def iniciar_waves(
+        self, ids_waves: List[str], estrategia: Optional[str] = None, pickers_por_wave: Optional[int] = None
+    ) -> Dict[str, Any]:
         """Asigna las waves elegidas a los pickers libres más cercanos.
 
         Las que no consiguen picker quedan EN ESPERA dentro de la tanda y se
@@ -403,6 +407,8 @@ class Simulador:
             raise ValueError("Elegí al menos una wave pendiente.")
         if not gestor.obtener_pickers_libres(self.warehouse.pickers):
             raise ValueError("No hay pickers libres. Esperá a que terminen su wave.")
+        if pickers_por_wave is not None and not 1 <= int(pickers_por_wave) <= 10:
+            raise ValueError("Pickers por wave: de 1 a 10.")
 
         antes = self._copiar(self.estado)
         self.historial.append(antes)
@@ -413,6 +419,7 @@ class Simulador:
             "estrategia": estrategia,
             "paso_inicio": self.estado.paso,
             "paso_fin": None,
+            "pickers_por_wave": int(pickers_por_wave or self.pickers_por_wave),
             "planes": [],
         }
         self._asignar(tanda, pendientes)
@@ -425,7 +432,7 @@ class Simulador:
             self._evento(f"{wid} queda en espera hasta que se libere un picker.")
         self.estado.tandas.append(tanda)
         self._inicio_tanda[len(self.estado.tandas) - 1] = (antes, self._copiar(self.estado))
-        self._registrar("iniciar_waves", list(ids_waves), estrategia)
+        self._registrar("iniciar_waves", list(ids_waves), estrategia, tanda["pickers_por_wave"])
         return tanda
 
     def _asignar(self, tanda: Dict[str, Any], ids: List[str]) -> None:
@@ -434,7 +441,9 @@ class Simulador:
         wh = self.warehouse
         estrategia = tanda["estrategia"]
         posiciones = {p.id_picker: p.posicion_actual for p in wh.pickers}
-        resultado = gestor.asignar_y_ejecutar_waves_seleccionadas(ids, wh, ESTRATEGIAS[estrategia])
+        resultado = gestor.asignar_y_ejecutar_waves_seleccionadas(
+            ids, wh, ESTRATEGIAS[estrategia], tanda.get("pickers_por_wave", 1)
+        )
         tanda["en_espera"] = list(resultado["waves_sin_picker_disponible"])
         pickers = {p.id_picker: p for p in wh.pickers}
         for asig in resultado["asignaciones"]:
@@ -510,7 +519,7 @@ class Simulador:
             if self.historial:
                 self.historial.pop()
             self._registrar("cambiar_estrategia", estrategia)
-            self.iniciar_waves(ids, estrategia)
+            self.iniciar_waves(ids, estrategia, tanda.get("pickers_por_wave", 1))
             # La re-planificación ya quedó registrada dentro de cambiar_estrategia.
             self.acciones.pop()
             return True
@@ -667,7 +676,9 @@ class Simulador:
     # ------------------------------------------------------------------
     # Comparación de estrategias (no modifica la simulación real)
     # ------------------------------------------------------------------
-    def comparar_estrategias(self, ids_waves: Optional[List[str]] = None) -> Dict[str, Dict[str, Any]]:
+    def comparar_estrategias(
+        self, ids_waves: Optional[List[str]] = None, pickers_por_wave: Optional[int] = None
+    ) -> Dict[str, Dict[str, Any]]:
         """Corre las mismas waves con cada estrategia sobre una copia del estado.
 
         Si no se indican waves, usa las de la tanda actual partiendo del mismo
@@ -680,6 +691,7 @@ class Simulador:
                 raise ValueError("Seleccioná waves (o iniciá una tanda) para comparar.")
             ids_waves = tanda["waves"] + tanda["en_espera"]
             base = self._inicio_tanda[indice][0]
+            pickers_por_wave = tanda.get("pickers_por_wave", 1)
         else:
             base = self.estado
         resultados: Dict[str, Dict[str, Any]] = {}
@@ -692,7 +704,7 @@ class Simulador:
             clon.acciones = []
             clon.estrategia = clave
             inicio = time.perf_counter()
-            tanda = clon.iniciar_waves(ids_waves, clave)
+            tanda = clon.iniciar_waves(ids_waves, clave, pickers_por_wave)
             tiempo_plan = (time.perf_counter() - inicio) * 1000
             clon.historial = []  # la copia no necesita poder retroceder
             pasos = 0
@@ -888,6 +900,7 @@ class Simulador:
             "version": VERSION_SESION,
             "config": dict(self.config),
             "estrategia": self.estrategia,
+            "pickers_por_wave": self.pickers_por_wave,
             "acciones": deepcopy(self.acciones),
         }
         return datos
@@ -936,3 +949,4 @@ class Simulador:
             else:
                 permitidas[nombre](*args)
         self.estrategia = sesion.get("estrategia", self.estrategia)
+        self.pickers_por_wave = int(sesion.get("pickers_por_wave", self.pickers_por_wave))

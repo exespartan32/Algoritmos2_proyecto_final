@@ -590,7 +590,14 @@ class WaveManager:
         ids_waves_seleccionadas: List[str],
         warehouse: Warehouse,
         estrategia_ruteo: EstrategiaRuteo = EstrategiaRuteo.CERCANIA_DIJKSTRA_MULTIDESTINO,
+        pickers_por_wave: int = 1,
     ) -> Dict[str, Any]:
+        """Asigna cada wave a los pickers libres más cercanos.
+
+        ``pickers_por_wave`` indica cuántos pickers se reparten una wave (si hay
+        libres y la wave tiene pedidos suficientes). Con 1 la hace un solo
+        picker, salvo que pese más de lo que puede cargar: ahí se arma un equipo.
+        """
         grafo = warehouse.grafo_pasillos
         pickers = warehouse.pickers
 
@@ -640,7 +647,16 @@ class WaveManager:
             )
 
             equipo_elegido: List[Picker] = []
-            if candidatos_cercanos[0].capacidad_carga_kg >= w.peso_total_kg:
+            cantidad = max(1, min(int(pickers_por_wave), len(w.pedidos), len(candidatos_cercanos)))
+            if cantidad > 1:
+                # Equipo pedido: los N pickers libres más cercanos, si pueden
+                # repartirse la carga.
+                equipo = candidatos_cercanos[:cantidad]
+                if self._equipo_puede_cargar(w.pedidos, equipo, warehouse):
+                    equipo_elegido = equipo
+            if equipo_elegido:
+                pass
+            elif candidatos_cercanos[0].capacidad_carga_kg >= w.peso_total_kg:
                 equipo_elegido = [candidatos_cercanos[0]]
             else:
                 for pk in candidatos_cercanos:
@@ -659,7 +675,7 @@ class WaveManager:
                 continue
 
             for pk in equipo_elegido:
-                pickers_libres.remove(pk)
+                pickers_libres = [q for q in pickers_libres if q is not pk]
 
             w.asignar_equipo_pickers(equipo_elegido, warehouse)
             w.estado = EstadoWave.EN_EJECUCION
@@ -727,6 +743,18 @@ class WaveManager:
             )
 
         return resultado
+
+    @staticmethod
+    def _equipo_puede_cargar(pedidos: List[Pedido], equipo: List[Picker], warehouse: Warehouse) -> bool:
+        """Reparto goloso (el pedido más pesado al picker con menos carga)."""
+        cargas = [0.0] * len(equipo)
+        for peso in sorted((p.obtener_peso_total(warehouse) for p in pedidos), reverse=True):
+            validos = [i for i in range(len(equipo)) if cargas[i] + peso <= equipo[i].capacidad_carga_kg]
+            if not validos:
+                return False
+            i = min(validos, key=lambda j: cargas[j])
+            cargas[i] += peso
+        return True
 
     @staticmethod
     def _elegir_celda_despacho(

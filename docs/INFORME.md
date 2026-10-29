@@ -135,6 +135,14 @@ equipo de hasta *k* pickers con un reparto goloso de pedidos por peso. Un
 picker hace **una sola wave por viaje**. Las waves que no consiguen picker
 quedan **en espera** y se asignan cuando uno se libera.
 
+También se puede pedir que **cada wave la hagan varios pickers** ("Pickers
+por wave" en la selección de waves). En ese caso se toman los N pickers libres
+más cercanos, siempre que puedan repartirse el peso. Los pedidos se reparten
+entre ellos: se ordenan de oeste a este y cada uno va al picker con menos
+carga. Cada picker calcula su propia ruta con sus productos y la wave termina
+cuando descarga el último. Así se prepara antes una wave urgente, a costa de
+ocupar más pickers a la vez.
+
 ### 3.5 Estrategias de recorrido (pregunta 9)
 
 Las dos construyen la ruta como una sucesión de tramos de camino mínimo con
