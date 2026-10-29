@@ -377,10 +377,21 @@ class Wave:
                 self.peso_por_picker[mejor_pid] + peso_ped, 4
             )
 
-            if warehouse_o_tabla is not None:
-                for x, y, _ in ped.obtener_ubicaciones_xyz(warehouse_o_tabla):
-                    if (x, y) not in self.destinos_xy_por_picker[mejor_pid]:
-                        self.destinos_xy_por_picker[mejor_pid].append((x, y))
+        # Los destinos de cada picker se listan en el ORDEN DE LOS PEDIDOS de la
+        # wave (y de sus ítems). La estrategia "Orden de pedidos" los visita así;
+        # el orden geográfico de arriba solo sirve para repartir pedidos.
+        if warehouse_o_tabla is not None:
+            dueno = {
+                pid_ped: pid
+                for pid, peds in self.pedidos_por_picker.items()
+                for pid_ped in peds
+            }
+            for ped in self.pedidos:
+                destinos = self.destinos_xy_por_picker[dueno[ped.id_pedido]]
+                for item in ped.items:
+                    prod = Pedido._buscar_producto(warehouse_o_tabla, item.producto_id)
+                    if prod is not None and prod.coordenadas_xy not in destinos:
+                        destinos.append(prod.coordenadas_xy)
 
     def puede_agregar_pedido(
         self,
