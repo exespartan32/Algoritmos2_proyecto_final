@@ -232,9 +232,9 @@ candidatos evaluados al armar waves. Las tablas completas están en
 
 | Serie | Entrada | Resultado |
 |---|---|---|
-| Tamaño del almacén | 294 → 5858 celdas (×20) | Construir el dígrafo: 2,2 → 26,6 ms (×12, con un costo fijo que pesa en los mapas chicos). Kosaraju: 0,27 → 5,5 ms (×20). **Lineal en el área**, como predice Θ(W·H). La matriz de distancias crece más rápido (23 → 1161 ms), porque cada uno de los P' Dijkstras recorre un grafo más grande: O(P'·N log N). |
-| Cantidad de pedidos | 10 → 320 (×32) | Candidatos evaluados: 30 → 21 592 (×720 ≈ 32¹·⁹). Tiempo de waves: 3,1 → 394 ms. **Crecimiento casi cuadrático**, como predice O(n²). |
-| Cantidad de productos | 25 → 800 | Pares en la matriz: 625 → 82 944 (P'²). Deja de crecer cuando todas las celdas de rack ya tienen producto (P' se satura en 288). Con el mapa fijo, su tiempo crece con P' (35 → 316 ms) y es la etapa más cara de cargar un escenario. |
+| Tamaño del almacén | 294 → 5858 celdas (×20) | Construir el dígrafo: 1,5 → 28,1 ms (×19). Kosaraju: 0,25 → 6,3 ms (×25). **Lineal en el área**, como predice Θ(W·H). La matriz de distancias crece más rápido (20 → 1104 ms), porque cada uno de los P' Dijkstras recorre un grafo más grande: O(P'·N log N). |
+| Cantidad de pedidos | 10 → 320 (×32) | Candidatos evaluados: 30 → 21 592 (×720 ≈ 32¹·⁹). Tiempo de waves: 2,8 → 405 ms. **Crecimiento casi cuadrático**, como predice O(n²). |
+| Cantidad de productos | 25 → 800 | Pares en la matriz: 625 → 82 944 (P'²). Deja de crecer cuando todas las celdas de rack ya tienen producto (P' se satura en 288). Con el mapa fijo, su tiempo crece con P' (22 → 275 ms) y es la etapa más cara de cargar un escenario. |
 
 ### 5.2 Comparación de estrategias
 
@@ -245,11 +245,11 @@ Resumen por serie (Cercanía frente a Orden):
 
 | Serie | Ahorro de distancia | Nodos expandidos (Cercanía/Orden) | Tiempo (Cercanía/Orden) |
 |---|---|---|---|
-| Tamaño (6 → 160 estantes) | 54 % → 27 % | 0,39 – 0,67 | 0,32 – 0,65 |
-| Pedidos (10 → 320) | 28 % – 47 % | 0,51 – 0,71 | 0,52 – 0,70 |
-| Productos (25 → 800) | 22 % – 42 % | 0,47 – 0,71 | 0,49 – 0,76 |
-| Localización | Distribuida 35 %, por rack 55 %, cerca del despacho 47 % | 0,40 – 0,65 | 0,36 – 0,65 |
-| Pasillos (3 → 17) | 20 % → 44 % | 0,51 – 0,80 | 0,43 – 0,87 |
+| Tamaño (6 → 160 estantes) | 54 % → 27 % | 0,39 – 0,67 | 0,40 – 0,69 |
+| Pedidos (10 → 320) | 28 % – 47 % | 0,51 – 0,71 | 0,55 – 0,80 |
+| Productos (25 → 800) | 22 % – 42 % | 0,47 – 0,71 | 0,45 – 0,79 |
+| Localización | Distribuida 35 %, por rack 55 %, cerca del despacho 47 % | 0,40 – 0,65 | 0,41 – 0,67 |
+| Pasillos (3 → 17) | 20 % → 44 % | 0,51 – 0,80 | 0,52 – 0,84 |
 
 Además se compararon viaje por viaje 691 viajes (mismo picker, misma wave),
 en 54 escenarios con distinto tamaño, pasillos, localización y cantidad de
@@ -263,6 +263,9 @@ pedidos:
 
 - Cercanía casi siempre recorre menos, porque evita idas y vueltas. Orden
   sigue el orden de los pedidos, que no tiene relación con el mapa.
+- Los tiempos son de una sola corrida y varían un 10–20 % entre ejecuciones;
+  las distancias y los nodos expandidos son exactos (el sistema es
+  determinista).
 - Cercanía también **calcula más rápido**, aunque tenga que elegir el destino
   en cada paso. Su Dijkstra multidestino se detiene en el destino más cercano
   y explora menos que un Dijkstra hacia un destino lejano: expande entre un
@@ -329,7 +332,7 @@ iguales hay muchos caminos con la misma longitud (empates).
 La construcción del grafo y Kosaraju crecen linealmente con el área: con 20
 veces más celdas, tardan unas 20 veces más (sección 5.1). Cada búsqueda de
 Dijkstra explora más nodos, así que el tiempo de cálculo de rutas crece con N:
-de 23 a 219 ms para Orden en la serie de tamaño. La distancia recorrida crece
+de 16 a 197 ms para Orden en la serie de tamaño. La distancia recorrida crece
 porque los productos quedan más lejos. El armado de waves casi no cambia,
 porque depende de la cantidad de pedidos y de la matriz precalculada. Lo que
 más crece es la matriz de distancias: un Dijkstra completo por cada acceso.
@@ -364,7 +367,7 @@ Cercanía, en todas las configuraciones de la sección 5 y en el 97,4 % de los
 viajes comparados uno a uno.
 
 **12. ¿Cuál presenta menor tiempo de ejecución?**
-También Cercanía en casi todos los casos (entre 13 % y 68 % menos tiempo),
+También Cercanía, en todas las configuraciones medidas (entre 16 % y 60 % menos tiempo),
 porque cada búsqueda se detiene en el destino más cercano. Orden puede ser
 más rápida cuando los pedidos ya vienen ordenados por cercanía, porque cada
 tramo es corto.

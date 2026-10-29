@@ -48,7 +48,7 @@ SERIES = {
 }
 
 
-def medir(params, repeticiones=3):
+def medir(params, repeticiones=5):
     datos = ScenarioGenerator.generar_escenario_dict(**params)
     # Construcción del dígrafo + Kosaraju (mediana de varias corridas).
     tiempos, tiempos_kos = [], []
