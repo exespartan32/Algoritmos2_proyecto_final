@@ -19,8 +19,8 @@ class TurnAndCollisionManager:
         self,
         max_turnos_bloqueo_recalculo: int = 2,
         turnos_estela: int = 2,
-        turnos_recogida: int = 2,
-        turnos_descarga: int = 2,
+        turnos_recogida: int = 4,
+        turnos_descarga: int = 3,
     ) -> None:
         self.reservas_celdas: Dict[Tuple[int, int, int], str] = {}
         self.pathfinding = Pathfinding()

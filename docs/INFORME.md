@@ -115,6 +115,17 @@ Así, la prioridad decide qué pedido **abre** cada wave y la distancia en el
 dígrafo decide cuáles se **suman**. Es parecido al *average linkage* de un
 clustering jerárquico, pero limitado por la capacidad.
 
+**Estrategias alternativas para comparar.** Se agregaron otras dos formas de
+elegir el pedido que se suma. La raíz y todas las restricciones son las mismas;
+se elige en *Capacidad de waves* y se comparan con *Comparar armado*:
+
+- **Por pasillo:** se suma el pedido que agrega **menos pasillos nuevos** a la
+  wave. El pasillo de un producto es el tramo declarado de su celda de acceso.
+  No usa la matriz de distancias: solo cuenta pasillos, así que es más barata.
+- **Solo prioridad:** se suma el pedido de mayor prioridad que entre, sin
+  mirar la ubicación. Es la línea base que muestra cuánto vale agrupar por
+  cercanía.
+
 ### 3.4 Asignación a pickers
 
 Para cada wave elegida se calcula la distancia real (Dijkstra) desde cada
@@ -167,11 +178,12 @@ descarga se elige para que no queden dos pickers apilados, evitando los
 rincones sin salida. Si un picker libre estorba a otro durante 2 turnos, se
 corre a una celda vecina. Si no tiene adónde correrse, el otro descarga desde
 una celda pegada a la misma zona. Como último recurso, se lo atraviesa. En las
-pruebas de estrés, eso pasó en 7 de 108 escenarios, todos con 10 pickers en
+pruebas de estrés, eso pasó en 10 de 108 escenarios, todos con 10 pickers en
 almacenes muy chicos, y nunca más de unos pocos turnos.
 
-Al llegar a un producto, el picker se queda **2 turnos quieto recogiendo**, y
-al llegar al despacho se queda **2 turnos descargando**. Esos turnos no cuentan
+Al llegar a un producto, el picker se queda **4 turnos quieto cargando**
+(mirando hacia el rack), y al llegar al despacho se queda **3 turnos
+descargando**. Esos turnos no cuentan
 como esperas por colisión. Las tres duraciones (estela, recogida y descarga)
 son parámetros de `TurnAndCollisionManager`.
 
@@ -290,10 +302,35 @@ pedidos:
   los destinos quedan lejos entre sí y cualquier orden se parece. También baja
   con pocos pasillos (3), donde casi no hay caminos alternativos.
 - Menos distancia significa **menos turnos** de simulación (por ejemplo,
-  600 → 337 y 4002 → 3010). Los turnos incluyen el tiempo de recoger y de
+  654 → 403 y 4318 → 3365). Los turnos incluyen el tiempo de recoger y de
   descargar. También hay algo menos de esperas por colisión con Cercanía
-  (1230 contra 1461 en total), porque los pickers pasan menos tiempo en los
+  (1514 contra 1706 en total), porque los pickers pasan menos tiempo en los
   pasillos, aunque la diferencia es más chica que en distancia.
+
+### 5.3 Estrategias de armado de waves
+
+![Armado de waves](experimentos/armado.png)
+
+Se armaron las waves de 6 escenarios con las tres estrategias y se prepararon
+todas con Cercanía. La tabla completa está en `resultados.md`.
+
+| Escenario | Distancia: Cercanía / Por pasillo / Solo prioridad | Pasillos por wave | Armado (ms) |
+|---|---|---|---|
+| 40 pedidos | 1587 / 1527 / 1780 | 4,5 / 4,5 / 5,8 | 8,7 / 2,7 / 1,9 |
+| 160 pedidos | 5504 / 5645 / 7744 | 3,9 / 3,8 / 6,1 | 96 / 31 / 33 |
+| Por rack | 1449 / 1341 / 1897 | 4,7 / 4,1 / 7,1 | 8,6 / 3,7 / 2,1 |
+
+- **Agrupar por ubicación vale la pena.** Solo prioridad recorre entre 17 % y
+  42 % más que la mejor estrategia y visita entre 1,3 y 1,7 veces más
+  pasillos por wave.
+- **Cercanía y Por pasillo quedan muy parejas.** Cercanía fue la mejor en 4 de
+  6 escenarios y Por pasillo en 2 (cuando los productos están agrupados por
+  rack, contar pasillos es casi tan bueno como medir distancias).
+- **Por pasillo es entre 2 y 4 veces más rápida de armar**, porque no consulta la
+  matriz de distancias. Sigue siendo O(n²) en pedidos.
+- **Solo prioridad atiende antes lo urgente.** Su primera wave tiene mayor
+  prioridad media (3,7 contra 2,3–3,3). Es el *trade-off* entre urgencia y
+  eficiencia del recorrido.
 
 ---
 
@@ -366,7 +403,9 @@ La wave arranca con el pedido pendiente de mayor prioridad, extraído del
 Max-Heap. Después se suma, uno por vez, el pedido con menor costo marginal
 promedio (el más cercano a lo que ya tiene la wave), siempre que respete la
 cantidad máxima de pedidos y de unidades, el stock, la capacidad de la zona y
-la de los pickers. Ver sección 3.3.
+la de los pickers. Ver sección 3.3. Se compararon otras dos estrategias,
+Por pasillo y Solo prioridad. Agrupar por ubicación ahorra hasta un 42 % de
+recorrido (sección 5.3).
 
 **9. ¿Qué estrategia utilizaron para ordenar las ubicaciones de una wave?**
 Dos estrategias. Orden de pedidos visita las ubicaciones en el orden de los
@@ -398,6 +437,10 @@ un destino aislado para el final, y el regreso sale caro. Ninguna de las dos
 garantiza el recorrido óptimo, que sería un problema del viajante.
 
 **14. ¿Qué trade-offs encontraron entre tiempo y calidad?**
+
+- **Armado de waves:** Cercanía da los mejores recorridos casi siempre. Por
+  pasillo queda muy cerca y arma entre 2 y 4 veces más rápido. Solo prioridad es la más
+  rápida y la que más rápido atiende lo urgente, pero recorre bastante más.
 
 - **Precalcular la matriz de distancias** cuesta tiempo al cargar y memoria
   O(P'²), pero hace que armar las waves sea mucho más rápido.
@@ -434,7 +477,7 @@ garantiza el recorrido óptimo, que sería un problema del viajante.
 
 ## 7. Pruebas
 
-`tests/` tiene 49 pruebas automáticas:
+`tests/` tiene 51 pruebas automáticas:
 
 - **Grafo** (`test_grafo.py`): aristas, contramano, accesos, Kosaraju y las
   trampas del escenario grande.
@@ -446,7 +489,9 @@ garantiza el recorrido óptimo, que sería un problema del viajante.
   modifica la simulación; la sesión guardada se retoma igual; muchos pickers
   no se traban.
 - **Reglas de movimiento** (`test_simulador.py`): nadie entra a la estela de otro
-  picker y cada picker se frena 2 turnos al recoger y al descargar.
+  picker y cada picker se frena al cargar (4 turnos) y al descargar (3).
+- **Armado de waves** (`test_simulador.py`): las tres estrategias preparan todos
+  los pedidos y agrupar por ubicación visita menos pasillos que solo prioridad.
 - **Generador** (`test_generador.py`): es determinista, respeta los
   parámetros y el escenario siempre es válido y alcanzable.
 - **Interfaz** (`test_interfaz.py`): recorre la aplicación completa sin

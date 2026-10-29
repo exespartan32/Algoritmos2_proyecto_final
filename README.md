@@ -39,16 +39,19 @@ hace falta además `matplotlib` (opcional).
 3. **Crear o cargar pedidos.** Los pedidos vienen en el escenario. Con
    *Nuevo pedido* se agregan otros (por ejemplo `P001x2, P004x1`).
 4. **Generar waves.** *Capacidad de waves* define el máximo de pedidos y de
-   unidades. *Generar waves* las arma.
+   unidades, y la estrategia de armado (Cercanía, Por pasillo o Solo
+   prioridad). *Comparar armado* prueba las tres. *Generar waves* las arma.
 5. **Seleccionar waves.** Se marcan una o varias y se pulsa *Asignar e
    iniciar*: cada wave va al picker libre más cercano y las que no tienen
    picker quedan en espera.
-6. **Ejecutar y ver los algoritmos.** En el mapa se ven la ruta planificada,
+6. **Ejecutar y ver los algoritmos.** El mapa se acerca y aleja con la rueda
+   del mouse y se mueve arrastrando. En el mapa se ven la ruta planificada,
    los destinos numerados en orden de visita y las celdas que exploró
    Dijkstra (celeste).
 7. **Recorrido del picker.** Cada picker camina de celda en celda, girando
-   hacia donde va, con su nombre arriba y el borde de su color. Se frena
-   2 turnos al recoger y 2 al descargar. Deja una "estela" de 2 turnos
+   hacia donde va, con su nombre arriba y el borde de su color. Al recibir una wave
+   se ve cómo Dijkstra explora el mapa ("buscando ruta") hasta quedarse con el
+   camino. Se frena 4 turnos a cargar, mirando al rack, y 3 a descargar. Deja una "estela" de 2 turnos
    donde nadie puede entrar, así no se camina pegado a otro. Para usar un
    dibujo propio, poné `FrontEnd/sprites/picker.png` (fondo transparente,
    mirando hacia arriba).

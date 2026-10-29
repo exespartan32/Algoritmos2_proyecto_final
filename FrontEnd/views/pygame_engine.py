@@ -10,6 +10,7 @@ import time
 import pygame
 
 from BackEnd.controllers.simulador import NOMBRE_ESTRATEGIA, Simulador
+from BackEnd.controllers.wave_manager import ESTRATEGIAS_ARMADO
 from BackEnd.utils.scenario_generator import LOCALIZACIONES
 from FrontEnd.events.input_handler import manejar_evento
 from FrontEnd.services.biblioteca import Biblioteca
@@ -34,6 +35,10 @@ from FrontEnd.views.ui_elements import (
 # durante ese tiempo (animación), así se ve el recorrido y no saltos.
 VELOCIDADES = [(0.70, "x0.5"), (0.35, "x1"), (0.18, "x2"), (0.07, "x5"), (0.02, "x20")]
 DURACION_PASO_MANUAL = 0.30
+# Segundos que dura la animación de "buscando ruta" a velocidad x1.
+DURACION_BUSQUEDA = 2.4
+# Campos de formulario que se eligen con un clic entre opciones fijas.
+OPCIONES = {"localizacion": LOCALIZACIONES, "estrategia_waves": ESTRATEGIAS_ARMADO}
 PESTANAS = ["Productos", "Pedidos", "Waves", "Pickers", "Métricas", "Eventos"]
 
 CAMPOS_GENERADOR = [
@@ -85,6 +90,11 @@ class App(UIElements):
         self.angulos = {}
         self.inicio_animacion = 0.0
         self.duracion_animacion = 0.0
+        self.busquedas = {}
+        self.planes_vistos = {}
+        self.animar_busqueda = True
+        self.arrastre = None
+        self.comparacion_armado = None
         self.productos_por_celda = {}
         self.mapa = VistaMapa(self, 20, 186, 740, 690)
 
@@ -114,6 +124,10 @@ class App(UIElements):
         self.comparacion = None
         self.pag_tabla = 0
         self.animacion, self.angulos = {}, {}
+        self.busquedas = {}
+        self.planes_vistos = dict(sim.estado.planes)  # lo ya calculado no se anima
+        self.comparacion_armado = None
+        self.mapa.centrar()
         self.pestana = "Productos" if not sim.waves else "Pickers"
         self.productos_por_celda = {}
         for p in sim.warehouse.catalogo_productos.values():
@@ -165,6 +179,32 @@ class App(UIElements):
             duracion = VELOCIDADES[self.velocidad][0] if self.reproduciendo else DURACION_PASO_MANUAL
         self.duracion_animacion = duracion
         return resultado
+
+    def detectar_planes_nuevos(self):
+        """Si un picker recibió una ruta nueva, arranca su animación de búsqueda."""
+        nuevos = False
+        factor = max(0.05, min(2.0, VELOCIDADES[self.velocidad][0] / 0.35))
+        for pid, plan in self.sim.estado.planes.items():
+            if self.planes_vistos.get(pid) is plan:
+                continue
+            self.planes_vistos[pid] = plan
+            picker = next((p for p in self.sim.warehouse.pickers if p.id_picker == pid), None)
+            if self.animar_busqueda and picker is not None and picker.id_wave_actual == plan["wave"]:
+                self.busquedas[pid] = (plan, time.perf_counter(), DURACION_BUSQUEDA * factor)
+                nuevos = True
+        return nuevos
+
+    def busquedas_activas(self):
+        """{picker: (plan, progreso 0..1)} de las búsquedas que se están mostrando."""
+        ahora = time.perf_counter()
+        activas = {}
+        for pid, (plan, inicio, duracion) in list(self.busquedas.items()):
+            progreso = (ahora - inicio) / duracion if duracion > 0 else 1.0
+            if progreso >= 1.0:
+                del self.busquedas[pid]
+            else:
+                activas[pid] = (plan, progreso)
+        return activas
 
     def posicion_animada(self, pid, posicion):
         """Posición (fraccionaria) y ángulo con que se dibuja el picker ahora."""
@@ -267,8 +307,8 @@ class App(UIElements):
     # --- formularios ---
     def _a_campo(self, indice):
         campo = self.formulario["campos"][indice]
-        if campo[0] == "localizacion":
-            opciones = list(LOCALIZACIONES)
+        if campo[0] in OPCIONES:
+            opciones = list(OPCIONES[campo[0]])
             campo[2] = opciones[(opciones.index(campo[2]) + 1) % len(opciones)]
         self.formulario["foco"] = indice
 
@@ -304,14 +344,22 @@ class App(UIElements):
                 ("wave_max_pedidos", "Máximo de pedidos por wave", str(c["wave_max_pedidos"])),
                 ("wave_max_productos", "Máximo de unidades por wave", str(c["wave_max_productos"])),
                 ("max_pickers_por_wave", "Máximo de pickers por wave", str(c["max_pickers_por_wave"])),
+                ("estrategia_waves", "Estrategia de armado de waves", c["estrategia_waves"]),
             ],
         )
 
     def _a_guardar_config(self):
         v = self.valores_formulario()
-        self.sim.configurar(int(v["wave_max_pedidos"] or 0), int(v["wave_max_productos"] or 0), int(v["max_pickers_por_wave"] or 0))
+        self.sim.configurar(
+            int(v["wave_max_pedidos"] or 0),
+            int(v["wave_max_productos"] or 0),
+            int(v["max_pickers_por_wave"] or 0),
+            v["estrategia_waves"],
+        )
         self.cerrar_dialogo()
-        self.mensaje = "Capacidad de las waves actualizada. Generá las waves de nuevo."
+        self.mensaje = (
+            "Waves configuradas (" + ESTRATEGIAS_ARMADO[v["estrategia_waves"]].lower() + "). Generá las waves."
+        )
 
     # --- waves ---
     def _a_generar_waves(self):
@@ -397,11 +445,15 @@ class App(UIElements):
 
     def _a_adelante(self):
         self.reproduciendo = False
+        if self.busquedas:  # el primer paso termina la animación de búsqueda
+            self.busquedas = {}
+            return
         if not self.mover(self.sim.avanzar):
             raise ValueError("No hay pickers trabajando. Seleccioná waves e iniciá.")
 
     def _a_atras(self):
         self.reproduciendo = False
+        self.busquedas = {}
         if not self.mover(self.sim.retroceder):
             raise ValueError("No hay pasos para deshacer.")
 
@@ -428,6 +480,17 @@ class App(UIElements):
 
     def _a_foco_wave(self, wid):
         self.wave_foco = None if self.wave_foco == wid else wid
+
+    def _a_zoom(self, factor):
+        self.mapa.zoom_en(self.mapa.area.center, factor)
+
+    def _a_centrar_mapa(self):
+        self.mapa.centrar()
+
+    def _a_comparar_armado(self):
+        self.reproduciendo = False
+        self.comparacion_armado = self.sim.comparar_armado()
+        self.dialogo = "armado"
 
     def _a_ampliar(self):
         self.mapa_ampliado = not self.mapa_ampliado
@@ -506,6 +569,7 @@ class App(UIElements):
             ("Estrategia: " + NOMBRE_ESTRATEGIA[m.estrategia], 245, "estrategia", True),
             ("Comparar estrategias", 195, "comparar", hay_waves),
             ("Exploración: " + ("sí" if self.ver_exploracion else "no"), 160, "exploracion", True),
+            ("Comparar armado", 172, "comparar_armado", True),
         ]
         x = 20
         for etiqueta, w, accion, habilitado in fila1:
@@ -637,7 +701,8 @@ class App(UIElements):
             rect = self.caja(x - 4, yy, 700, alto, AZUL_CLARO if seleccionado else BLANCO)
             self.zona_clic(rect, ("foco_picker", p["id"]))
             pygame.draw.circle(self.lienzo, color_picker(i), (x + 12, yy + 18), 9)
-            estado = f"{p['estado']} · {p['wave']}" if p["wave"] else "libre"
+            estado_p = "buscando ruta" if p["id"] in self.busquedas else p["estado"]
+            estado = f"{estado_p} · {p['wave']}" if p["wave"] else "libre"
             self.texto(f"{p['id']} · {estado} · en {tuple(p['pos'])}", x + 30, yy + 8, 17, negrita=True)
             self.texto(f"Carga {p['carga']:.1f}/{p['capacidad']:g} kg · {p['pasos']} pasos · {p['esperas']} esperas", x + 380, yy + 10, 15, GRIS)
             recogidos = ", ".join(f"{k}×{v}" for k, v in p["recogidos"].items()) or "nada todavía"
@@ -665,11 +730,12 @@ class App(UIElements):
             f"Matriz de distancias entre productos (Dijkstra desde cada acceso): {m.tiempo_matriz_ms:.1f} ms.",
             f"Waves: {met['waves']} generadas, {met['waves_finalizadas']} finalizadas. Pedidos preparados: {met['pedidos_preparados']}/{met['pedidos']}.",
             f"Turno {met['paso']} · pasos caminados en total: {met['pasos_totales']} · esperas por colisión: {met['esperas']} · desvíos: {met['desvios']}.",
+            f"Armado de waves: {ESTRATEGIAS_ARMADO[m.config['estrategia_waves']]}.",
         ]
         for i, linea in enumerate(lineas):
             self.texto(linea, x, y + 30 + i * 24, 15, max_ancho=690)
         tanda = met["tanda"]
-        yy = y + 140
+        yy = y + 36 + 24 * len(lineas)
         if tanda:
             self.texto(f"Tanda {tanda['numero']} · {NOMBRE_ESTRATEGIA[tanda['estrategia']]}", x, yy, 18, negrita=True)
             columnas = [("Picker", 0), ("Wave", 90), ("Distancia", 190), ("Aristas", 290), ("Nodos visitados", 380), ("Explorados", 520), ("ms", 630)]
@@ -759,9 +825,9 @@ class App(UIElements):
         for i, (clave, etiqueta, valor) in enumerate(f["campos"]):
             yy = y + 66 + i * 52
             self.texto(etiqueta, x, yy + 8, 18)
-            if clave == "localizacion":
+            if clave in OPCIONES:
                 self.boton(f"{valor}  (clic para cambiar)", x + 470, yy, 360, ("campo", i), marcado=f["foco"] == i)
-                self.texto(LOCALIZACIONES[valor], x + 470, yy + 36, 13, GRIS)
+                self.texto(OPCIONES[clave][valor], x + 470, yy + 36, 13, GRIS)
             else:
                 self.campo(x + 470, yy, 360, valor, f["foco"] == i, ("campo", i))
         yy = y + 76 + len(f["campos"]) * 52
@@ -815,6 +881,48 @@ class App(UIElements):
         self.boton("Comparar estrategias", x + 280, y + 600, 240, ("comparar", True), hay)
         self.parrafo("Las waves marcadas se asignan a los pickers libres más cercanos y se mueven todos a la vez.", x + 540, y + 596, w - 560, 15)
 
+    FILAS_ARMADO = [
+        ("Waves armadas", "waves"),
+        ("Pedidos por wave (promedio)", "pedidos_por_wave"),
+        ("Pasillos distintos por wave", "pasillos_por_wave"),
+        ("Prioridad media de la 1.ª wave", "prioridad_primera_wave"),
+        ("Distancia total recorrida", "distancia"),
+        ("Turnos hasta preparar todo", "turnos"),
+        ("Tiempo de armado (ms)", "tiempo_armado_ms"),
+        ("Candidatos evaluados", "candidatos_evaluados"),
+    ]
+    MAYOR_ES_MEJOR = {"pedidos_por_wave", "prioridad_primera_wave"}
+
+    def dialogo_armado(self, x, y, w):
+        self.texto("Comparar estrategias de armado de waves", x, y, 26, negrita=True)
+        self.parrafo(
+            "Se arman las waves con cada estrategia a partir de los mismos pedidos y se preparan todas, "
+            "con la estrategia de recorrido actual (" + NOMBRE_ESTRATEGIA[self.sim.estrategia] + "). "
+            "Las tres empiezan cada wave por el pedido de mayor prioridad; cambia cómo eligen los que se suman.",
+            x, y + 44, w - 20, 16, limite=4,
+        )
+        comp = self.comparacion_armado
+        claves = list(comp)
+        columnas = {"CERCANIA": "Cercanía", "PASILLO": "Por pasillo", "PRIORIDAD": "Solo prioridad"}
+        yy = y + 140
+        self.texto("Métrica", x, yy, 16, GRIS, True)
+        for j, clave in enumerate(claves):
+            self.texto(columnas[clave], x + 360 + j * 170, yy, 16, GRIS, True)
+        for i, (etiqueta, campo) in enumerate(self.FILAS_ARMADO):
+            fila_y = yy + 30 + i * 28
+            self.texto(etiqueta, x, fila_y, 16)
+            valores = [comp[c][campo] for c in claves]
+            mejor = max(valores) if campo in self.MAYOR_ES_MEJOR else min(valores)
+            for j, valor in enumerate(valores):
+                texto = f"{valor:.2f}" if isinstance(valor, float) else str(valor)
+                es_mejor = valor == mejor and valores.count(mejor) < len(valores)
+                self.texto(texto + ("  (mejor)" if es_mejor else ""), x + 360 + j * 170, fila_y, 16, VERDE if es_mejor else TINTA, es_mejor)
+        actual = self.sim.config["estrategia_waves"]
+        self.parrafo(
+            f"Estrategia elegida ahora: {columnas[actual]}. Se cambia en 'Capacidad de waves' (antes de iniciar waves).",
+            x, yy + 40 + len(self.FILAS_ARMADO) * 28, w - 20, 16,
+        )
+
     def dialogo_comparar(self, x, y, w):
         self.texto("Comparar estrategias de recorrido", x, y, 26, negrita=True)
         self.parrafo(
@@ -843,6 +951,7 @@ class App(UIElements):
         if self.pagina == "inicio" or self.sim is None:
             self.pantalla_inicio()
         else:
+            self.detectar_planes_nuevos()
             self.pantalla_simulacion()
         if self.dialogo:
             self.dialogo_actual()
@@ -866,6 +975,9 @@ class App(UIElements):
     def paso_automatico(self, dt):
         if not (self.reproduciendo and self.sim and not self.dialogo):
             return
+        if self.busquedas_activas():
+            self.acumulado = 0.0  # todos esperan mientras se calcula la ruta
+            return
         self.acumulado += dt
         intervalo = VELOCIDADES[self.velocidad][0]
         pasos = 0
@@ -873,7 +985,10 @@ class App(UIElements):
             self.acumulado -= intervalo
             pasos += 1
             try:
-                if not self.mover(self.sim.avanzar, intervalo):
+                avanzo = self.mover(self.sim.avanzar, intervalo)
+                if avanzo and self.detectar_planes_nuevos():
+                    break  # un picker recibió una wave: se muestra la búsqueda
+                if not avanzo:
                     self.reproduciendo = False
                     tanda = self.sim.tanda_actual
                     self.mensaje = "Simulación terminada." + (

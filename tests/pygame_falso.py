@@ -7,7 +7,7 @@ API que usa FrontEnd y registra lo dibujado para poder hacer comprobaciones.
 import sys
 import types
 
-QUIT, MOUSEBUTTONDOWN, KEYDOWN, TEXTINPUT, DROPFILE, MOUSEWHEEL, VIDEORESIZE = range(1, 8)
+QUIT, MOUSEBUTTONDOWN, KEYDOWN, TEXTINPUT, DROPFILE, MOUSEWHEEL, VIDEORESIZE, MOUSEMOTION, MOUSEBUTTONUP = range(1, 10)
 RESIZABLE, SRCALPHA = 16, 65536
 K_ESCAPE, K_BACKSPACE, K_TAB, K_RETURN, K_KP_ENTER = 27, 8, 9, 13, 271
 K_RIGHT, K_LEFT, K_UP, K_DOWN, K_SPACE, K_r = 275, 276, 273, 274, 32, 114
@@ -36,6 +36,8 @@ class Rect:
     height = property(lambda s: s.h)
     center = property(lambda s: (s.x + s.w // 2, s.y + s.h // 2))
     topleft = property(lambda s: (s.x, s.y))
+    right = property(lambda s: s.x + s.w)
+    bottom = property(lambda s: s.y + s.h)
 
     size = property(lambda s: (s.w, s.h))
 
@@ -63,6 +65,9 @@ class Surface:
     def blit(self, otra, pos):
         assert isinstance(otra, Surface)
         assert isinstance(pos, Rect) or len(pos) == 2
+
+    def set_clip(self, rect=None):
+        assert rect is None or isinstance(rect, Rect)
 
     def get_size(self):
         return self.size
@@ -127,6 +132,7 @@ class Event:
 
 
 cola_eventos = []
+posicion_mouse = [(0, 0)]
 
 
 def instalar():
@@ -152,6 +158,6 @@ def instalar():
     m.time = types.SimpleNamespace(Clock=_Clock)
     m.event = types.SimpleNamespace(get=lambda: [cola_eventos.pop(0) for _ in list(cola_eventos)], Event=Event)
     m.key = types.SimpleNamespace(start_text_input=lambda: None, stop_text_input=lambda: None)
-    m.mouse = types.SimpleNamespace(get_pos=lambda: (0, 0))
+    m.mouse = types.SimpleNamespace(get_pos=lambda: posicion_mouse[0])
     sys.modules["pygame"] = m
     return m

@@ -29,7 +29,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from BackEnd.controllers.path_finding import Pathfinding
 from BackEnd.controllers.turn_collision_manager import TurnAndCollisionManager
-from BackEnd.controllers.wave_manager import WaveManager
+from BackEnd.controllers.wave_manager import ESTRATEGIAS_ARMADO, WaveManager
 from BackEnd.enums.enums import EstadoPedido, EstadoWave, EstrategiaRuteo
 from BackEnd.models.entities import DetallePedido, ListaDeInmutables, Pedido, TareaWavePicker
 from BackEnd.utils.graph_builder import GraphBuilder
@@ -77,6 +77,8 @@ class EstadoSimulacion:
         self.pasos_movidos: Dict[str, int] = {}
         self.esperas: Dict[str, int] = {}
         self.siguiente_pedido = 1
+        # Rack hacia el que mira cada picker mientras carga.
+        self.mirando: Dict[str, Coord] = {}
 
 
 class Simulador:
@@ -90,6 +92,7 @@ class Simulador:
             "wave_max_pedidos": int(cfg.get("wave_max_pedidos", 3)),
             "wave_max_productos": int(cfg.get("wave_max_productos", 15)),
             "max_pickers_por_wave": int(cfg.get("max_pickers_por_wave", 2)),
+            "estrategia_waves": str(cfg.get("estrategia_waves", "CERCANIA")),
         }
         self.estrategia = "CERCANIA"
         self.acciones: List[List[Any]] = []
@@ -233,20 +236,28 @@ class Simulador:
             self.historial.clear()
 
     def configurar(
-        self, wave_max_pedidos: int, wave_max_productos: int, max_pickers_por_wave: int
+        self,
+        wave_max_pedidos: int,
+        wave_max_productos: int,
+        max_pickers_por_wave: int,
+        estrategia_waves: Optional[str] = None,
     ) -> None:
         valores = [int(wave_max_pedidos), int(wave_max_productos), int(max_pickers_por_wave)]
         if not 1 <= valores[0] <= 50 or not 1 <= valores[1] <= 500 or not 1 <= valores[2] <= 10:
             raise ValueError(
                 "Rangos válidos: pedidos por wave 1-50, productos por wave 1-500, pickers por wave 1-10."
             )
+        estrategia_waves = estrategia_waves or self.config["estrategia_waves"]
+        if estrategia_waves not in ESTRATEGIAS_ARMADO:
+            raise ValueError("Estrategia de armado desconocida.")
         self._volver_antes_de_waves()
         self.config.update(
             wave_max_pedidos=valores[0],
             wave_max_productos=valores[1],
             max_pickers_por_wave=valores[2],
+            estrategia_waves=estrategia_waves,
         )
-        self._registrar("configurar", *valores)
+        self._registrar("configurar", *valores, estrategia_waves)
 
     @staticmethod
     def interpretar_items(texto: str) -> List[Tuple[str, int]]:
@@ -305,6 +316,7 @@ class Simulador:
             wave_max_productos=self.config["wave_max_productos"],
             max_pickers_por_wave=self.config["max_pickers_por_wave"],
             proveedor_distancias=self.matriz_distancias,
+            estrategia_armado=self.config["estrategia_waves"],
         )
         inicio = time.perf_counter()
         waves = gestor.generar_waves(wh, proveedor_distancias=self.matriz_distancias)
@@ -359,6 +371,7 @@ class Simulador:
             "expansiones": res.expansiones,
             "tiempo_ms": round(res.tiempo_ejecucion_ms, 4),
             "inalcanzables": list(res.destinos_inalcanzables),
+            "orden_exploracion": list(res.orden_exploracion),
         })
 
     def iniciar_waves(self, ids_waves: List[str], estrategia: Optional[str] = None) -> Dict[str, Any]:
@@ -507,6 +520,7 @@ class Simulador:
         for prod_id, cant, id_ped in items:
             picker.productos_recogidos[prod_id] = picker.productos_recogidos.get(prod_id, 0) + cant
             prod = self.warehouse.buscar_producto_O1(prod_id)
+            self.estado.mirando[picker.id_picker] = prod.coordenadas_xy
             self._evento(
                 f"{picker.id_picker} recoge {cant}× {prod_id} ({prod.nombre}) "
                 f"del nivel z={prod.z} para {id_ped}."
@@ -693,6 +707,56 @@ class Simulador:
             }
         return resultados
 
+    def comparar_armado(self) -> Dict[str, Dict[str, Any]]:
+        """Arma las waves con cada estrategia de armado y las prepara todas.
+
+        Parte del estado anterior a generar waves y usa la estrategia de
+        recorrido actual. La simulación real no se modifica.
+        """
+        base = self._pre_waves if self._pre_waves is not None else self.estado
+        if base.gestor_waves is not None:
+            raise ValueError("No hay un estado sin waves para comparar.")
+        resultados: Dict[str, Dict[str, Any]] = {}
+        for clave, nombre in ESTRATEGIAS_ARMADO.items():
+            clon = Simulador.__new__(Simulador)
+            clon.__dict__.update(self.__dict__)
+            clon.config = dict(self.config, estrategia_waves=clave)
+            clon.estado = self._copiar(base)
+            clon._pre_waves = None
+            clon.historial, clon._inicio_tanda, clon.acciones = [], {}, []
+            waves = clon.generar_waves()
+            gestor = clon.estado.gestor_waves
+            evaluados = sum(
+                paso["candidatos_evaluados"] for traza in gestor.traza_armado.values() for paso in traza
+            )
+            pasillos = [
+                len(set().union(*(WaveManager._pasillos_de(p, clon.warehouse) for p in w.pedidos)))
+                for w in waves
+            ]
+            prioridad_media = [
+                sum(p.prioridad for p in w.pedidos) / len(w.pedidos) for w in waves
+            ]
+            tanda = clon.iniciar_waves([w.id_wave for w in waves], self.estrategia)
+            clon.historial = []
+            pasos = 0
+            while pasos < MAX_PASOS_TANDA * 4 and clon.avanzar(guardar_historial=False):
+                pasos += 1
+            planes = tanda["planes"]
+            resultados[clave] = {
+                "nombre": nombre,
+                "waves": len(waves),
+                "pedidos_en_waves": sum(len(w.pedidos) for w in waves),
+                "pedidos_por_wave": round(sum(len(w.pedidos) for w in waves) / max(1, len(waves)), 2),
+                "pasillos_por_wave": round(sum(pasillos) / max(1, len(pasillos)), 2),
+                "prioridad_primera_wave": round(prioridad_media[0], 2) if prioridad_media else 0,
+                "tiempo_armado_ms": round(clon.tiempo_waves_ms, 3),
+                "candidatos_evaluados": evaluados,
+                "distancia": sum(p["distancia"] for p in planes),
+                "turnos": pasos,
+                "pedidos_preparados": clon.metricas()["pedidos_preparados"],
+            }
+        return resultados
+
     # ------------------------------------------------------------------
     # Datos para mostrar
     # ------------------------------------------------------------------
@@ -768,12 +832,13 @@ class Simulador:
                     "ruta_restante": list(p.ruta_asignada),
                     "recorrido": list(p.historial_recorrido),
                     "estado": (
-                        "recogiendo" if p.turnos_pausa > 0
+                        "cargando" if p.turnos_pausa > 0
                         else "descargando" if p.id_wave_actual and not p.ruta_asignada
                         else "esperando" if p.turnos_bloqueado > 0
                         else "caminando" if p.id_wave_actual
                         else "libre"
                     ),
+                    "mirando": est.mirando.get(p.id_picker) if p.turnos_pausa > 0 else None,
                     "pasos": est.pasos_movidos.get(p.id_picker, 0),
                     "esperas": est.esperas.get(p.id_picker, 0),
                     "plan": est.planes.get(p.id_picker) if p.id_wave_actual else None,
