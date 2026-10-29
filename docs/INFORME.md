@@ -154,10 +154,26 @@ El gestor (Leonel):
    la ruta.
 3. Busca un **punto fijo** de reservas: si un picker frena, nadie puede
    entrar a su celda en ese turno (efecto dominó).
+   - Además, cada picker deja una **estela**: la celda de la que sale queda
+     reservada para él durante 2 turnos. Así nadie camina pegado detrás de
+     otro y entre dos pickers en fila siempre quedan celdas libres.
 4. Si un picker lleva 2 turnos bloqueado, se recalcula su ruta evitando las
    celdas ocupadas. Si lleva 3 y no hay desvío, **cede el lugar**: se corre a
    una celda vecina libre y desde ahí retoma la ruta. Esto rompe los atascos
    cíclicos de muchos pickers en un mismo pasillo.
+
+Los pickers libres quedan **estacionados** y son un obstáculo más. La celda de
+descarga se elige para que no queden dos pickers apilados, evitando los
+rincones sin salida. Si un picker libre estorba a otro durante 2 turnos, se
+corre a una celda vecina. Si no tiene adónde correrse, el otro descarga desde
+una celda pegada a la misma zona. Como último recurso, se lo atraviesa. En las
+pruebas de estrés, eso pasó en 7 de 108 escenarios, todos con 10 pickers en
+almacenes muy chicos, y nunca más de unos pocos turnos.
+
+Al llegar a un producto, el picker se queda **2 turnos quieto recogiendo**, y
+al llegar al despacho se queda **2 turnos descargando**. Esos turnos no cuentan
+como esperas por colisión. Las tres duraciones (estela, recogida y descarga)
+son parámetros de `TurnAndCollisionManager`.
 
 Todo desvío retoma la ruta en el **próximo producto pendiente**, así ningún
 producto se saltea. Se agregó al integrar: antes, un desvío iba directo al
@@ -232,9 +248,9 @@ candidatos evaluados al armar waves. Las tablas completas están en
 
 | Serie | Entrada | Resultado |
 |---|---|---|
-| Tamaño del almacén | 294 → 5858 celdas (×20) | Construir el dígrafo: 1,5 → 28,1 ms (×19). Kosaraju: 0,25 → 6,3 ms (×25). **Lineal en el área**, como predice Θ(W·H). La matriz de distancias crece más rápido (20 → 1104 ms), porque cada uno de los P' Dijkstras recorre un grafo más grande: O(P'·N log N). |
-| Cantidad de pedidos | 10 → 320 (×32) | Candidatos evaluados: 30 → 21 592 (×720 ≈ 32¹·⁹). Tiempo de waves: 2,8 → 405 ms. **Crecimiento casi cuadrático**, como predice O(n²). |
-| Cantidad de productos | 25 → 800 | Pares en la matriz: 625 → 82 944 (P'²). Deja de crecer cuando todas las celdas de rack ya tienen producto (P' se satura en 288). Con el mapa fijo, su tiempo crece con P' (22 → 275 ms) y es la etapa más cara de cargar un escenario. |
+| Tamaño del almacén | 294 → 5858 celdas (×20) | Construir el dígrafo: 1,3 → 24,7 ms (×19). Kosaraju: 0,22 → 5,6 ms (×26). **Lineal en el área**, como predice Θ(W·H). La matriz de distancias crece más rápido (17 → 1070 ms), porque cada uno de los P' Dijkstras recorre un grafo más grande: O(P'·N log N). |
+| Cantidad de pedidos | 10 → 320 (×32) | Candidatos evaluados: 30 → 21 592 (×720 ≈ 32¹·⁹). Tiempo de waves: 2,4 → 392 ms. **Crecimiento casi cuadrático**, como predice O(n²). |
+| Cantidad de productos | 25 → 800 | Pares en la matriz: 625 → 82 944 (P'²). Deja de crecer cuando todas las celdas de rack ya tienen producto (P' se satura en 288). Con el mapa fijo, su tiempo crece con P' (15 → 227 ms) y es la etapa más cara de cargar un escenario. |
 
 ### 5.2 Comparación de estrategias
 
@@ -245,11 +261,11 @@ Resumen por serie (Cercanía frente a Orden):
 
 | Serie | Ahorro de distancia | Nodos expandidos (Cercanía/Orden) | Tiempo (Cercanía/Orden) |
 |---|---|---|---|
-| Tamaño (6 → 160 estantes) | 54 % → 27 % | 0,39 – 0,67 | 0,40 – 0,69 |
-| Pedidos (10 → 320) | 28 % – 47 % | 0,51 – 0,71 | 0,55 – 0,80 |
-| Productos (25 → 800) | 22 % – 42 % | 0,47 – 0,71 | 0,45 – 0,79 |
-| Localización | Distribuida 35 %, por rack 55 %, cerca del despacho 47 % | 0,40 – 0,65 | 0,41 – 0,67 |
-| Pasillos (3 → 17) | 20 % → 44 % | 0,51 – 0,80 | 0,52 – 0,84 |
+| Tamaño (6 → 160 estantes) | 54 % → 27 % | 0,40 – 0,67 | 0,41 – 0,77 |
+| Pedidos (10 → 320) | 28 % – 47 % | 0,49 – 0,72 | 0,50 – 0,67 |
+| Productos (25 → 800) | 22 % – 42 % | 0,48 – 0,71 | 0,61 – 0,87 |
+| Localización | Distribuida 35 %, por rack 55 %, cerca del despacho 47 % | 0,40 – 0,66 | 0,44 – 0,66 |
+| Pasillos (3 → 17) | 20 % → 44 % | 0,52 – 0,80 | 0,48 – 0,77 |
 
 Además se compararon viaje por viaje 691 viajes (mismo picker, misma wave),
 en 54 escenarios con distinto tamaño, pasillos, localización y cantidad de
@@ -274,8 +290,10 @@ pedidos:
   los destinos quedan lejos entre sí y cualquier orden se parece. También baja
   con pocos pasillos (3), donde casi no hay caminos alternativos.
 - Menos distancia significa **menos turnos** de simulación (por ejemplo,
-  502 → 256 y 3599 → 2604), y normalmente también menos esperas por colisión,
-  porque los pickers pasan menos tiempo en los pasillos.
+  600 → 337 y 4002 → 3010). Los turnos incluyen el tiempo de recoger y de
+  descargar. También hay algo menos de esperas por colisión con Cercanía
+  (1230 contra 1461 en total), porque los pickers pasan menos tiempo en los
+  pasillos, aunque la diferencia es más chica que en distancia.
 
 ---
 
@@ -332,7 +350,7 @@ iguales hay muchos caminos con la misma longitud (empates).
 La construcción del grafo y Kosaraju crecen linealmente con el área: con 20
 veces más celdas, tardan unas 20 veces más (sección 5.1). Cada búsqueda de
 Dijkstra explora más nodos, así que el tiempo de cálculo de rutas crece con N:
-de 16 a 197 ms para Orden en la serie de tamaño. La distancia recorrida crece
+de 13 a 177 ms para Orden en la serie de tamaño. La distancia recorrida crece
 porque los productos quedan más lejos. El armado de waves casi no cambia,
 porque depende de la cantidad de pedidos y de la matriz precalculada. Lo que
 más crece es la matriz de distancias: un Dijkstra completo por cada acceso.
@@ -367,7 +385,7 @@ Cercanía, en todas las configuraciones de la sección 5 y en el 97,4 % de los
 viajes comparados uno a uno.
 
 **12. ¿Cuál presenta menor tiempo de ejecución?**
-También Cercanía, en todas las configuraciones medidas (entre 16 % y 60 % menos tiempo),
+También Cercanía, en todas las configuraciones medidas (entre 13 % y 59 % menos tiempo),
 porque cada búsqueda se detiene en el destino más cercano. Orden puede ser
 más rápida cuando los pedidos ya vienen ordenados por cercanía, porque cada
 tramo es corto.
@@ -416,7 +434,7 @@ garantiza el recorrido óptimo, que sería un problema del viajante.
 
 ## 7. Pruebas
 
-`tests/` tiene 47 pruebas automáticas:
+`tests/` tiene 49 pruebas automáticas:
 
 - **Grafo** (`test_grafo.py`): aristas, contramano, accesos, Kosaraju y las
   trampas del escenario grande.
@@ -427,6 +445,8 @@ garantiza el recorrido óptimo, que sería un problema del viajante.
   retroceder y reiniciar se recupera exactamente el estado; la comparación no
   modifica la simulación; la sesión guardada se retoma igual; muchos pickers
   no se traban.
+- **Reglas de movimiento** (`test_simulador.py`): nadie entra a la estela de otro
+  picker y cada picker se frena 2 turnos al recoger y al descargar.
 - **Generador** (`test_generador.py`): es determinista, respeta los
   parámetros y el escenario siempre es válido y alcanzable.
 - **Interfaz** (`test_interfaz.py`): recorre la aplicación completa sin

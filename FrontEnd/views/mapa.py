@@ -32,6 +32,12 @@ class VistaMapa:
         y1 = round(arr + (self.app.sim.alto - y) * lado)
         return pygame.Rect(x0, y0, max(1, x1 - x0), max(1, y1 - y0))
 
+    def centro(self, coord):
+        """Centro en píxeles de una posición, aunque sea fraccionaria (animación)."""
+        lado, izq, arr = self.geometria()
+        x, y = coord
+        return (round(izq + (x + 0.5) * lado), round(arr + (self.app.sim.alto - 1 - y + 0.5) * lado))
+
     def celda_en(self, pos):
         lado, izq, arr = self.geometria()
         x = int((pos[0] - izq) // lado)
@@ -93,17 +99,18 @@ class VistaMapa:
         for coord in resaltadas:
             pygame.draw.rect(lienzo, AMBAR, self.rect_celda(coord), max(2, int(lado) // 7))
 
-        lado = self.geometria()[0]
         grosor = max(2, int(lado * 0.16))
         indices = {p["id"]: i for i, p in enumerate(pickers)}
+        animadas = {p["id"]: app.posicion_animada(p["id"], p["pos"]) for p in pickers}
         for p in pickers:
             color = color_picker(indices[p["id"]])
             hecho = p["recorrido"][-400:]
             if len(hecho) > 1:
                 pygame.draw.lines(lienzo, _aclarar(color, 0.6), False, [self.rect_celda(c).center for c in hecho], max(1, grosor - 1))
-            futuro = [p["pos"]] + p["ruta_restante"]
+            actual = self.centro(animadas[p["id"]][0])
+            futuro = [actual] + [self.rect_celda(c).center for c in p["ruta_restante"] if c != tuple(p["pos"])]
             if len(futuro) > 1:
-                pygame.draw.lines(lienzo, color, False, [self.rect_celda(c).center for c in futuro], grosor)
+                pygame.draw.lines(lienzo, color, False, futuro, grosor)
 
         # Destinos numerados del picker enfocado (orden de visita del plan).
         if plan:
@@ -119,13 +126,17 @@ class VistaMapa:
             pygame.draw.rect(lienzo, (30, 90, 50), despacho, max(2, int(lado * 0.15)))
 
         for p in pickers:
+            posicion, angulo = animadas[p["id"]]
             dibujar_picker(
                 lienzo,
-                self.rect_celda(p["pos"]),
+                self.centro(posicion),
+                lado,
                 indices[p["id"]],
-                enfocado is not None and p["id"] == enfocado["id"],
+                angulo,
+                p["id"],
                 app.fuente,
-                cargado=bool(p["recogidos"]),
+                enfocado=enfocado is not None and p["id"] == enfocado["id"],
+                estado=p["estado"] if p["estado"] in ("recogiendo", "descargando") else "",
             )
         app.zona_clic(self.area, ("mapa",))
 

@@ -524,6 +524,12 @@ class Simulador:
         antes = {
             p.id_picker: (p.posicion_actual, p.id_wave_actual) for p in wh.pickers
         }
+        # Quieto a propósito: recogiendo productos o descargando en el despacho.
+        trabajando = {
+            p.id_picker
+            for p in wh.pickers
+            if p.turnos_pausa > 0 or (p.id_wave_actual is not None and not p.ruta_asignada)
+        }
         est.colisiones.avanzar_un_turno_simulacion(
             pickers=wh.pickers,
             paso_actual=est.paso,
@@ -538,7 +544,7 @@ class Simulador:
                 continue
             if p.posicion_actual != pos_antes:
                 est.pasos_movidos[p.id_picker] = est.pasos_movidos.get(p.id_picker, 0) + 1
-            elif wave_antes is not None:
+            elif wave_antes is not None and p.id_picker not in trabajando:
                 est.esperas[p.id_picker] = est.esperas.get(p.id_picker, 0) + 1
             self._recoger(p)
             if wave_antes is not None and p.id_wave_actual is None:
@@ -761,6 +767,13 @@ class Simulador:
                     "pendientes": pendientes,
                     "ruta_restante": list(p.ruta_asignada),
                     "recorrido": list(p.historial_recorrido),
+                    "estado": (
+                        "recogiendo" if p.turnos_pausa > 0
+                        else "descargando" if p.id_wave_actual and not p.ruta_asignada
+                        else "esperando" if p.turnos_bloqueado > 0
+                        else "caminando" if p.id_wave_actual
+                        else "libre"
+                    ),
                     "pasos": est.pasos_movidos.get(p.id_picker, 0),
                     "esperas": est.esperas.get(p.id_picker, 0),
                     "plan": est.planes.get(p.id_picker) if p.id_wave_actual else None,

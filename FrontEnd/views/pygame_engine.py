@@ -5,6 +5,7 @@ a través de la biblioteca; no contiene lógica de waves ni de recorridos.
 """
 
 from pathlib import Path
+import time
 
 import pygame
 
@@ -12,7 +13,7 @@ from BackEnd.controllers.simulador import NOMBRE_ESTRATEGIA, Simulador
 from BackEnd.utils.scenario_generator import LOCALIZACIONES
 from FrontEnd.events.input_handler import manejar_evento
 from FrontEnd.services.biblioteca import Biblioteca
-from FrontEnd.sprites.picker_sprite import color_picker
+from FrontEnd.sprites.picker_sprite import angulo_para, color_picker
 from FrontEnd.views.mapa import VistaMapa
 from FrontEnd.views.ui_elements import (
     ALTO,
@@ -29,7 +30,10 @@ from FrontEnd.views.ui_elements import (
     UIElements,
 )
 
-VELOCIDADES = [(0.40, "x0.5"), (0.20, "x1"), (0.10, "x2"), (0.04, "x5"), (0.01, "x20")]
+# Segundos que tarda un turno: los pickers caminan de una celda a la otra
+# durante ese tiempo (animación), así se ve el recorrido y no saltos.
+VELOCIDADES = [(0.70, "x0.5"), (0.35, "x1"), (0.18, "x2"), (0.07, "x5"), (0.02, "x20")]
+DURACION_PASO_MANUAL = 0.30
 PESTANAS = ["Productos", "Pedidos", "Waves", "Pickers", "Métricas", "Eventos"]
 
 CAMPOS_GENERADOR = [
@@ -77,6 +81,10 @@ class App(UIElements):
         self.formulario = None
         self.ultimo_clic = (0, 0)
         self.mapa_ampliado = False
+        self.animacion = {}
+        self.angulos = {}
+        self.inicio_animacion = 0.0
+        self.duracion_animacion = 0.0
         self.productos_por_celda = {}
         self.mapa = VistaMapa(self, 20, 186, 740, 690)
 
@@ -105,6 +113,7 @@ class App(UIElements):
         self.wave_foco = None
         self.comparacion = None
         self.pag_tabla = 0
+        self.animacion, self.angulos = {}, {}
         self.pestana = "Productos" if not sim.waves else "Pickers"
         self.productos_por_celda = {}
         for p in sim.warehouse.catalogo_productos.values():
@@ -137,6 +146,35 @@ class App(UIElements):
             if p["id"] == self.picker_foco:
                 return p
         return pickers[0] if pickers else None
+
+    # ------------------------------------------------------------------
+    # Animación: entre turno y turno cada picker camina de una celda a la otra
+    # ------------------------------------------------------------------
+    def mover(self, funcion, duracion=None):
+        """Ejecuta una acción del simulador y anima el cambio de posiciones."""
+        antes = {p.id_picker: p.posicion_actual for p in self.sim.warehouse.pickers}
+        resultado = funcion()
+        despues = {p.id_picker: p.posicion_actual for p in self.sim.warehouse.pickers}
+        self.animacion = {pid: (antes.get(pid, pos), pos) for pid, pos in despues.items()}
+        for pid, (desde, hasta) in self.animacion.items():
+            dx, dy = hasta[0] - desde[0], hasta[1] - desde[1]
+            if abs(dx) + abs(dy) == 1:
+                self.angulos[pid] = angulo_para(dx, dy, self.angulos.get(pid, 0))
+        self.inicio_animacion = time.perf_counter()
+        if duracion is None:
+            duracion = VELOCIDADES[self.velocidad][0] if self.reproduciendo else DURACION_PASO_MANUAL
+        self.duracion_animacion = duracion
+        return resultado
+
+    def posicion_animada(self, pid, posicion):
+        """Posición (fraccionaria) y ángulo con que se dibuja el picker ahora."""
+        posicion = tuple(posicion)
+        angulo = self.angulos.get(pid, 0)
+        desde, hasta = self.animacion.get(pid, (posicion, posicion))
+        if hasta != posicion or self.duracion_animacion <= 0 or abs(hasta[0] - desde[0]) + abs(hasta[1] - desde[1]) != 1:
+            return posicion, angulo
+        t = min(1.0, (time.perf_counter() - self.inicio_animacion) / self.duracion_animacion)
+        return (desde[0] + (hasta[0] - desde[0]) * t, desde[1] + (hasta[1] - desde[1]) * t), angulo
 
     def pendientes_por_celda(self, picker):
         return list(self.sim.estado.por_recoger.get(picker["id"], {}).items())
@@ -359,17 +397,17 @@ class App(UIElements):
 
     def _a_adelante(self):
         self.reproduciendo = False
-        if not self.sim.avanzar():
+        if not self.mover(self.sim.avanzar):
             raise ValueError("No hay pickers trabajando. Seleccioná waves e iniciá.")
 
     def _a_atras(self):
         self.reproduciendo = False
-        if not self.sim.retroceder():
+        if not self.mover(self.sim.retroceder):
             raise ValueError("No hay pasos para deshacer.")
 
     def _a_reiniciar(self):
         self.reproduciendo = False
-        if not self.sim.reiniciar():
+        if not self.mover(self.sim.reiniciar, 0):
             raise ValueError("Todavía no se inició ninguna tanda.")
         self.mensaje = "Tanda reiniciada: los pickers vuelven al punto de partida y el stock se restaura."
 
@@ -599,7 +637,7 @@ class App(UIElements):
             rect = self.caja(x - 4, yy, 700, alto, AZUL_CLARO if seleccionado else BLANCO)
             self.zona_clic(rect, ("foco_picker", p["id"]))
             pygame.draw.circle(self.lienzo, color_picker(i), (x + 12, yy + 18), 9)
-            estado = f"haciendo {p['wave']}" if p["wave"] else "libre"
+            estado = f"{p['estado']} · {p['wave']}" if p["wave"] else "libre"
             self.texto(f"{p['id']} · {estado} · en {tuple(p['pos'])}", x + 30, yy + 8, 17, negrita=True)
             self.texto(f"Carga {p['carga']:.1f}/{p['capacidad']:g} kg · {p['pasos']} pasos · {p['esperas']} esperas", x + 380, yy + 10, 15, GRIS)
             recogidos = ", ".join(f"{k}×{v}" for k, v in p["recogidos"].items()) or "nada todavía"
@@ -835,7 +873,7 @@ class App(UIElements):
             self.acumulado -= intervalo
             pasos += 1
             try:
-                if not self.sim.avanzar():
+                if not self.mover(self.sim.avanzar, intervalo):
                     self.reproduciendo = False
                     tanda = self.sim.tanda_actual
                     self.mensaje = "Simulación terminada." + (
