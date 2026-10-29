@@ -356,6 +356,7 @@ class Simulador:
             "aristas": res.aristas_recorridas,
             "nodos_visitados": len(set(res.camino_completo)),
             "nodos_explorados": len(res.nodos_explorados),
+            "expansiones": res.expansiones,
             "tiempo_ms": round(res.tiempo_ejecucion_ms, 4),
             "inalcanzables": list(res.destinos_inalcanzables),
         })
@@ -443,7 +444,7 @@ class Simulador:
                 self.estado.planes[pid] = plan
                 resumen = {
                     k: plan[k]
-                    for k in ("wave", "distancia", "aristas", "nodos_visitados", "nodos_explorados", "tiempo_ms")
+                    for k in ("wave", "distancia", "aristas", "nodos_visitados", "nodos_explorados", "expansiones", "tiempo_ms")
                 }
                 resumen["picker"] = pid
                 tanda["planes"].append(resumen)
@@ -672,6 +673,7 @@ class Simulador:
                 "aristas": sum(p["aristas"] for p in planes),
                 "nodos_visitados": sum(p["nodos_visitados"] for p in planes),
                 "nodos_explorados": sum(p["nodos_explorados"] for p in planes),
+                "expansiones": sum(p["expansiones"] for p in planes),
                 "tiempo_ms": round(sum(p["tiempo_ms"] for p in planes), 3),
                 "tiempo_total_ms": round(tiempo_plan, 3),
                 "turnos": pasos,
