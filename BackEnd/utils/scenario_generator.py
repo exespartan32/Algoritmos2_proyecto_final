@@ -212,7 +212,8 @@ class ScenarioGenerator:
         salto = ScenarioGenerator._coprimo(n)
         for j in range(p["cantidad_pedidos"]):
             maximo = min(p["max_productos_por_pedido"], n)
-            cantidad_items = 1 + (j * 3) % maximo
+            # Varía entre 1 y el máximo (7 es coprimo con casi todo máximo).
+            cantidad_items = 1 + (j * 7 + j // maximo) % maximo
             inicio = (j * 17) % n
             items = []
             unidades = 0
