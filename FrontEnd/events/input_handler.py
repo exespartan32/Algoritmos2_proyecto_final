@@ -57,7 +57,14 @@ def manejar_evento(app, evento):
             campo[2] = (campo[2] + texto)[: 80 if permitido else 4]
     elif evento.type == pygame.KEYDOWN:
         if evento.key == pygame.K_ESCAPE:
+            if app.armado and not app.dialogo:
+                app.accion("salir_armado")
             app.cerrar_dialogo()
+        elif app.armado and not app.dialogo and evento.key in (pygame.K_RIGHT, pygame.K_LEFT, pygame.K_SPACE):
+            if evento.key == pygame.K_SPACE:
+                app.accion("armado_auto")
+            else:
+                app.accion(("armado_paso", 1 if evento.key == pygame.K_RIGHT else -1))
         elif app.formulario:
             campo = _campo_actual(app)
             if evento.key == pygame.K_BACKSPACE and campo[0] not in OPCIONES:

@@ -84,6 +84,7 @@ class App(UIElements):
         self.formulario = None
         self.ultimo_clic = (0, 0)
         self.mapa_ampliado = False
+        self.armado = None  # animación de cómo se armó una wave
         self.animacion = {}
         self.angulos = {}
         self.inicio_animacion = 0.0
@@ -119,6 +120,7 @@ class App(UIElements):
         self.comparacion = None
         self.pag_tabla = 0
         self.animacion, self.angulos = {}, {}
+        self.armado = None
         self.comparacion_armado = None
         self.mapa.centrar()
         self.pestana = "Productos" if not sim.waves else "Pickers"
@@ -358,7 +360,10 @@ class App(UIElements):
         self.comparacion = None
         self.pestana, self.pag_tabla = "Waves", 0
         descartados = len(self.sim.estado.gestor_waves.pedidos_descartados)
-        self.mensaje = f"{len(waves)} waves generadas (Max-Heap por prioridad + cercanía en el dígrafo)."
+        self.mensaje = (
+            f"{len(waves)} waves generadas (Max-Heap por prioridad + {self.sim.config['estrategia_waves'].lower()}). "
+            "Con 'Ver cómo se armaron' se ve el armado paso a paso."
+        )
         if descartados:
             self.mensaje += f" {descartados} pedidos no se pueden preparar (ver Eventos)."
         self.dialogo = "waves"
@@ -481,6 +486,143 @@ class App(UIElements):
         self.reproduciendo = False
         self.comparacion_armado = self.sim.comparar_armado()
         self.dialogo = "armado"
+
+    # --- animación del armado de una wave ---
+    DURACION_ARMADO = {"raiz": 3.0, "evaluar": 4.0, "elegir": 3.5, "fin": 2.5, "ruta": 9.0}
+    COLORES_PEDIDO = [
+        (196, 90, 30), (37, 99, 166), (31, 128, 98), (124, 65, 145),
+        (176, 52, 46), (20, 120, 150), (150, 110, 20), (150, 60, 100),
+    ]
+
+    def colores_pedidos(self, datos):
+        orden = [p["pedido"] for p in datos["pasos"] if p["tipo"] in ("raiz", "elegir")]
+        return {pid: self.COLORES_PEDIDO[i % len(self.COLORES_PEDIDO)] for i, pid in enumerate(orden)}
+
+    def progreso_armado(self):
+        if not self.armado:
+            return 1.0
+        tipo = self.armado["datos"]["pasos"][self.armado["paso"]]["tipo"]
+        duracion = self.DURACION_ARMADO.get(tipo, 3.0)
+        return min(1.0, (time.perf_counter() - self.armado["inicio"]) / duracion)
+
+    def _mover_armado(self, delta):
+        pasos = self.armado["datos"]["pasos"]
+        self.armado["paso"] = max(0, min(len(pasos) - 1, self.armado["paso"] + delta))
+        self.armado["inicio"] = time.perf_counter()
+
+    def _a_ver_armado(self, id_wave=None):
+        waves = [w["id"] for w in self.sim.resumen_waves()]
+        if not waves:
+            raise ValueError("Primero generá las waves.")
+        id_wave = id_wave if id_wave in waves else waves[0]
+        self.reproduciendo = False
+        self.dialogo = None
+        self.armado = {
+            "datos": self.sim.explicar_armado(id_wave),
+            "paso": 0,
+            "inicio": time.perf_counter(),
+            "auto": True,
+        }
+        self.wave_foco = id_wave
+        self.mapa_ampliado = False
+        self.mapa.area = pygame.Rect(20, 186, 740, 690)
+        datos = self.armado["datos"]
+        celdas = [c for p in datos["pasos"] for c in p.get("celdas", [])]
+        if datos["ruta"]:
+            celdas += datos["ruta"]["camino"]
+        self.mapa.encuadrar(celdas)
+        self.mensaje = f"Cómo se armó {id_wave}: se reproduce paso a paso (podés pausar o avanzar a mano)."
+
+    def _a_armado_paso(self, delta):
+        self.armado["auto"] = False
+        self._mover_armado(delta)
+
+    def _a_armado_wave(self, delta):
+        waves = [w["id"] for w in self.sim.resumen_waves()]
+        i = waves.index(self.armado["datos"]["wave"])
+        self._a_ver_armado(waves[(i + delta) % len(waves)])
+
+    def _a_armado_auto(self):
+        self.armado["auto"] = not self.armado["auto"]
+        if self.armado["auto"] and self.progreso_armado() >= 1.0:
+            if self.armado["paso"] + 1 >= len(self.armado["datos"]["pasos"]):
+                self.armado["paso"] = -1
+            self._mover_armado(1)
+
+    def _a_salir_armado(self):
+        self.armado = None
+        self.mensaje = "Fin de la explicación del armado."
+
+    def panel_armado(self, x, y):
+        a = self.armado
+        datos = a["datos"]
+        pasos = datos["pasos"]
+        paso = pasos[a["paso"]]
+        colores = self.colores_pedidos(datos)
+        from BackEnd.controllers.wave_manager import ESTRATEGIAS_ARMADO as NOMBRES_ARMADO
+
+        self.texto(f"Cómo se armó {datos['wave']}", x, y, 22, negrita=True)
+        self.texto(
+            f"Armado: {NOMBRES_ARMADO[datos['estrategia_armado']]} · zona {datos['zona']}",
+            x, y + 32, 15, GRIS, max_ancho=690,
+        )
+        botones = [
+            ("< Wave", 90, ("armado_wave", -1), True),
+            ("Wave >", 90, ("armado_wave", 1), True),
+            ("< Paso", 90, ("armado_paso", -1), a["paso"] > 0),
+            ("Paso >", 90, ("armado_paso", 1), a["paso"] + 1 < len(pasos)),
+            ("Pausar" if a["auto"] else "Reproducir", 120, "armado_auto", True),
+            ("Salir", 90, "salir_armado", True),
+        ]
+        bx = x
+        for etiqueta, w, accion, habilitado in botones:
+            self.boton(etiqueta, bx, y + 60, w, accion, habilitado)
+            bx += w + 8
+        # Barra de pasos
+        total = len(pasos)
+        ancho = 690 / total
+        for j, pj in enumerate(pasos):
+            color = AZUL if j < a["paso"] else AMBAR if j == a["paso"] else (225, 229, 235)
+            self.caja(x + j * ancho, y + 106, max(4, ancho - 4), 10, color, None)
+        nombres_tipo = {"raiz": "Pedido raíz", "evaluar": "Evaluar candidatos", "elegir": "Elegir pedido",
+                        "fin": "Cierre de la wave", "ruta": "Ruta del picker"}
+        self.texto(f"Paso {a['paso'] + 1} de {total}: {nombres_tipo[paso['tipo']]}", x, y + 126, 18, negrita=True)
+        lineas = self.parrafo(paso["texto"], x, y + 156, 690, 16, TINTA, limite=6)
+        yy = y + 166 + lineas * 21
+
+        if paso["tipo"] == "evaluar":
+            unidad = " (pasillos nuevos)" if datos["estrategia_armado"] == "PASILLO" else ""
+            self.texto("Mejores candidatos" + unidad, x, yy, 17, negrita=True)
+            for etiqueta, dx in [("Pedido", 0), ("Prioridad", 150), ("Ponderado", 280)]:
+                self.texto(etiqueta, x + dx, yy + 28, 15, GRIS, True)
+            for k, cand in enumerate(paso["ranking"]):
+                fy = yy + 54 + k * 24
+                color = AMBAR if k == 0 else TINTA
+                self.texto(cand["id_pedido"], x, fy, 15, color, k == 0)
+                self.texto(cand["prioridad"], x + 150, fy, 15, color)
+                self.texto(f"{cand['score']:.2f}" + ("   <- gana" if k == 0 else ""), x + 280, fy, 15, color, k == 0)
+            yy += 60 + 24 * len(paso["ranking"])
+        elif paso["tipo"] == "ruta" and datos["ruta"]:
+            ruta = datos["ruta"]
+            self.texto(
+                f"{len(ruta['destinos'])} paradas · {ruta['distancia']} pasos · "
+                f"{len(set(ruta['orden_exploracion']))} celdas exploradas por Dijkstra",
+                x, yy, 15, AZUL, max_ancho=690,
+            )
+            yy += 30
+
+        # Pedidos de la wave hasta este paso
+        self.texto("Pedidos en la wave", x, yy + 10, 17, negrita=True)
+        fila = 0
+        for pj in pasos[: a["paso"] + 1]:
+            if pj["tipo"] not in ("raiz", "elegir"):
+                continue
+            fy = yy + 40 + fila * 26
+            pygame.draw.rect(self.lienzo, colores[pj["pedido"]], pygame.Rect(x, fy + 2, 16, 16))
+            detalle = "raíz (mayor prioridad)" if pj["tipo"] == "raiz" else f"ponderado {pj['score']:.2f}"
+            self.texto(f"{pj['pedido']} · prioridad {pj['prioridad']} · {len(pj['celdas'])} ubicaciones · {detalle}",
+                       x + 26, fy, 15, max_ancho=660)
+            fila += 1
 
     def _a_ampliar(self):
         self.mapa_ampliado = not self.mapa_ampliado
@@ -607,6 +749,10 @@ class App(UIElements):
     # ------------------------------------------------------------------
     def panel_derecho(self):
         x0, y0 = 778, 184
+        if self.armado:
+            self.caja(x0, y0, 722, 720)
+            self.panel_armado(x0 + 14, y0 + 12)
+            return
         ancho_pestana = 118
         for i, nombre in enumerate(PESTANAS):
             self.boton(nombre, x0 + i * (ancho_pestana + 2), y0, ancho_pestana, ("pestana", nombre), marcado=self.pestana == nombre)
@@ -666,7 +812,8 @@ class App(UIElements):
         if not waves:
             self.parrafo("Todavía no hay waves. Usá 'Generar waves': se toman los pedidos pendientes de mayor prioridad (Max-Heap) y se les suman los pedidos más cercanos en el dígrafo, respetando la capacidad.", x, y, 680, 17, limite=5)
             return
-        self.texto("Clic en una wave para ver sus ubicaciones en el mapa", x, y, 16, GRIS)
+        self.texto("Clic en una wave para ver sus ubicaciones en el mapa", x, y + 8, 16, GRIS)
+        self.boton("Ver cómo se armó", x + 500, y, 190, ("ver_armado", self.wave_foco), marcado=True)
         colores = {"PENDIENTE": TINTA, "EN_EJECUCION": AMBAR, "FINALIZADA": VERDE}
         filas = [
             [
@@ -847,6 +994,7 @@ class App(UIElements):
     def dialogo_waves(self, x, y, w):
         m = self.sim
         self.texto("Seleccionar waves", x, y, 26, negrita=True)
+        self.boton("Ver cómo se armaron", x + w - 400, y - 2, 230, "ver_armado")
         libres = sum(1 for p in m.warehouse.pickers if p.id_wave_actual is None)
         self.texto(
             f"Pickers libres: {libres} de {len(m.warehouse.pickers)} · cada picker hace una sola wave por viaje · estrategia: {NOMBRE_ESTRATEGIA[m.estrategia]}",
@@ -969,6 +1117,13 @@ class App(UIElements):
         pygame.display.flip()
 
     def paso_automatico(self, dt):
+        if self.armado and not self.dialogo:
+            if self.armado["auto"] and self.progreso_armado() >= 1.0:
+                if self.armado["paso"] + 1 < len(self.armado["datos"]["pasos"]):
+                    self._mover_armado(1)
+                else:
+                    self.armado["auto"] = False
+            return
         if not (self.reproduciendo and self.sim and not self.dialogo):
             return
         self.acumulado += dt

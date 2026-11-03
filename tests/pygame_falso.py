@@ -37,6 +37,8 @@ class Rect:
     center = property(lambda s: (s.x + s.w // 2, s.y + s.h // 2))
     topleft = property(lambda s: (s.x, s.y))
     right = property(lambda s: s.x + s.w)
+    centerx = property(lambda s: s.x + s.w // 2)
+    centery = property(lambda s: s.y + s.h // 2)
     bottom = property(lambda s: s.y + s.h)
 
     size = property(lambda s: (s.w, s.h))

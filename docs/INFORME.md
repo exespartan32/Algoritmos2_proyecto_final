@@ -202,7 +202,32 @@ Todo desvío retoma la ruta en el **próximo producto pendiente**, así ningún
 producto se saltea. Se agregó al integrar: antes, un desvío iba directo al
 despacho y se perdían productos.
 
-### 3.7 Generador de escenarios
+### 3.7 Visualización del armado de waves y de la ruta
+
+El botón **Ver cómo se armó** (pestaña *Waves* o diálogo de waves) reproduce
+paso a paso cómo se construyó una wave, usando la traza que deja
+`WaveManager` y `Simulador.explicar_armado(id_wave)`. Nada se recalcula
+distinto: es la misma decisión que tomó el algoritmo.
+
+1. **Pedido raíz:** se pintan de un color las celdas de los productos del
+   pedido que salió de la raíz del Max-Heap (el más urgente).
+2. **Evaluación:** se marcan los candidatos factibles con su ponderado
+   (con *Cercanía*, el costo marginal promedio en pasos del dígrafo). El de
+   menor ponderado aparece resaltado.
+3. **Elección:** el ganador se pinta con su propio color y se dibuja el
+   camino real (Dijkstra) que lo une con el producto más cercano de la
+   wave, con su distancia en pasos.
+4. Se repiten 2 y 3 hasta el **cierre**, que indica el motivo (máximo de
+   pedidos, máximo de unidades o que ningún candidato entra).
+5. **Ruta del picker:** se pinta cómo explora Dijkstra desde la zona de
+   despacho y después el recorrido elegido, con los productos numerados en
+   orden de visita, según la estrategia de recorrido activa.
+
+El mapa se acerca solo a las celdas de la wave. Se controla con *< Wave*,
+*Wave >*, *< Paso*, *Paso >*, *Pausar/Reproducir* y *Salir*, o con las
+flechas, la barra espaciadora y Esc.
+
+### 3.8 Generador de escenarios
 
 Es **determinista**: no usa números aleatorios. Arma racks de 2×6 separados
 por pasillos verticales de un solo sentido (alternando N y S), con pasillos
@@ -488,7 +513,7 @@ garantiza el recorrido óptimo, que sería un problema del viajante.
 
 ## 7. Pruebas
 
-`tests/` tiene 51 pruebas automáticas:
+`tests/` tiene 54 pruebas automáticas:
 
 - **Grafo** (`test_grafo.py`): aristas, contramano, accesos, Kosaraju y las
   trampas del escenario grande.

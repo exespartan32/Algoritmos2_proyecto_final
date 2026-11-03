@@ -256,6 +256,35 @@ class TestInterfaz(unittest.TestCase):
         self.assertTrue(picker.posicion_actual != antes or picker.turnos_pausa > 0)
         self.assertTrue(nuevos <= set(self.app.busquedas_activas()))
 
+    def test_ver_como_se_armo_una_wave(self):
+        self.hacer(("abrir", self.carpeta / "escenario_gen_mediano.json"))
+        self.hacer("ver_armado", permitir_error=True)  # sin waves avisa sin romper
+        self.assertIsNone(self.app.armado)
+        self.hacer("generar_waves")
+        self.hacer("cerrar")
+        self.hacer(("ver_armado", "WAVE_02"))
+        self.assertEqual(self.app.armado["datos"]["wave"], "WAVE_02")
+        self.assertGreater(self.app.mapa.zoom, 1.0)  # se acerca a la wave
+        pasos = len(self.app.armado["datos"]["pasos"])
+        for _ in range(pasos + 2):
+            self.hacer(("armado_paso", 1))
+        self.assertEqual(self.app.armado["paso"], pasos - 1)
+        self.assertFalse(self.app.armado["auto"])
+        manejar_evento(self.app, evento(pygame.KEYDOWN, key=pygame.K_LEFT, mod=0, unicode=""))
+        self.assertEqual(self.app.armado["paso"], pasos - 2)
+        manejar_evento(self.app, evento(pygame.KEYDOWN, key=pygame.K_SPACE, mod=0, unicode=" "))
+        self.assertTrue(self.app.armado["auto"])
+        self.app.dibujar()
+        self.hacer(("armado_wave", 1))
+        self.assertEqual(self.app.armado["datos"]["wave"], "WAVE_03")
+        self.hacer(("armado_wave", -2))
+        self.assertEqual(self.app.armado["datos"]["wave"], "WAVE_01")
+        for _ in range(len(self.app.armado["datos"]["pasos"])):
+            self.hacer(("armado_paso", 1))
+        manejar_evento(self.app, evento(pygame.KEYDOWN, key=pygame.K_ESCAPE, mod=0, unicode=""))
+        self.assertIsNone(self.app.armado)
+        self.app.dibujar()
+
     def test_arranque_con_cuadros(self):
         self.app.run(3)
 

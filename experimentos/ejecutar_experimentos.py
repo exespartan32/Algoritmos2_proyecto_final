@@ -64,7 +64,7 @@ def medir(params, repeticiones=5):
     waves = sim.generar_waves()
     t_waves = (time.perf_counter() - t) * 1000
     evaluados = sum(
-        paso["candidatos_evaluados"] for traza in sim.estado.gestor_waves.traza_armado.values() for paso in traza
+        paso.get("candidatos_evaluados", 0) for traza in sim.estado.gestor_waves.traza_armado.values() for paso in traza
     )
     comp = sim.comparar_estrategias([w.id_wave for w in waves])
     fila_base = {

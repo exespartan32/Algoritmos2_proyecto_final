@@ -478,6 +478,7 @@ classDiagram
         +reiniciar() bool
         +comparar_estrategias(ids, pickers_por_wave) Dict
         +comparar_armado() Dict
+        +explicar_armado(id_wave) Dict
         +productos() List
         +pedidos() List
         +resumen_waves() List
@@ -575,6 +576,7 @@ classDiagram
         +Dict angulos
         +Dict comparacion
         +Dict comparacion_armado
+        +Dict armado
         +run(cuadros)
         +dibujar()
         +accion(accion)
@@ -591,6 +593,9 @@ classDiagram
         +panel_pickers() / panel_metricas() / panel_eventos()
         +dialogo_waves() / dialogo_comparar() / dialogo_armado()
         +dialogo_generador() / dialogo_pedido() / dialogo_config()
+        +panel_armado(x, y)
+        +colores_pedidos() Dict
+        +progreso_armado() float
         -_a_*() acciones de botones
     }
     class VistaMapa {
@@ -600,6 +605,8 @@ classDiagram
         +List desplazamiento
         +dibujar()
         +dibujar_busqueda(color, plan, progreso, lado) Tuple
+        +dibujar_armado(armado, lado)
+        +encuadrar(celdas, margen)
         +leyenda(x, y)
         +zoom_en(pos, factor)
         +mover(dx, dy)

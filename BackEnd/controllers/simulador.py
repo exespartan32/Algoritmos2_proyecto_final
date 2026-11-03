@@ -731,6 +731,159 @@ class Simulador:
             }
         return resultados
 
+    def explicar_armado(self, id_wave: str) -> Dict[str, Any]:
+        """Reconstruye, paso a paso, cómo se armó una wave y qué ruta haría.
+
+        Usa la traza que guarda el WaveManager (pedido raíz, candidatos
+        evaluados con su ponderado, pedido elegido y motivo de cierre) y le
+        agrega la geometría para dibujarlo: celdas de cada pedido, caminos
+        en el dígrafo usados para medir la cercanía y la ruta del picker.
+        """
+        gestor = self.estado.gestor_waves
+        if gestor is None or id_wave not in gestor.waves_por_id:
+            raise ValueError("Primero generá las waves.")
+        wh = self.warehouse
+        grafo = wh.grafo_pasillos
+        wave = gestor.waves_por_id[id_wave]
+        traza = gestor.traza_armado.get(id_wave, [])
+        estrategia_armado = gestor.estrategia_armado
+
+        def celdas_de(id_pedido):
+            ped = wh.buscar_pedido_O1(id_pedido)
+            vistas, salida = set(), []
+            for item in ped.items:
+                prod = wh.buscar_producto_O1(item.producto_id)
+                if prod and prod.coordenadas_xy not in vistas:
+                    vistas.add(prod.coordenadas_xy)
+                    salida.append(prod.coordenadas_xy)
+            return salida
+
+        def acceso(c):
+            return Pathfinding.obtener_celda_acceso_pasillo(c, grafo, wh)
+
+        def describir_ponderado():
+            if estrategia_armado == "CERCANIA":
+                return (
+                    "Para cada candidato se calcula el costo marginal promedio: por cada producto, "
+                    "la distancia en el dígrafo al producto más cercano que ya está en la wave "
+                    "(más una penalización por la altura z), y se promedia. Gana el menor."
+                )
+            if estrategia_armado == "PASILLO":
+                return "Para cada candidato se cuentan los pasillos nuevos que agregaría a la wave. Gana el que agrega menos."
+            return "No se mira la ubicación: gana el candidato de mayor prioridad."
+
+        pasos: List[Dict[str, Any]] = []
+        en_wave: List[Coord] = []
+        nombre_zona = wave.id_zona_despacho
+        for entrada in traza:
+            rol = entrada["rol"]
+            if rol == "RAIZ_MAX_HEAP":
+                celdas = celdas_de(entrada["id_pedido"])
+                pasos.append({
+                    "tipo": "raiz",
+                    "pedido": entrada["id_pedido"],
+                    "prioridad": entrada["prioridad"],
+                    "celdas": celdas,
+                    "texto": (
+                        f"Del Max-Heap sale {entrada['id_pedido']} (prioridad {entrada['prioridad']}), "
+                        f"el pedido pendiente más urgente. Abre la wave y se le asigna {nombre_zona}, "
+                        f"la zona de despacho más cercana a sus productos con lugar."
+                    ),
+                })
+                en_wave.extend(celdas)
+            elif rol == "FIN":
+                pasos.append({"tipo": "fin", "texto": "La wave se cierra. " + (entrada.get("motivo") or "")})
+            else:
+                celdas = celdas_de(entrada["id_pedido"])
+                ranking = [
+                    dict(r, celdas=celdas_de(r["id_pedido"])) for r in entrada.get("ranking", [])
+                ]
+                pasos.append({
+                    "tipo": "evaluar",
+                    "ranking": ranking,
+                    "factibles": entrada.get("factibles", len(ranking)),
+                    "evaluados": entrada.get("candidatos_evaluados", len(ranking)),
+                    "texto": (
+                        f"Se miran los {entrada.get('factibles', len(ranking))} pedidos pendientes que entran "
+                        f"en las unidades libres; {entrada.get('candidatos_evaluados', len(ranking))} cumplen "
+                        f"stock, zona y pickers. " + describir_ponderado()
+                    ),
+                })
+                # Caminos usados para medir la cercanía: de cada producto nuevo
+                # al producto más cercano que ya estaba en la wave.
+                enlaces = []
+                if estrategia_armado == "CERCANIA" and en_wave:
+                    for c in celdas:
+                        if c in en_wave:
+                            continue
+                        mejor = min(
+                            en_wave,
+                            key=lambda u: gestor._distancia_enlace_digrafo(c, u, self.matriz_distancias),
+                        )
+                        ida = gestor._obtener_distancia_dirigida(mejor, c, self.matriz_distancias)
+                        vuelta = gestor._obtener_distancia_dirigida(c, mejor, self.matriz_distancias)
+                        origen, destino = (acceso(mejor), acceso(c)) if ida <= vuelta else (acceso(c), acceso(mejor))
+                        camino, _ = Pathfinding.calcular_ruta_dijkstra(origen, destino, grafo)
+                        enlaces.append({"desde": c, "hasta": mejor, "camino": camino, "distancia": max(0, len(camino) - 1)})
+                score = entrada.get("score_marginal", 0.0)
+                pasos.append({
+                    "tipo": "elegir",
+                    "pedido": entrada["id_pedido"],
+                    "prioridad": entrada["prioridad"],
+                    "score": score,
+                    "celdas": celdas,
+                    "enlaces": enlaces,
+                    "texto": (
+                        f"Gana {entrada['id_pedido']} (prioridad {entrada['prioridad']}) con ponderado "
+                        f"{score:.2f}" + (" pasillos nuevos" if estrategia_armado == "PASILLO" else "")
+                        + ". Se suma a la wave."
+                        + (" Las líneas muestran el camino en el dígrafo hasta el producto más cercano de la wave."
+                           if enlaces else "")
+                    ),
+                })
+                en_wave.extend(c for c in celdas if c not in en_wave)
+
+        # Ruta del picker desde el despacho, con la estrategia de recorrido actual.
+        accesos_zona = wh.obtener_nodos_acceso_zona(wave.id_zona_despacho)
+        destinos = list(dict.fromkeys(acceso(c) for c in en_wave))
+        ruta = None
+        if accesos_zona and destinos:
+            despacho = min(accesos_zona, key=lambda c: (abs(c[0] - destinos[0][0]) + abs(c[1] - destinos[0][1]), c))
+            if self.estrategia == "ORDEN":
+                res = Pathfinding.calcular_estrategia_orden_pedidos(grafo, despacho, destinos, despacho, wh)
+            else:
+                res = Pathfinding.calcular_estrategia_cercania_multidestino(grafo, despacho, destinos, despacho, wh)
+            orden_visita, pendientes = [], set(destinos)
+            for celda in res.camino_completo:
+                if celda in pendientes:
+                    orden_visita.append(celda)
+                    pendientes.discard(celda)
+            ruta = {
+                "despacho": despacho,
+                "camino": list(res.camino_completo),
+                "destinos": orden_visita,
+                "distancia": res.distancia_total,
+                "orden_exploracion": list(res.orden_exploracion),
+            }
+            pasos.append({
+                "tipo": "ruta",
+                "texto": (
+                    f"Recorrido del picker con {NOMBRE_ESTRATEGIA[self.estrategia]}: sale del despacho, "
+                    + ("visita los productos en el orden de los pedidos" if self.estrategia == "ORDEN"
+                       else "va siempre al producto pendiente más cercano (Dijkstra multidestino)")
+                    + f" y vuelve a {nombre_zona}. Total: {res.distancia_total} pasos."
+                ),
+            })
+        return {
+            "wave": id_wave,
+            "zona": nombre_zona,
+            "estrategia_armado": estrategia_armado,
+            "estrategia_ruta": self.estrategia,
+            "pedidos": [p.id_pedido for p in wave.pedidos],
+            "pasos": pasos,
+            "ruta": ruta,
+        }
+
     def comparar_armado(self) -> Dict[str, Dict[str, Any]]:
         """Arma las waves con cada estrategia de armado y las prepara todas.
 
@@ -751,7 +904,7 @@ class Simulador:
             waves = clon.generar_waves()
             gestor = clon.estado.gestor_waves
             evaluados = sum(
-                paso["candidatos_evaluados"] for traza in gestor.traza_armado.values() for paso in traza
+                paso.get("candidatos_evaluados", 0) for traza in gestor.traza_armado.values() for paso in traza
             )
             pasillos = [
                 len(set().union(*(WaveManager._pasillos_de(p, clon.warehouse) for p in w.pedidos)))

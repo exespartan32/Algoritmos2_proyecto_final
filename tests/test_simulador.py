@@ -113,6 +113,32 @@ class TestSimuladorBasico(unittest.TestCase):
         sim.generar_waves()
         self.assertEqual(sim.estado.gestor_waves.estrategia_armado, "PASILLO")
 
+    def test_explicar_armado_de_una_wave(self):
+        sim = Simulador(FileParser.leer_json("escenario_gen_mediano.json"))
+        waves = sim.generar_waves()
+        antes = foto(sim)
+        for wave in waves[:5]:
+            exp = sim.explicar_armado(wave.id_wave)
+            self.assertEqual(foto(sim), antes)  # explicar no cambia nada
+            tipos = [p["tipo"] for p in exp["pasos"]]
+            self.assertEqual(tipos[0], "raiz")
+            self.assertEqual(tipos[-2:], ["fin", "ruta"])
+            elegidos = [exp["pasos"][0]["pedido"]] + [p["pedido"] for p in exp["pasos"] if p["tipo"] == "elegir"]
+            self.assertEqual(elegidos, [p.id_pedido for p in wave.pedidos])
+            for i, paso in enumerate(exp["pasos"]):
+                if paso["tipo"] == "elegir":
+                    # Antes de cada elección se muestra el ranking y gana el primero.
+                    previo = exp["pasos"][i - 1]
+                    self.assertEqual(previo["tipo"], "evaluar")
+                    self.assertEqual(previo["ranking"][0]["id_pedido"], paso["pedido"])
+                    for enlace in paso["enlaces"]:
+                        self.assertEqual(len(enlace["camino"]) - 1, enlace["distancia"])
+            ruta = exp["ruta"]
+            self.assertEqual(sorted(ruta["destinos"]), sorted(set(ruta["destinos"])))
+            for a, b in zip(ruta["camino"], ruta["camino"][1:]):
+                self.assertEqual(abs(a[0] - b[0]) + abs(a[1] - b[1]), 1)
+            self.assertEqual(len(ruta["camino"]) - 1, ruta["distancia"])
+
     def test_pedido_nuevo_y_configuracion(self):
         nuevo = self.sim.agregar_pedido(5, Simulador.interpretar_items("P006x1, P007x2"))
         self.assertEqual(nuevo, "PED_04")

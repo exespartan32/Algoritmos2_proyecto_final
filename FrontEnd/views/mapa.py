@@ -65,6 +65,25 @@ class VistaMapa:
         self.zoom = 1.0
         self.desplazamiento = [0.0, 0.0]
 
+    def encuadrar(self, celdas, margen=3):
+        """Acerca el mapa para que se vean bien estas celdas (y las centra)."""
+        if not celdas:
+            return
+        m = self.app.sim
+        x0 = max(0, min(c[0] for c in celdas) - margen)
+        x1 = min(m.ancho - 1, max(c[0] for c in celdas) + margen)
+        y0 = max(0, min(c[1] for c in celdas) - margen)
+        y1 = min(m.alto - 1, max(c[1] for c in celdas) + margen)
+        base = min(self.area.width / m.ancho, self.area.height / m.alto)
+        zoom = min(self.area.width / ((x1 - x0 + 1) * base), self.area.height / ((y1 - y0 + 1) * base))
+        self.zoom = max(ZOOM_MIN, min(ZOOM_MAX, zoom))
+        self.desplazamiento = [0.0, 0.0]
+        lado, izq, arr = self.geometria()
+        cx = izq + ((x0 + x1) / 2 + 0.5) * lado
+        cy = arr + (m.alto - 1 - (y0 + y1) / 2 + 0.5) * lado
+        self.desplazamiento = [self.area.centerx - cx, self.area.centery - cy]
+        self._limitar()
+
     def rect_celda(self, coord):
         lado, izq, arr = self.geometria()
         x, y = coord
@@ -205,9 +224,17 @@ class VistaMapa:
         )
         resaltadas = app.celdas_resaltadas()
 
+        if app.armado:
+            plan, explorados = None, set()
         lienzo.blit(self._fondo(plan, explorados), self.area.topleft)
         lienzo.set_clip(self.area)
         lado = self.geometria()[0]
+        if app.armado:
+            self.dibujar_armado(app.armado, lado)
+            lienzo.set_clip(None)
+            app.zona_clic(self.area, ("mapa",))
+            self._controles_vista(app)
+            return
         for coord in resaltadas:
             if self.es_visible(coord):
                 pygame.draw.rect(lienzo, AMBAR, self.rect_celda(coord), max(2, min(6, int(lado) // 7)))
@@ -285,7 +312,10 @@ class VistaMapa:
             app.caja(self.area.x + 6, y, 470, 24, (255, 255, 255), color_picker(indice))
             app.texto(texto, self.area.x + 14, y + 3, 15, color_picker(indice), True, max_ancho=455)
 
-        # Controles de la vista (arriba a la derecha del mapa).
+        self._controles_vista(app)
+
+    def _controles_vista(self, app):
+        """Botones de zoom (arriba a la derecha del mapa)."""
         x = self.area.right - 128
         app.boton("+", x, self.area.y + 8, 36, ("zoom", 1.5), self.zoom < ZOOM_MAX, alto=32)
         app.boton("-", x + 42, self.area.y + 8, 36, ("zoom", 1 / 1.5), self.zoom > ZOOM_MIN, alto=32)
@@ -294,6 +324,95 @@ class VistaMapa:
             app.texto(f"x{self.zoom:.1f}", x - 50, self.area.y + 15, 15, GRIS)
         app.caja(self.area.x + 6, self.area.y + 8, 330, 24, (255, 255, 255), None)
         app.texto("Rueda: acercar / alejar  ·  Arrastrar: mover", self.area.x + 12, self.area.y + 11, 14, GRIS)
+
+    # ------------------------------------------------------------------
+    # Animación del armado de una wave
+    # ------------------------------------------------------------------
+    def _pintar_celdas(self, celdas, color, alfa=150, borde=None):
+        lienzo = self.app.lienzo
+        capa = pygame.Surface(self.area.size, pygame.SRCALPHA)
+        dx, dy = -self.area.x, -self.area.y
+        for c in celdas:
+            if self.es_visible(c):
+                rect = self.rect_celda(c).move(dx, dy)
+                pygame.draw.rect(capa, tuple(color) + (alfa,), rect)
+                if borde:
+                    pygame.draw.rect(capa, tuple(borde) + (255,), rect, max(2, rect.width // 8))
+        lienzo.blit(capa, self.area.topleft)
+
+    def _etiqueta(self, texto, centro, color, tam=14):
+        app = self.app
+        imagen = app.fuente(tam, True).render(texto, True, (255, 255, 255))
+        rect = imagen.get_rect(center=centro)
+        fondo = pygame.Rect(rect.x - 4, rect.y - 2, rect.width + 8, rect.height + 4)
+        pygame.draw.rect(app.lienzo, color, fondo)
+        pygame.draw.rect(app.lienzo, (255, 255, 255), fondo, 1)
+        app.lienzo.blit(imagen, rect)
+
+    def dibujar_armado(self, armado, lado):
+        """Pedido raíz, candidatos con su ponderado, pedido elegido y ruta."""
+        app = self.app
+        lienzo = app.lienzo
+        datos, i = armado["datos"], armado["paso"]
+        progreso = app.progreso_armado()
+        pasos = datos["pasos"]
+        colores = app.colores_pedidos(datos)
+        grosor = max(2, min(7, int(lado * 0.18)))
+
+        # Pedidos que ya están en la wave hasta este paso.
+        for j, paso in enumerate(pasos[: i + 1]):
+            if paso["tipo"] in ("raiz", "elegir"):
+                actual = j == i
+                alfa = int(60 + 120 * progreso) if actual else 170
+                self._pintar_celdas(paso["celdas"], colores[paso["pedido"]], alfa, colores[paso["pedido"]])
+                if lado >= 10:
+                    self._etiqueta(paso["pedido"], self.rect_celda(paso["celdas"][0]).center, colores[paso["pedido"]], 12)
+
+        paso = pasos[i]
+        if paso["tipo"] == "evaluar":
+            # Candidatos: borde punteado en gris y su ponderado.
+            for k, cand in enumerate(paso["ranking"]):
+                gris = (90, 100, 115) if k else (214, 140, 22)
+                visibles = cand["celdas"][: max(1, int(len(cand["celdas"]) * min(1.0, progreso * 1.5 + 0.2)))]
+                self._pintar_celdas(visibles, gris, 40 if k else 90, gris)
+                if cand["celdas"]:
+                    centro = self.rect_celda(cand["celdas"][0]).center
+                    self._etiqueta(f"{cand['id_pedido']}: {cand['score']:.2f}", (centro[0], centro[1] - int(lado)), gris, 12)
+        elif paso["tipo"] == "elegir":
+            color = colores[paso["pedido"]]
+            for enlace in paso["enlaces"]:
+                camino = enlace["camino"]
+                hasta = max(2, int(len(camino) * min(1.0, progreso * 1.3)))
+                puntos = [self.rect_celda(c).center for c in camino[:hasta]]
+                if len(puntos) > 1:
+                    pygame.draw.lines(lienzo, color, False, puntos, grosor)
+                if progreso > 0.7 and camino:
+                    medio = self.rect_celda(camino[len(camino) // 2]).center
+                    self._etiqueta(f"{enlace['distancia']} pasos", medio, color, 12)
+        elif paso["tipo"] == "ruta" and datos["ruta"]:
+            ruta = datos["ruta"]
+            fase = 0.45
+            orden = list(dict.fromkeys(ruta["orden_exploracion"]))
+            cantidad = int(len(orden) * min(1.0, progreso / fase))
+            self._pintar_celdas(orden[:cantidad], (37, 99, 166), 45)
+            camino = ruta["camino"]
+            if progreso > fase:
+                hasta = max(2, int(len(camino) * (progreso - fase) / (1 - fase)))
+                tramo = camino[:hasta]
+                puntos = [self.rect_celda(c).center for c in tramo]
+                if len(puntos) > 1:
+                    pygame.draw.lines(lienzo, (31, 41, 51), False, puntos, grosor)
+                visitados = set(tramo)
+                radio = max(6, min(16, int(lado * 0.38)))
+                for n, celda in enumerate(ruta["destinos"], start=1):
+                    if celda in visitados:
+                        centro = self.rect_celda(celda).center
+                        pygame.draw.circle(lienzo, (214, 140, 22), centro, radio)
+                        if lado >= 10:
+                            imagen = app.fuente(max(9, min(18, int(lado * 0.42))), True).render(str(n), True, (255, 255, 255))
+                            lienzo.blit(imagen, imagen.get_rect(center=centro))
+            despacho = self.rect_celda(ruta["despacho"])
+            pygame.draw.rect(lienzo, (30, 90, 50), despacho, max(2, min(6, int(lado * 0.15))))
 
     def leyenda(self, x, y):
         app = self.app

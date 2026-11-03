@@ -41,6 +41,11 @@ hace falta además `matplotlib` (opcional).
 4. **Generar waves.** *Capacidad de waves* define el máximo de pedidos y de
    unidades, y la estrategia de armado (Cercanía, Por pasillo o Solo
    prioridad). *Comparar armado* prueba las tres. *Generar waves* las arma.
+   *Ver cómo se armó* muestra la wave paso a paso: los productos del
+   pedido raíz pintados, los candidatos con su ponderado, el pedido que
+   gana y el camino que lo une con la wave, el motivo del cierre y la ruta
+   que va a hacer el picker (con la exploración de Dijkstra). Se controla
+   con *< Paso*, *Paso >*, *Pausar*, las flechas, la barra espaciadora y Esc.
 5. **Seleccionar waves.** Se marcan una o varias y se pulsa *Asignar e
    iniciar*. Cada wave va al picker libre más cercano, o se reparte entre
    varios con *Pickers por wave*. Las que no tienen picker quedan en espera.

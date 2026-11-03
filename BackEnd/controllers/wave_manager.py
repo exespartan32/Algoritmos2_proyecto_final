@@ -442,20 +442,27 @@ class WaveManager:
                 }
             ]
 
+            motivo_fin = ""
             while True:
                 if len(nueva_wave.pedidos) >= self.wave_max_pedidos:
+                    motivo_fin = f"Llegó al máximo de {self.wave_max_pedidos} pedidos por wave."
                     break
 
                 capacidad_restante = (
                     self.wave_max_productos - nueva_wave.unidades_totales
                 )
                 if capacidad_restante <= 0:
+                    motivo_fin = f"Llegó al máximo de {self.wave_max_productos} unidades."
                     break
 
                 candidatos_factibles = self.cola_prioridad.obtener_candidatos_factibles(
                     capacidad_restante
                 )
                 if not candidatos_factibles:
+                    motivo_fin = (
+                        f"Ningún pedido pendiente entra en las {capacidad_restante} unidades libres."
+                        if self.cola_prioridad.tamano() else "No quedan pedidos pendientes."
+                    )
                     break
 
                 pasillos_wave: Set[str] = set()
@@ -467,6 +474,7 @@ class WaveManager:
                 mejor_tupla_criterio: Optional[Tuple[float, int, str]] = None
                 mejor_score: float = float("inf")
                 evaluados_validos = 0
+                ranking: List[Tuple[Tuple[float, int, str], Pedido]] = []
 
                 for cand in candidatos_factibles:
                     if not self._tiene_stock_suficiente_sin_modificar(
@@ -500,6 +508,7 @@ class WaveManager:
 
                     evaluados_validos += 1
                     criterio_actual = (score, -cand.prioridad, cand.id_pedido)
+                    ranking.append((criterio_actual, cand))
                     if (
                         mejor_tupla_criterio is None
                         or criterio_actual < mejor_tupla_criterio
@@ -509,6 +518,10 @@ class WaveManager:
                         mejor_score = score
 
                 if mejor_candidato is None:
+                    motivo_fin = (
+                        "Los pedidos que entran no tienen stock, no caben en la zona "
+                        "o no se pueden repartir entre los pickers."
+                    )
                     break
 
                 peso_mejor = mejor_candidato.obtener_peso_total(warehouse)
@@ -532,9 +545,16 @@ class WaveManager:
                         "peso_kg": peso_mejor,
                         "score_marginal": mejor_score,
                         "candidatos_evaluados": evaluados_validos,
+                        "factibles": len(candidatos_factibles),
+                        # Los mejores candidatos de este paso (para explicar la elección).
+                        "ranking": [
+                            {"id_pedido": c.id_pedido, "score": crit[0], "prioridad": c.prioridad}
+                            for crit, c in sorted(ranking, key=lambda t: t[0])[:6]
+                        ],
                     }
                 )
 
+            self.traza_armado[id_wave_actual].append({"rol": "FIN", "motivo": motivo_fin})
             self.waves_creadas.append(nueva_wave)
             self.waves_por_id[nueva_wave.id_wave] = nueva_wave
             contador_wave += 1
