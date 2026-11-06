@@ -1,0 +1,3813 @@
+{
+  "warehouse": {
+    "dimensiones": {
+      "ancho_x": 26,
+      "largo_y": 37
+    },
+    "puertas": [
+      {
+        "id": "PUERTA_A",
+        "tipo": "OUTBOUND",
+        "ubicacion": {
+          "x": 6,
+          "y": 0
+        }
+      },
+      {
+        "id": "PUERTA_B",
+        "tipo": "OUTBOUND",
+        "ubicacion": {
+          "x": 20,
+          "y": 0
+        }
+      }
+    ],
+    "zonas_despacho": [
+      {
+        "id": "ZONA_A",
+        "puerta_id": "PUERTA_A",
+        "ubicacion": {
+          "x": 4,
+          "y": 1
+        },
+        "ancho": 5,
+        "alto": 2,
+        "peso_max_kg": 837.2
+      },
+      {
+        "id": "ZONA_B",
+        "puerta_id": "PUERTA_B",
+        "ubicacion": {
+          "x": 18,
+          "y": 1
+        },
+        "ancho": 5,
+        "alto": 2,
+        "peso_max_kg": 837.2
+      }
+    ],
+    "racks": [
+      {
+        "id": "R01",
+        "ubicacion": {
+          "x": 2,
+          "y": 5
+        },
+        "ancho": 2,
+        "alto": 6
+      },
+      {
+        "id": "R02",
+        "ubicacion": {
+          "x": 6,
+          "y": 5
+        },
+        "ancho": 2,
+        "alto": 6
+      },
+      {
+        "id": "R03",
+        "ubicacion": {
+          "x": 10,
+          "y": 5
+        },
+        "ancho": 2,
+        "alto": 6
+      },
+      {
+        "id": "R04",
+        "ubicacion": {
+          "x": 14,
+          "y": 5
+        },
+        "ancho": 2,
+        "alto": 6
+      },
+      {
+        "id": "R05",
+        "ubicacion": {
+          "x": 18,
+          "y": 5
+        },
+        "ancho": 2,
+        "alto": 6
+      },
+      {
+        "id": "R06",
+        "ubicacion": {
+          "x": 22,
+          "y": 5
+        },
+        "ancho": 2,
+        "alto": 6
+      },
+      {
+        "id": "R07",
+        "ubicacion": {
+          "x": 2,
+          "y": 13
+        },
+        "ancho": 2,
+        "alto": 6
+      },
+      {
+        "id": "R08",
+        "ubicacion": {
+          "x": 6,
+          "y": 13
+        },
+        "ancho": 2,
+        "alto": 6
+      },
+      {
+        "id": "R09",
+        "ubicacion": {
+          "x": 10,
+          "y": 13
+        },
+        "ancho": 2,
+        "alto": 6
+      },
+      {
+        "id": "R10",
+        "ubicacion": {
+          "x": 14,
+          "y": 13
+        },
+        "ancho": 2,
+        "alto": 6
+      },
+      {
+        "id": "R11",
+        "ubicacion": {
+          "x": 18,
+          "y": 13
+        },
+        "ancho": 2,
+        "alto": 6
+      },
+      {
+        "id": "R12",
+        "ubicacion": {
+          "x": 22,
+          "y": 13
+        },
+        "ancho": 2,
+        "alto": 6
+      },
+      {
+        "id": "R13",
+        "ubicacion": {
+          "x": 2,
+          "y": 21
+        },
+        "ancho": 2,
+        "alto": 6
+      },
+      {
+        "id": "R14",
+        "ubicacion": {
+          "x": 6,
+          "y": 21
+        },
+        "ancho": 2,
+        "alto": 6
+      },
+      {
+        "id": "R15",
+        "ubicacion": {
+          "x": 10,
+          "y": 21
+        },
+        "ancho": 2,
+        "alto": 6
+      },
+      {
+        "id": "R16",
+        "ubicacion": {
+          "x": 14,
+          "y": 21
+        },
+        "ancho": 2,
+        "alto": 6
+      },
+      {
+        "id": "R17",
+        "ubicacion": {
+          "x": 18,
+          "y": 21
+        },
+        "ancho": 2,
+        "alto": 6
+      },
+      {
+        "id": "R18",
+        "ubicacion": {
+          "x": 22,
+          "y": 21
+        },
+        "ancho": 2,
+        "alto": 6
+      },
+      {
+        "id": "R19",
+        "ubicacion": {
+          "x": 2,
+          "y": 29
+        },
+        "ancho": 2,
+        "alto": 6
+      },
+      {
+        "id": "R20",
+        "ubicacion": {
+          "x": 6,
+          "y": 29
+        },
+        "ancho": 2,
+        "alto": 6
+      },
+      {
+        "id": "R21",
+        "ubicacion": {
+          "x": 10,
+          "y": 29
+        },
+        "ancho": 2,
+        "alto": 6
+      },
+      {
+        "id": "R22",
+        "ubicacion": {
+          "x": 14,
+          "y": 29
+        },
+        "ancho": 2,
+        "alto": 6
+      },
+      {
+        "id": "R23",
+        "ubicacion": {
+          "x": 18,
+          "y": 29
+        },
+        "ancho": 2,
+        "alto": 6
+      },
+      {
+        "id": "R24",
+        "ubicacion": {
+          "x": 22,
+          "y": 29
+        },
+        "ancho": 2,
+        "alto": 6
+      }
+    ],
+    "pasillos": [
+      {
+        "id": "PAS_T0",
+        "ubicacion": {
+          "x": 0,
+          "y": 3
+        },
+        "ancho": 26,
+        "alto": 2,
+        "sentido": "AMBOS"
+      },
+      {
+        "id": "PAS_V00_F0",
+        "ubicacion": {
+          "x": 0,
+          "y": 5
+        },
+        "ancho": 2,
+        "alto": 6,
+        "sentido": "N"
+      },
+      {
+        "id": "PAS_V01_F0",
+        "ubicacion": {
+          "x": 4,
+          "y": 5
+        },
+        "ancho": 2,
+        "alto": 6,
+        "sentido": "S"
+      },
+      {
+        "id": "PAS_V02_F0",
+        "ubicacion": {
+          "x": 8,
+          "y": 5
+        },
+        "ancho": 2,
+        "alto": 6,
+        "sentido": "N"
+      },
+      {
+        "id": "PAS_V03_F0",
+        "ubicacion": {
+          "x": 12,
+          "y": 5
+        },
+        "ancho": 2,
+        "alto": 6,
+        "sentido": "S"
+      },
+      {
+        "id": "PAS_V04_F0",
+        "ubicacion": {
+          "x": 16,
+          "y": 5
+        },
+        "ancho": 2,
+        "alto": 6,
+        "sentido": "N"
+      },
+      {
+        "id": "PAS_V05_F0",
+        "ubicacion": {
+          "x": 20,
+          "y": 5
+        },
+        "ancho": 2,
+        "alto": 6,
+        "sentido": "S"
+      },
+      {
+        "id": "PAS_V06_F0",
+        "ubicacion": {
+          "x": 24,
+          "y": 5
+        },
+        "ancho": 2,
+        "alto": 6,
+        "sentido": "N"
+      },
+      {
+        "id": "PAS_T1",
+        "ubicacion": {
+          "x": 0,
+          "y": 11
+        },
+        "ancho": 26,
+        "alto": 2,
+        "sentido": "AMBOS"
+      },
+      {
+        "id": "PAS_V00_F1",
+        "ubicacion": {
+          "x": 0,
+          "y": 13
+        },
+        "ancho": 2,
+        "alto": 6,
+        "sentido": "S"
+      },
+      {
+        "id": "PAS_V01_F1",
+        "ubicacion": {
+          "x": 4,
+          "y": 13
+        },
+        "ancho": 2,
+        "alto": 6,
+        "sentido": "N"
+      },
+      {
+        "id": "PAS_V02_F1",
+        "ubicacion": {
+          "x": 8,
+          "y": 13
+        },
+        "ancho": 2,
+        "alto": 6,
+        "sentido": "S"
+      },
+      {
+        "id": "PAS_V03_F1",
+        "ubicacion": {
+          "x": 12,
+          "y": 13
+        },
+        "ancho": 2,
+        "alto": 6,
+        "sentido": "N"
+      },
+      {
+        "id": "PAS_V04_F1",
+        "ubicacion": {
+          "x": 16,
+          "y": 13
+        },
+        "ancho": 2,
+        "alto": 6,
+        "sentido": "S"
+      },
+      {
+        "id": "PAS_V05_F1",
+        "ubicacion": {
+          "x": 20,
+          "y": 13
+        },
+        "ancho": 2,
+        "alto": 6,
+        "sentido": "N"
+      },
+      {
+        "id": "PAS_V06_F1",
+        "ubicacion": {
+          "x": 24,
+          "y": 13
+        },
+        "ancho": 2,
+        "alto": 6,
+        "sentido": "S"
+      },
+      {
+        "id": "PAS_T2",
+        "ubicacion": {
+          "x": 0,
+          "y": 19
+        },
+        "ancho": 26,
+        "alto": 2,
+        "sentido": "AMBOS"
+      },
+      {
+        "id": "PAS_V00_F2",
+        "ubicacion": {
+          "x": 0,
+          "y": 21
+        },
+        "ancho": 2,
+        "alto": 6,
+        "sentido": "N"
+      },
+      {
+        "id": "PAS_V01_F2",
+        "ubicacion": {
+          "x": 4,
+          "y": 21
+        },
+        "ancho": 2,
+        "alto": 6,
+        "sentido": "S"
+      },
+      {
+        "id": "PAS_V02_F2",
+        "ubicacion": {
+          "x": 8,
+          "y": 21
+        },
+        "ancho": 2,
+        "alto": 6,
+        "sentido": "N"
+      },
+      {
+        "id": "PAS_V03_F2",
+        "ubicacion": {
+          "x": 12,
+          "y": 21
+        },
+        "ancho": 2,
+        "alto": 6,
+        "sentido": "S"
+      },
+      {
+        "id": "PAS_V04_F2",
+        "ubicacion": {
+          "x": 16,
+          "y": 21
+        },
+        "ancho": 2,
+        "alto": 6,
+        "sentido": "N"
+      },
+      {
+        "id": "PAS_V05_F2",
+        "ubicacion": {
+          "x": 20,
+          "y": 21
+        },
+        "ancho": 2,
+        "alto": 6,
+        "sentido": "S"
+      },
+      {
+        "id": "PAS_V06_F2",
+        "ubicacion": {
+          "x": 24,
+          "y": 21
+        },
+        "ancho": 2,
+        "alto": 6,
+        "sentido": "N"
+      },
+      {
+        "id": "PAS_T3",
+        "ubicacion": {
+          "x": 0,
+          "y": 27
+        },
+        "ancho": 26,
+        "alto": 2,
+        "sentido": "AMBOS"
+      },
+      {
+        "id": "PAS_V00_F3",
+        "ubicacion": {
+          "x": 0,
+          "y": 29
+        },
+        "ancho": 2,
+        "alto": 6,
+        "sentido": "S"
+      },
+      {
+        "id": "PAS_V01_F3",
+        "ubicacion": {
+          "x": 4,
+          "y": 29
+        },
+        "ancho": 2,
+        "alto": 6,
+        "sentido": "N"
+      },
+      {
+        "id": "PAS_V02_F3",
+        "ubicacion": {
+          "x": 8,
+          "y": 29
+        },
+        "ancho": 2,
+        "alto": 6,
+        "sentido": "S"
+      },
+      {
+        "id": "PAS_V03_F3",
+        "ubicacion": {
+          "x": 12,
+          "y": 29
+        },
+        "ancho": 2,
+        "alto": 6,
+        "sentido": "N"
+      },
+      {
+        "id": "PAS_V04_F3",
+        "ubicacion": {
+          "x": 16,
+          "y": 29
+        },
+        "ancho": 2,
+        "alto": 6,
+        "sentido": "S"
+      },
+      {
+        "id": "PAS_V05_F3",
+        "ubicacion": {
+          "x": 20,
+          "y": 29
+        },
+        "ancho": 2,
+        "alto": 6,
+        "sentido": "N"
+      },
+      {
+        "id": "PAS_V06_F3",
+        "ubicacion": {
+          "x": 24,
+          "y": 29
+        },
+        "ancho": 2,
+        "alto": 6,
+        "sentido": "S"
+      },
+      {
+        "id": "PAS_T4",
+        "ubicacion": {
+          "x": 0,
+          "y": 35
+        },
+        "ancho": 26,
+        "alto": 2,
+        "sentido": "AMBOS"
+      }
+    ]
+  },
+  "pickers": [
+    {
+      "id": "PK_01",
+      "posicion_inicial": {
+        "x": 3,
+        "y": 3
+      },
+      "capacidad_carga_kg": 150.0
+    },
+    {
+      "id": "PK_02",
+      "posicion_inicial": {
+        "x": 9,
+        "y": 4
+      },
+      "capacidad_carga_kg": 150.0
+    },
+    {
+      "id": "PK_03",
+      "posicion_inicial": {
+        "x": 16,
+        "y": 3
+      },
+      "capacidad_carga_kg": 150.0
+    },
+    {
+      "id": "PK_04",
+      "posicion_inicial": {
+        "x": 22,
+        "y": 4
+      },
+      "capacidad_carga_kg": 150.0
+    }
+  ],
+  "productos": [
+    {
+      "id": "P001",
+      "nombre": "Monitor 27",
+      "rack_id": "R02",
+      "ubicacion": {
+        "x": 6,
+        "y": 5,
+        "z": 1
+      },
+      "cantidad_disponible": 6,
+      "peso_kg": 0.3
+    },
+    {
+      "id": "P002",
+      "nombre": "Monitor 24",
+      "rack_id": "R02",
+      "ubicacion": {
+        "x": 7,
+        "y": 5,
+        "z": 1
+      },
+      "cantidad_disponible": 12,
+      "peso_kg": 4.0
+    },
+    {
+      "id": "P003",
+      "nombre": "Teclado Mecánico",
+      "rack_id": "R05",
+      "ubicacion": {
+        "x": 19,
+        "y": 5,
+        "z": 1
+      },
+      "cantidad_disponible": 20,
+      "peso_kg": 1.7
+    },
+    {
+      "id": "P004",
+      "nombre": "Mouse Inalámbrico",
+      "rack_id": "R06",
+      "ubicacion": {
+        "x": 22,
+        "y": 5,
+        "z": 1
+      },
+      "cantidad_disponible": 7,
+      "peso_kg": 5.4
+    },
+    {
+      "id": "P005",
+      "nombre": "Notebook 14",
+      "rack_id": "R02",
+      "ubicacion": {
+        "x": 6,
+        "y": 6,
+        "z": 1
+      },
+      "cantidad_disponible": 14,
+      "peso_kg": 3.1
+    },
+    {
+      "id": "P006",
+      "nombre": "Auriculares BT",
+      "rack_id": "R02",
+      "ubicacion": {
+        "x": 7,
+        "y": 6,
+        "z": 1
+      },
+      "cantidad_disponible": 20,
+      "peso_kg": 0.8
+    },
+    {
+      "id": "P007",
+      "nombre": "Impresora Láser",
+      "rack_id": "R05",
+      "ubicacion": {
+        "x": 18,
+        "y": 5,
+        "z": 1
+      },
+      "cantidad_disponible": 7,
+      "peso_kg": 4.5
+    },
+    {
+      "id": "P008",
+      "nombre": "Cable HDMI",
+      "rack_id": "R06",
+      "ubicacion": {
+        "x": 23,
+        "y": 5,
+        "z": 1
+      },
+      "cantidad_disponible": 15,
+      "peso_kg": 2.2
+    },
+    {
+      "id": "P009",
+      "nombre": "Webcam HD",
+      "rack_id": "R05",
+      "ubicacion": {
+        "x": 19,
+        "y": 6,
+        "z": 1
+      },
+      "cantidad_disponible": 23,
+      "peso_kg": 5.9
+    },
+    {
+      "id": "P010",
+      "nombre": "Micrófono USB",
+      "rack_id": "R06",
+      "ubicacion": {
+        "x": 22,
+        "y": 6,
+        "z": 1
+      },
+      "cantidad_disponible": 8,
+      "peso_kg": 3.6
+    },
+    {
+      "id": "P011",
+      "nombre": "Disco SSD 1TB",
+      "rack_id": "R02",
+      "ubicacion": {
+        "x": 6,
+        "y": 7,
+        "z": 1
+      },
+      "cantidad_disponible": 15,
+      "peso_kg": 1.3
+    },
+    {
+      "id": "P012",
+      "nombre": "Memoria RAM 16GB",
+      "rack_id": "R02",
+      "ubicacion": {
+        "x": 7,
+        "y": 7,
+        "z": 1
+      },
+      "cantidad_disponible": 22,
+      "peso_kg": 5.0
+    },
+    {
+      "id": "P013",
+      "nombre": "Fuente 650W",
+      "rack_id": "R01",
+      "ubicacion": {
+        "x": 3,
+        "y": 5,
+        "z": 1
+      },
+      "cantidad_disponible": 10,
+      "peso_kg": 2.7
+    },
+    {
+      "id": "P014",
+      "nombre": "Gabinete ATX",
+      "rack_id": "R03",
+      "ubicacion": {
+        "x": 10,
+        "y": 5,
+        "z": 1
+      },
+      "cantidad_disponible": 17,
+      "peso_kg": 0.4
+    },
+    {
+      "id": "P015",
+      "nombre": "Placa de Video",
+      "rack_id": "R05",
+      "ubicacion": {
+        "x": 18,
+        "y": 6,
+        "z": 1
+      },
+      "cantidad_disponible": 23,
+      "peso_kg": 4.1
+    },
+    {
+      "id": "P016",
+      "nombre": "Silla de Oficina",
+      "rack_id": "R06",
+      "ubicacion": {
+        "x": 23,
+        "y": 6,
+        "z": 1
+      },
+      "cantidad_disponible": 10,
+      "peso_kg": 1.8
+    },
+    {
+      "id": "P017",
+      "nombre": "Router WiFi",
+      "rack_id": "R05",
+      "ubicacion": {
+        "x": 19,
+        "y": 7,
+        "z": 1
+      },
+      "cantidad_disponible": 17,
+      "peso_kg": 5.5
+    },
+    {
+      "id": "P018",
+      "nombre": "Parlantes",
+      "rack_id": "R06",
+      "ubicacion": {
+        "x": 22,
+        "y": 7,
+        "z": 1
+      },
+      "cantidad_disponible": 26,
+      "peso_kg": 3.2
+    },
+    {
+      "id": "P019",
+      "nombre": "Tablet 10",
+      "rack_id": "R02",
+      "ubicacion": {
+        "x": 6,
+        "y": 8,
+        "z": 1
+      },
+      "cantidad_disponible": 11,
+      "peso_kg": 0.9
+    },
+    {
+      "id": "P020",
+      "nombre": "Cargador USB-C",
+      "rack_id": "R02",
+      "ubicacion": {
+        "x": 7,
+        "y": 8,
+        "z": 1
+      },
+      "cantidad_disponible": 18,
+      "peso_kg": 4.6
+    },
+    {
+      "id": "P021",
+      "nombre": "Monitor 27",
+      "rack_id": "R01",
+      "ubicacion": {
+        "x": 2,
+        "y": 5,
+        "z": 1
+      },
+      "cantidad_disponible": 7,
+      "peso_kg": 2.3
+    },
+    {
+      "id": "P022",
+      "nombre": "Monitor 24",
+      "rack_id": "R03",
+      "ubicacion": {
+        "x": 11,
+        "y": 5,
+        "z": 1
+      },
+      "cantidad_disponible": 16,
+      "peso_kg": 6.0
+    },
+    {
+      "id": "P023",
+      "nombre": "Teclado Mecánico",
+      "rack_id": "R01",
+      "ubicacion": {
+        "x": 3,
+        "y": 6,
+        "z": 1
+      },
+      "cantidad_disponible": 21,
+      "peso_kg": 3.7
+    },
+    {
+      "id": "P024",
+      "nombre": "Mouse Inalámbrico",
+      "rack_id": "R03",
+      "ubicacion": {
+        "x": 10,
+        "y": 6,
+        "z": 1
+      },
+      "cantidad_disponible": 8,
+      "peso_kg": 1.4
+    },
+    {
+      "id": "P025",
+      "nombre": "Notebook 14",
+      "rack_id": "R05",
+      "ubicacion": {
+        "x": 18,
+        "y": 7,
+        "z": 1
+      },
+      "cantidad_disponible": 15,
+      "peso_kg": 5.1
+    },
+    {
+      "id": "P026",
+      "nombre": "Auriculares BT",
+      "rack_id": "R06",
+      "ubicacion": {
+        "x": 23,
+        "y": 7,
+        "z": 1
+      },
+      "cantidad_disponible": 22,
+      "peso_kg": 2.8
+    },
+    {
+      "id": "P027",
+      "nombre": "Impresora Láser",
+      "rack_id": "R05",
+      "ubicacion": {
+        "x": 19,
+        "y": 8,
+        "z": 1
+      },
+      "cantidad_disponible": 7,
+      "peso_kg": 0.5
+    },
+    {
+      "id": "P028",
+      "nombre": "Cable HDMI",
+      "rack_id": "R06",
+      "ubicacion": {
+        "x": 22,
+        "y": 8,
+        "z": 1
+      },
+      "cantidad_disponible": 16,
+      "peso_kg": 4.2
+    },
+    {
+      "id": "P029",
+      "nombre": "Webcam HD",
+      "rack_id": "R02",
+      "ubicacion": {
+        "x": 6,
+        "y": 9,
+        "z": 1
+      },
+      "cantidad_disponible": 23,
+      "peso_kg": 1.9
+    },
+    {
+      "id": "P030",
+      "nombre": "Micrófono USB",
+      "rack_id": "R02",
+      "ubicacion": {
+        "x": 7,
+        "y": 9,
+        "z": 1
+      },
+      "cantidad_disponible": 10,
+      "peso_kg": 5.6
+    },
+    {
+      "id": "P031",
+      "nombre": "Disco SSD 1TB",
+      "rack_id": "R04",
+      "ubicacion": {
+        "x": 15,
+        "y": 5,
+        "z": 1
+      },
+      "cantidad_disponible": 15,
+      "peso_kg": 3.3
+    },
+    {
+      "id": "P032",
+      "nombre": "Memoria RAM 16GB",
+      "rack_id": "R01",
+      "ubicacion": {
+        "x": 2,
+        "y": 6,
+        "z": 1
+      },
+      "cantidad_disponible": 22,
+      "peso_kg": 1.0
+    },
+    {
+      "id": "P033",
+      "nombre": "Fuente 650W",
+      "rack_id": "R03",
+      "ubicacion": {
+        "x": 11,
+        "y": 6,
+        "z": 1
+      },
+      "cantidad_disponible": 9,
+      "peso_kg": 4.7
+    },
+    {
+      "id": "P034",
+      "nombre": "Gabinete ATX",
+      "rack_id": "R01",
+      "ubicacion": {
+        "x": 3,
+        "y": 7,
+        "z": 1
+      },
+      "cantidad_disponible": 16,
+      "peso_kg": 2.4
+    },
+    {
+      "id": "P035",
+      "nombre": "Placa de Video",
+      "rack_id": "R03",
+      "ubicacion": {
+        "x": 10,
+        "y": 7,
+        "z": 1
+      },
+      "cantidad_disponible": 26,
+      "peso_kg": 6.1
+    },
+    {
+      "id": "P036",
+      "nombre": "Silla de Oficina",
+      "rack_id": "R05",
+      "ubicacion": {
+        "x": 18,
+        "y": 8,
+        "z": 1
+      },
+      "cantidad_disponible": 13,
+      "peso_kg": 3.8
+    },
+    {
+      "id": "P037",
+      "nombre": "Router WiFi",
+      "rack_id": "R06",
+      "ubicacion": {
+        "x": 23,
+        "y": 8,
+        "z": 1
+      },
+      "cantidad_disponible": 20,
+      "peso_kg": 1.5
+    },
+    {
+      "id": "P038",
+      "nombre": "Parlantes",
+      "rack_id": "R05",
+      "ubicacion": {
+        "x": 19,
+        "y": 9,
+        "z": 1
+      },
+      "cantidad_disponible": 27,
+      "peso_kg": 5.2
+    },
+    {
+      "id": "P039",
+      "nombre": "Tablet 10",
+      "rack_id": "R06",
+      "ubicacion": {
+        "x": 22,
+        "y": 9,
+        "z": 1
+      },
+      "cantidad_disponible": 14,
+      "peso_kg": 2.9
+    },
+    {
+      "id": "P040",
+      "nombre": "Cargador USB-C",
+      "rack_id": "R02",
+      "ubicacion": {
+        "x": 6,
+        "y": 10,
+        "z": 1
+      },
+      "cantidad_disponible": 18,
+      "peso_kg": 0.6
+    },
+    {
+      "id": "P041",
+      "nombre": "Monitor 27",
+      "rack_id": "R02",
+      "ubicacion": {
+        "x": 7,
+        "y": 10,
+        "z": 1
+      },
+      "cantidad_disponible": 8,
+      "peso_kg": 4.3
+    },
+    {
+      "id": "P042",
+      "nombre": "Monitor 24",
+      "rack_id": "R04",
+      "ubicacion": {
+        "x": 14,
+        "y": 5,
+        "z": 1
+      },
+      "cantidad_disponible": 15,
+      "peso_kg": 2.0
+    },
+    {
+      "id": "P043",
+      "nombre": "Teclado Mecánico",
+      "rack_id": "R04",
+      "ubicacion": {
+        "x": 15,
+        "y": 6,
+        "z": 1
+      },
+      "cantidad_disponible": 22,
+      "peso_kg": 5.7
+    },
+    {
+      "id": "P044",
+      "nombre": "Mouse Inalámbrico",
+      "rack_id": "R01",
+      "ubicacion": {
+        "x": 2,
+        "y": 7,
+        "z": 1
+      },
+      "cantidad_disponible": 6,
+      "peso_kg": 3.4
+    },
+    {
+      "id": "P045",
+      "nombre": "Notebook 14",
+      "rack_id": "R03",
+      "ubicacion": {
+        "x": 11,
+        "y": 7,
+        "z": 1
+      },
+      "cantidad_disponible": 13,
+      "peso_kg": 1.1
+    },
+    {
+      "id": "P046",
+      "nombre": "Auriculares BT",
+      "rack_id": "R01",
+      "ubicacion": {
+        "x": 3,
+        "y": 8,
+        "z": 1
+      },
+      "cantidad_disponible": 23,
+      "peso_kg": 4.8
+    },
+    {
+      "id": "P047",
+      "nombre": "Impresora Láser",
+      "rack_id": "R03",
+      "ubicacion": {
+        "x": 10,
+        "y": 8,
+        "z": 1
+      },
+      "cantidad_disponible": 13,
+      "peso_kg": 2.5
+    },
+    {
+      "id": "P048",
+      "nombre": "Cable HDMI",
+      "rack_id": "R05",
+      "ubicacion": {
+        "x": 18,
+        "y": 9,
+        "z": 1
+      },
+      "cantidad_disponible": 17,
+      "peso_kg": 6.2
+    },
+    {
+      "id": "P049",
+      "nombre": "Webcam HD",
+      "rack_id": "R06",
+      "ubicacion": {
+        "x": 23,
+        "y": 9,
+        "z": 1
+      },
+      "cantidad_disponible": 21,
+      "peso_kg": 3.9
+    },
+    {
+      "id": "P050",
+      "nombre": "Micrófono USB",
+      "rack_id": "R05",
+      "ubicacion": {
+        "x": 19,
+        "y": 10,
+        "z": 1
+      },
+      "cantidad_disponible": 8,
+      "peso_kg": 1.6
+    },
+    {
+      "id": "P051",
+      "nombre": "Disco SSD 1TB",
+      "rack_id": "R06",
+      "ubicacion": {
+        "x": 22,
+        "y": 10,
+        "z": 1
+      },
+      "cantidad_disponible": 15,
+      "peso_kg": 5.3
+    },
+    {
+      "id": "P052",
+      "nombre": "Memoria RAM 16GB",
+      "rack_id": "R04",
+      "ubicacion": {
+        "x": 14,
+        "y": 6,
+        "z": 1
+      },
+      "cantidad_disponible": 23,
+      "peso_kg": 3.0
+    },
+    {
+      "id": "P053",
+      "nombre": "Fuente 650W",
+      "rack_id": "R04",
+      "ubicacion": {
+        "x": 15,
+        "y": 7,
+        "z": 1
+      },
+      "cantidad_disponible": 9,
+      "peso_kg": 0.7
+    },
+    {
+      "id": "P054",
+      "nombre": "Gabinete ATX",
+      "rack_id": "R01",
+      "ubicacion": {
+        "x": 2,
+        "y": 8,
+        "z": 1
+      },
+      "cantidad_disponible": 16,
+      "peso_kg": 4.4
+    },
+    {
+      "id": "P055",
+      "nombre": "Placa de Video",
+      "rack_id": "R03",
+      "ubicacion": {
+        "x": 11,
+        "y": 8,
+        "z": 1
+      },
+      "cantidad_disponible": 24,
+      "peso_kg": 2.1
+    },
+    {
+      "id": "P056",
+      "nombre": "Silla de Oficina",
+      "rack_id": "R01",
+      "ubicacion": {
+        "x": 3,
+        "y": 9,
+        "z": 1
+      },
+      "cantidad_disponible": 12,
+      "peso_kg": 5.8
+    },
+    {
+      "id": "P057",
+      "nombre": "Router WiFi",
+      "rack_id": "R03",
+      "ubicacion": {
+        "x": 10,
+        "y": 9,
+        "z": 1
+      },
+      "cantidad_disponible": 18,
+      "peso_kg": 3.5
+    },
+    {
+      "id": "P058",
+      "nombre": "Parlantes",
+      "rack_id": "R05",
+      "ubicacion": {
+        "x": 18,
+        "y": 10,
+        "z": 1
+      },
+      "cantidad_disponible": 24,
+      "peso_kg": 1.2
+    },
+    {
+      "id": "P059",
+      "nombre": "Tablet 10",
+      "rack_id": "R06",
+      "ubicacion": {
+        "x": 23,
+        "y": 10,
+        "z": 1
+      },
+      "cantidad_disponible": 11,
+      "peso_kg": 4.9
+    },
+    {
+      "id": "P060",
+      "nombre": "Cargador USB-C",
+      "rack_id": "R04",
+      "ubicacion": {
+        "x": 14,
+        "y": 7,
+        "z": 1
+      },
+      "cantidad_disponible": 19,
+      "peso_kg": 2.6
+    },
+    {
+      "id": "P061",
+      "nombre": "Monitor 27",
+      "rack_id": "R04",
+      "ubicacion": {
+        "x": 15,
+        "y": 8,
+        "z": 1
+      },
+      "cantidad_disponible": 6,
+      "peso_kg": 0.3
+    },
+    {
+      "id": "P062",
+      "nombre": "Monitor 24",
+      "rack_id": "R01",
+      "ubicacion": {
+        "x": 2,
+        "y": 9,
+        "z": 1
+      },
+      "cantidad_disponible": 13,
+      "peso_kg": 4.0
+    },
+    {
+      "id": "P063",
+      "nombre": "Teclado Mecánico",
+      "rack_id": "R03",
+      "ubicacion": {
+        "x": 11,
+        "y": 9,
+        "z": 1
+      },
+      "cantidad_disponible": 20,
+      "peso_kg": 1.7
+    },
+    {
+      "id": "P064",
+      "nombre": "Mouse Inalámbrico",
+      "rack_id": "R01",
+      "ubicacion": {
+        "x": 3,
+        "y": 10,
+        "z": 1
+      },
+      "cantidad_disponible": 7,
+      "peso_kg": 5.4
+    },
+    {
+      "id": "P065",
+      "nombre": "Notebook 14",
+      "rack_id": "R03",
+      "ubicacion": {
+        "x": 10,
+        "y": 10,
+        "z": 1
+      },
+      "cantidad_disponible": 13,
+      "peso_kg": 3.1
+    },
+    {
+      "id": "P066",
+      "nombre": "Auriculares BT",
+      "rack_id": "R08",
+      "ubicacion": {
+        "x": 6,
+        "y": 13,
+        "z": 1
+      },
+      "cantidad_disponible": 20,
+      "peso_kg": 0.8
+    },
+    {
+      "id": "P067",
+      "nombre": "Impresora Láser",
+      "rack_id": "R08",
+      "ubicacion": {
+        "x": 7,
+        "y": 13,
+        "z": 1
+      },
+      "cantidad_disponible": 7,
+      "peso_kg": 4.5
+    },
+    {
+      "id": "P068",
+      "nombre": "Cable HDMI",
+      "rack_id": "R04",
+      "ubicacion": {
+        "x": 14,
+        "y": 8,
+        "z": 1
+      },
+      "cantidad_disponible": 14,
+      "peso_kg": 2.2
+    },
+    {
+      "id": "P069",
+      "nombre": "Webcam HD",
+      "rack_id": "R04",
+      "ubicacion": {
+        "x": 15,
+        "y": 9,
+        "z": 1
+      },
+      "cantidad_disponible": 23,
+      "peso_kg": 5.9
+    },
+    {
+      "id": "P070",
+      "nombre": "Micrófono USB",
+      "rack_id": "R01",
+      "ubicacion": {
+        "x": 2,
+        "y": 10,
+        "z": 1
+      },
+      "cantidad_disponible": 10,
+      "peso_kg": 3.6
+    },
+    {
+      "id": "P071",
+      "nombre": "Disco SSD 1TB",
+      "rack_id": "R03",
+      "ubicacion": {
+        "x": 11,
+        "y": 10,
+        "z": 1
+      },
+      "cantidad_disponible": 17,
+      "peso_kg": 1.3
+    },
+    {
+      "id": "P072",
+      "nombre": "Memoria RAM 16GB",
+      "rack_id": "R11",
+      "ubicacion": {
+        "x": 19,
+        "y": 13,
+        "z": 1
+      },
+      "cantidad_disponible": 24,
+      "peso_kg": 5.0
+    },
+    {
+      "id": "P073",
+      "nombre": "Fuente 650W",
+      "rack_id": "R12",
+      "ubicacion": {
+        "x": 22,
+        "y": 13,
+        "z": 1
+      },
+      "cantidad_disponible": 11,
+      "peso_kg": 2.7
+    },
+    {
+      "id": "P074",
+      "nombre": "Gabinete ATX",
+      "rack_id": "R08",
+      "ubicacion": {
+        "x": 6,
+        "y": 14,
+        "z": 1
+      },
+      "cantidad_disponible": 16,
+      "peso_kg": 0.4
+    },
+    {
+      "id": "P075",
+      "nombre": "Placa de Video",
+      "rack_id": "R08",
+      "ubicacion": {
+        "x": 7,
+        "y": 14,
+        "z": 1
+      },
+      "cantidad_disponible": 25,
+      "peso_kg": 4.1
+    },
+    {
+      "id": "P076",
+      "nombre": "Silla de Oficina",
+      "rack_id": "R04",
+      "ubicacion": {
+        "x": 14,
+        "y": 9,
+        "z": 1
+      },
+      "cantidad_disponible": 12,
+      "peso_kg": 1.8
+    },
+    {
+      "id": "P077",
+      "nombre": "Router WiFi",
+      "rack_id": "R04",
+      "ubicacion": {
+        "x": 15,
+        "y": 10,
+        "z": 1
+      },
+      "cantidad_disponible": 19,
+      "peso_kg": 5.5
+    },
+    {
+      "id": "P078",
+      "nombre": "Parlantes",
+      "rack_id": "R11",
+      "ubicacion": {
+        "x": 18,
+        "y": 13,
+        "z": 1
+      },
+      "cantidad_disponible": 24,
+      "peso_kg": 3.2
+    },
+    {
+      "id": "P079",
+      "nombre": "Tablet 10",
+      "rack_id": "R12",
+      "ubicacion": {
+        "x": 23,
+        "y": 13,
+        "z": 1
+      },
+      "cantidad_disponible": 11,
+      "peso_kg": 0.9
+    },
+    {
+      "id": "P080",
+      "nombre": "Cargador USB-C",
+      "rack_id": "R11",
+      "ubicacion": {
+        "x": 19,
+        "y": 14,
+        "z": 1
+      },
+      "cantidad_disponible": 20,
+      "peso_kg": 4.6
+    },
+    {
+      "id": "P081",
+      "nombre": "Monitor 27",
+      "rack_id": "R12",
+      "ubicacion": {
+        "x": 22,
+        "y": 14,
+        "z": 1
+      },
+      "cantidad_disponible": 7,
+      "peso_kg": 2.3
+    },
+    {
+      "id": "P082",
+      "nombre": "Monitor 24",
+      "rack_id": "R08",
+      "ubicacion": {
+        "x": 6,
+        "y": 15,
+        "z": 1
+      },
+      "cantidad_disponible": 12,
+      "peso_kg": 6.0
+    },
+    {
+      "id": "P083",
+      "nombre": "Teclado Mecánico",
+      "rack_id": "R08",
+      "ubicacion": {
+        "x": 7,
+        "y": 15,
+        "z": 1
+      },
+      "cantidad_disponible": 19,
+      "peso_kg": 3.7
+    },
+    {
+      "id": "P084",
+      "nombre": "Mouse Inalámbrico",
+      "rack_id": "R04",
+      "ubicacion": {
+        "x": 14,
+        "y": 10,
+        "z": 1
+      },
+      "cantidad_disponible": 6,
+      "peso_kg": 1.4
+    },
+    {
+      "id": "P085",
+      "nombre": "Notebook 14",
+      "rack_id": "R07",
+      "ubicacion": {
+        "x": 3,
+        "y": 13,
+        "z": 1
+      },
+      "cantidad_disponible": 16,
+      "peso_kg": 5.1
+    },
+    {
+      "id": "P086",
+      "nombre": "Auriculares BT",
+      "rack_id": "R09",
+      "ubicacion": {
+        "x": 10,
+        "y": 13,
+        "z": 1
+      },
+      "cantidad_disponible": 23,
+      "peso_kg": 2.8
+    },
+    {
+      "id": "P087",
+      "nombre": "Impresora Láser",
+      "rack_id": "R11",
+      "ubicacion": {
+        "x": 18,
+        "y": 14,
+        "z": 1
+      },
+      "cantidad_disponible": 7,
+      "peso_kg": 0.5
+    },
+    {
+      "id": "P088",
+      "nombre": "Cable HDMI",
+      "rack_id": "R12",
+      "ubicacion": {
+        "x": 23,
+        "y": 14,
+        "z": 1
+      },
+      "cantidad_disponible": 17,
+      "peso_kg": 4.2
+    },
+    {
+      "id": "P089",
+      "nombre": "Webcam HD",
+      "rack_id": "R11",
+      "ubicacion": {
+        "x": 19,
+        "y": 15,
+        "z": 1
+      },
+      "cantidad_disponible": 24,
+      "peso_kg": 1.9
+    },
+    {
+      "id": "P090",
+      "nombre": "Micrófono USB",
+      "rack_id": "R12",
+      "ubicacion": {
+        "x": 22,
+        "y": 15,
+        "z": 1
+      },
+      "cantidad_disponible": 11,
+      "peso_kg": 5.6
+    },
+    {
+      "id": "P091",
+      "nombre": "Disco SSD 1TB",
+      "rack_id": "R08",
+      "ubicacion": {
+        "x": 6,
+        "y": 16,
+        "z": 1
+      },
+      "cantidad_disponible": 15,
+      "peso_kg": 3.3
+    },
+    {
+      "id": "P092",
+      "nombre": "Memoria RAM 16GB",
+      "rack_id": "R08",
+      "ubicacion": {
+        "x": 7,
+        "y": 16,
+        "z": 1
+      },
+      "cantidad_disponible": 22,
+      "peso_kg": 1.0
+    },
+    {
+      "id": "P093",
+      "nombre": "Fuente 650W",
+      "rack_id": "R07",
+      "ubicacion": {
+        "x": 2,
+        "y": 13,
+        "z": 1
+      },
+      "cantidad_disponible": 9,
+      "peso_kg": 4.7
+    },
+    {
+      "id": "P094",
+      "nombre": "Gabinete ATX",
+      "rack_id": "R09",
+      "ubicacion": {
+        "x": 11,
+        "y": 13,
+        "z": 1
+      },
+      "cantidad_disponible": 19,
+      "peso_kg": 2.4
+    },
+    {
+      "id": "P095",
+      "nombre": "Placa de Video",
+      "rack_id": "R07",
+      "ubicacion": {
+        "x": 3,
+        "y": 14,
+        "z": 1
+      },
+      "cantidad_disponible": 26,
+      "peso_kg": 6.1
+    },
+    {
+      "id": "P096",
+      "nombre": "Silla de Oficina",
+      "rack_id": "R09",
+      "ubicacion": {
+        "x": 10,
+        "y": 14,
+        "z": 1
+      },
+      "cantidad_disponible": 13,
+      "peso_kg": 3.8
+    },
+    {
+      "id": "P097",
+      "nombre": "Router WiFi",
+      "rack_id": "R11",
+      "ubicacion": {
+        "x": 18,
+        "y": 15,
+        "z": 1
+      },
+      "cantidad_disponible": 20,
+      "peso_kg": 1.5
+    },
+    {
+      "id": "P098",
+      "nombre": "Parlantes",
+      "rack_id": "R12",
+      "ubicacion": {
+        "x": 23,
+        "y": 15,
+        "z": 1
+      },
+      "cantidad_disponible": 24,
+      "peso_kg": 5.2
+    },
+    {
+      "id": "P099",
+      "nombre": "Tablet 10",
+      "rack_id": "R11",
+      "ubicacion": {
+        "x": 19,
+        "y": 16,
+        "z": 1
+      },
+      "cantidad_disponible": 11,
+      "peso_kg": 2.9
+    },
+    {
+      "id": "P100",
+      "nombre": "Cargador USB-C",
+      "rack_id": "R12",
+      "ubicacion": {
+        "x": 22,
+        "y": 16,
+        "z": 1
+      },
+      "cantidad_disponible": 18,
+      "peso_kg": 0.6
+    },
+    {
+      "id": "P101",
+      "nombre": "Monitor 27",
+      "rack_id": "R08",
+      "ubicacion": {
+        "x": 6,
+        "y": 17,
+        "z": 1
+      },
+      "cantidad_disponible": 5,
+      "peso_kg": 4.3
+    },
+    {
+      "id": "P102",
+      "nombre": "Monitor 24",
+      "rack_id": "R08",
+      "ubicacion": {
+        "x": 7,
+        "y": 17,
+        "z": 1
+      },
+      "cantidad_disponible": 13,
+      "peso_kg": 2.0
+    },
+    {
+      "id": "P103",
+      "nombre": "Teclado Mecánico",
+      "rack_id": "R10",
+      "ubicacion": {
+        "x": 15,
+        "y": 13,
+        "z": 1
+      },
+      "cantidad_disponible": 21,
+      "peso_kg": 5.7
+    },
+    {
+      "id": "P104",
+      "nombre": "Mouse Inalámbrico",
+      "rack_id": "R07",
+      "ubicacion": {
+        "x": 2,
+        "y": 14,
+        "z": 1
+      },
+      "cantidad_disponible": 7,
+      "peso_kg": 3.4
+    },
+    {
+      "id": "P105",
+      "nombre": "Notebook 14",
+      "rack_id": "R09",
+      "ubicacion": {
+        "x": 11,
+        "y": 14,
+        "z": 1
+      },
+      "cantidad_disponible": 14,
+      "peso_kg": 1.1
+    },
+    {
+      "id": "P106",
+      "nombre": "Auriculares BT",
+      "rack_id": "R07",
+      "ubicacion": {
+        "x": 3,
+        "y": 15,
+        "z": 1
+      },
+      "cantidad_disponible": 20,
+      "peso_kg": 4.8
+    },
+    {
+      "id": "P107",
+      "nombre": "Impresora Láser",
+      "rack_id": "R09",
+      "ubicacion": {
+        "x": 10,
+        "y": 15,
+        "z": 1
+      },
+      "cantidad_disponible": 8,
+      "peso_kg": 2.5
+    },
+    {
+      "id": "P108",
+      "nombre": "Cable HDMI",
+      "rack_id": "R11",
+      "ubicacion": {
+        "x": 18,
+        "y": 16,
+        "z": 1
+      },
+      "cantidad_disponible": 15,
+      "peso_kg": 6.2
+    },
+    {
+      "id": "P109",
+      "nombre": "Webcam HD",
+      "rack_id": "R12",
+      "ubicacion": {
+        "x": 23,
+        "y": 16,
+        "z": 1
+      },
+      "cantidad_disponible": 22,
+      "peso_kg": 3.9
+    },
+    {
+      "id": "P110",
+      "nombre": "Micrófono USB",
+      "rack_id": "R11",
+      "ubicacion": {
+        "x": 19,
+        "y": 17,
+        "z": 1
+      },
+      "cantidad_disponible": 9,
+      "peso_kg": 1.6
+    },
+    {
+      "id": "P111",
+      "nombre": "Disco SSD 1TB",
+      "rack_id": "R12",
+      "ubicacion": {
+        "x": 22,
+        "y": 17,
+        "z": 1
+      },
+      "cantidad_disponible": 16,
+      "peso_kg": 5.3
+    },
+    {
+      "id": "P112",
+      "nombre": "Memoria RAM 16GB",
+      "rack_id": "R08",
+      "ubicacion": {
+        "x": 6,
+        "y": 18,
+        "z": 1
+      },
+      "cantidad_disponible": 22,
+      "peso_kg": 3.0
+    },
+    {
+      "id": "P113",
+      "nombre": "Fuente 650W",
+      "rack_id": "R08",
+      "ubicacion": {
+        "x": 7,
+        "y": 18,
+        "z": 1
+      },
+      "cantidad_disponible": 10,
+      "peso_kg": 0.7
+    },
+    {
+      "id": "P114",
+      "nombre": "Gabinete ATX",
+      "rack_id": "R10",
+      "ubicacion": {
+        "x": 14,
+        "y": 13,
+        "z": 1
+      },
+      "cantidad_disponible": 17,
+      "peso_kg": 4.4
+    },
+    {
+      "id": "P115",
+      "nombre": "Placa de Video",
+      "rack_id": "R10",
+      "ubicacion": {
+        "x": 15,
+        "y": 14,
+        "z": 1
+      },
+      "cantidad_disponible": 23,
+      "peso_kg": 2.1
+    },
+    {
+      "id": "P116",
+      "nombre": "Silla de Oficina",
+      "rack_id": "R07",
+      "ubicacion": {
+        "x": 2,
+        "y": 15,
+        "z": 1
+      },
+      "cantidad_disponible": 10,
+      "peso_kg": 5.8
+    },
+    {
+      "id": "P117",
+      "nombre": "Router WiFi",
+      "rack_id": "R09",
+      "ubicacion": {
+        "x": 11,
+        "y": 15,
+        "z": 1
+      },
+      "cantidad_disponible": 17,
+      "peso_kg": 3.5
+    },
+    {
+      "id": "P118",
+      "nombre": "Parlantes",
+      "rack_id": "R07",
+      "ubicacion": {
+        "x": 3,
+        "y": 16,
+        "z": 1
+      },
+      "cantidad_disponible": 24,
+      "peso_kg": 1.2
+    },
+    {
+      "id": "P119",
+      "nombre": "Tablet 10",
+      "rack_id": "R09",
+      "ubicacion": {
+        "x": 10,
+        "y": 16,
+        "z": 1
+      },
+      "cantidad_disponible": 13,
+      "peso_kg": 4.9
+    },
+    {
+      "id": "P120",
+      "nombre": "Cargador USB-C",
+      "rack_id": "R11",
+      "ubicacion": {
+        "x": 18,
+        "y": 17,
+        "z": 1
+      },
+      "cantidad_disponible": 20,
+      "peso_kg": 2.6
+    },
+    {
+      "id": "P121",
+      "nombre": "Monitor 27",
+      "rack_id": "R12",
+      "ubicacion": {
+        "x": 23,
+        "y": 17,
+        "z": 1
+      },
+      "cantidad_disponible": 5,
+      "peso_kg": 0.3
+    },
+    {
+      "id": "P122",
+      "nombre": "Monitor 24",
+      "rack_id": "R11",
+      "ubicacion": {
+        "x": 19,
+        "y": 18,
+        "z": 1
+      },
+      "cantidad_disponible": 14,
+      "peso_kg": 4.0
+    },
+    {
+      "id": "P123",
+      "nombre": "Teclado Mecánico",
+      "rack_id": "R12",
+      "ubicacion": {
+        "x": 22,
+        "y": 18,
+        "z": 1
+      },
+      "cantidad_disponible": 21,
+      "peso_kg": 1.7
+    },
+    {
+      "id": "P124",
+      "nombre": "Mouse Inalámbrico",
+      "rack_id": "R10",
+      "ubicacion": {
+        "x": 14,
+        "y": 14,
+        "z": 1
+      },
+      "cantidad_disponible": 8,
+      "peso_kg": 5.4
+    },
+    {
+      "id": "P125",
+      "nombre": "Notebook 14",
+      "rack_id": "R10",
+      "ubicacion": {
+        "x": 15,
+        "y": 15,
+        "z": 1
+      },
+      "cantidad_disponible": 13,
+      "peso_kg": 3.1
+    },
+    {
+      "id": "P126",
+      "nombre": "Auriculares BT",
+      "rack_id": "R07",
+      "ubicacion": {
+        "x": 2,
+        "y": 16,
+        "z": 1
+      },
+      "cantidad_disponible": 20,
+      "peso_kg": 0.8
+    },
+    {
+      "id": "P127",
+      "nombre": "Impresora Láser",
+      "rack_id": "R09",
+      "ubicacion": {
+        "x": 11,
+        "y": 16,
+        "z": 1
+      },
+      "cantidad_disponible": 9,
+      "peso_kg": 4.5
+    },
+    {
+      "id": "P128",
+      "nombre": "Cable HDMI",
+      "rack_id": "R07",
+      "ubicacion": {
+        "x": 3,
+        "y": 17,
+        "z": 1
+      },
+      "cantidad_disponible": 18,
+      "peso_kg": 2.2
+    },
+    {
+      "id": "P129",
+      "nombre": "Webcam HD",
+      "rack_id": "R09",
+      "ubicacion": {
+        "x": 10,
+        "y": 17,
+        "z": 1
+      },
+      "cantidad_disponible": 23,
+      "peso_kg": 5.9
+    },
+    {
+      "id": "P130",
+      "nombre": "Micrófono USB",
+      "rack_id": "R11",
+      "ubicacion": {
+        "x": 18,
+        "y": 18,
+        "z": 1
+      },
+      "cantidad_disponible": 10,
+      "peso_kg": 3.6
+    },
+    {
+      "id": "P131",
+      "nombre": "Disco SSD 1TB",
+      "rack_id": "R12",
+      "ubicacion": {
+        "x": 23,
+        "y": 18,
+        "z": 1
+      },
+      "cantidad_disponible": 15,
+      "peso_kg": 1.3
+    },
+    {
+      "id": "P132",
+      "nombre": "Memoria RAM 16GB",
+      "rack_id": "R10",
+      "ubicacion": {
+        "x": 14,
+        "y": 15,
+        "z": 1
+      },
+      "cantidad_disponible": 22,
+      "peso_kg": 5.0
+    },
+    {
+      "id": "P133",
+      "nombre": "Fuente 650W",
+      "rack_id": "R10",
+      "ubicacion": {
+        "x": 15,
+        "y": 16,
+        "z": 1
+      },
+      "cantidad_disponible": 9,
+      "peso_kg": 2.7
+    },
+    {
+      "id": "P134",
+      "nombre": "Gabinete ATX",
+      "rack_id": "R07",
+      "ubicacion": {
+        "x": 2,
+        "y": 17,
+        "z": 1
+      },
+      "cantidad_disponible": 16,
+      "peso_kg": 0.4
+    },
+    {
+      "id": "P135",
+      "nombre": "Placa de Video",
+      "rack_id": "R09",
+      "ubicacion": {
+        "x": 11,
+        "y": 17,
+        "z": 1
+      },
+      "cantidad_disponible": 23,
+      "peso_kg": 4.1
+    },
+    {
+      "id": "P136",
+      "nombre": "Silla de Oficina",
+      "rack_id": "R07",
+      "ubicacion": {
+        "x": 3,
+        "y": 18,
+        "z": 1
+      },
+      "cantidad_disponible": 13,
+      "peso_kg": 1.8
+    },
+    {
+      "id": "P137",
+      "nombre": "Router WiFi",
+      "rack_id": "R09",
+      "ubicacion": {
+        "x": 10,
+        "y": 18,
+        "z": 1
+      },
+      "cantidad_disponible": 20,
+      "peso_kg": 5.5
+    },
+    {
+      "id": "P138",
+      "nombre": "Parlantes",
+      "rack_id": "R14",
+      "ubicacion": {
+        "x": 6,
+        "y": 21,
+        "z": 1
+      },
+      "cantidad_disponible": 24,
+      "peso_kg": 3.2
+    },
+    {
+      "id": "P139",
+      "nombre": "Tablet 10",
+      "rack_id": "R14",
+      "ubicacion": {
+        "x": 7,
+        "y": 21,
+        "z": 1
+      },
+      "cantidad_disponible": 11,
+      "peso_kg": 0.9
+    },
+    {
+      "id": "P140",
+      "nombre": "Cargador USB-C",
+      "rack_id": "R10",
+      "ubicacion": {
+        "x": 14,
+        "y": 16,
+        "z": 1
+      },
+      "cantidad_disponible": 18,
+      "peso_kg": 4.6
+    },
+    {
+      "id": "P141",
+      "nombre": "Monitor 27",
+      "rack_id": "R10",
+      "ubicacion": {
+        "x": 15,
+        "y": 17,
+        "z": 1
+      },
+      "cantidad_disponible": 8,
+      "peso_kg": 2.3
+    },
+    {
+      "id": "P142",
+      "nombre": "Monitor 24",
+      "rack_id": "R07",
+      "ubicacion": {
+        "x": 2,
+        "y": 18,
+        "z": 1
+      },
+      "cantidad_disponible": 15,
+      "peso_kg": 6.0
+    },
+    {
+      "id": "P143",
+      "nombre": "Teclado Mecánico",
+      "rack_id": "R09",
+      "ubicacion": {
+        "x": 11,
+        "y": 18,
+        "z": 1
+      },
+      "cantidad_disponible": 22,
+      "peso_kg": 3.7
+    },
+    {
+      "id": "P144",
+      "nombre": "Mouse Inalámbrico",
+      "rack_id": "R17",
+      "ubicacion": {
+        "x": 19,
+        "y": 21,
+        "z": 1
+      },
+      "cantidad_disponible": 9,
+      "peso_kg": 1.4
+    },
+    {
+      "id": "P145",
+      "nombre": "Notebook 14",
+      "rack_id": "R18",
+      "ubicacion": {
+        "x": 22,
+        "y": 21,
+        "z": 1
+      },
+      "cantidad_disponible": 16,
+      "peso_kg": 5.1
+    },
+    {
+      "id": "P146",
+      "nombre": "Auriculares BT",
+      "rack_id": "R14",
+      "ubicacion": {
+        "x": 6,
+        "y": 22,
+        "z": 1
+      },
+      "cantidad_disponible": 20,
+      "peso_kg": 2.8
+    },
+    {
+      "id": "P147",
+      "nombre": "Impresora Láser",
+      "rack_id": "R14",
+      "ubicacion": {
+        "x": 7,
+        "y": 22,
+        "z": 1
+      },
+      "cantidad_disponible": 10,
+      "peso_kg": 0.5
+    },
+    {
+      "id": "P148",
+      "nombre": "Cable HDMI",
+      "rack_id": "R10",
+      "ubicacion": {
+        "x": 14,
+        "y": 17,
+        "z": 1
+      },
+      "cantidad_disponible": 14,
+      "peso_kg": 4.2
+    },
+    {
+      "id": "P149",
+      "nombre": "Webcam HD",
+      "rack_id": "R10",
+      "ubicacion": {
+        "x": 15,
+        "y": 18,
+        "z": 1
+      },
+      "cantidad_disponible": 21,
+      "peso_kg": 1.9
+    },
+    {
+      "id": "P150",
+      "nombre": "Micrófono USB",
+      "rack_id": "R17",
+      "ubicacion": {
+        "x": 18,
+        "y": 21,
+        "z": 1
+      },
+      "cantidad_disponible": 8,
+      "peso_kg": 5.6
+    },
+    {
+      "id": "P151",
+      "nombre": "Disco SSD 1TB",
+      "rack_id": "R18",
+      "ubicacion": {
+        "x": 23,
+        "y": 21,
+        "z": 1
+      },
+      "cantidad_disponible": 15,
+      "peso_kg": 3.3
+    },
+    {
+      "id": "P152",
+      "nombre": "Memoria RAM 16GB",
+      "rack_id": "R17",
+      "ubicacion": {
+        "x": 19,
+        "y": 22,
+        "z": 1
+      },
+      "cantidad_disponible": 23,
+      "peso_kg": 1.0
+    },
+    {
+      "id": "P153",
+      "nombre": "Fuente 650W",
+      "rack_id": "R18",
+      "ubicacion": {
+        "x": 22,
+        "y": 22,
+        "z": 1
+      },
+      "cantidad_disponible": 10,
+      "peso_kg": 4.7
+    },
+    {
+      "id": "P154",
+      "nombre": "Gabinete ATX",
+      "rack_id": "R14",
+      "ubicacion": {
+        "x": 6,
+        "y": 23,
+        "z": 1
+      },
+      "cantidad_disponible": 17,
+      "peso_kg": 2.4
+    },
+    {
+      "id": "P155",
+      "nombre": "Placa de Video",
+      "rack_id": "R14",
+      "ubicacion": {
+        "x": 7,
+        "y": 23,
+        "z": 1
+      },
+      "cantidad_disponible": 24,
+      "peso_kg": 6.1
+    },
+    {
+      "id": "P156",
+      "nombre": "Silla de Oficina",
+      "rack_id": "R10",
+      "ubicacion": {
+        "x": 14,
+        "y": 18,
+        "z": 1
+      },
+      "cantidad_disponible": 11,
+      "peso_kg": 3.8
+    },
+    {
+      "id": "P157",
+      "nombre": "Router WiFi",
+      "rack_id": "R13",
+      "ubicacion": {
+        "x": 3,
+        "y": 21,
+        "z": 1
+      },
+      "cantidad_disponible": 18,
+      "peso_kg": 1.5
+    },
+    {
+      "id": "P158",
+      "nombre": "Parlantes",
+      "rack_id": "R15",
+      "ubicacion": {
+        "x": 10,
+        "y": 21,
+        "z": 1
+      },
+      "cantidad_disponible": 25,
+      "peso_kg": 5.2
+    },
+    {
+      "id": "P159",
+      "nombre": "Tablet 10",
+      "rack_id": "R17",
+      "ubicacion": {
+        "x": 18,
+        "y": 22,
+        "z": 1
+      },
+      "cantidad_disponible": 11,
+      "peso_kg": 2.9
+    },
+    {
+      "id": "P160",
+      "nombre": "Cargador USB-C",
+      "rack_id": "R18",
+      "ubicacion": {
+        "x": 23,
+        "y": 22,
+        "z": 1
+      },
+      "cantidad_disponible": 18,
+      "peso_kg": 0.6
+    },
+    {
+      "id": "P161",
+      "nombre": "Monitor 27",
+      "rack_id": "R17",
+      "ubicacion": {
+        "x": 19,
+        "y": 23,
+        "z": 1
+      },
+      "cantidad_disponible": 6,
+      "peso_kg": 4.3
+    },
+    {
+      "id": "P162",
+      "nombre": "Monitor 24",
+      "rack_id": "R18",
+      "ubicacion": {
+        "x": 22,
+        "y": 23,
+        "z": 1
+      },
+      "cantidad_disponible": 13,
+      "peso_kg": 2.0
+    },
+    {
+      "id": "P163",
+      "nombre": "Teclado Mecánico",
+      "rack_id": "R14",
+      "ubicacion": {
+        "x": 6,
+        "y": 24,
+        "z": 1
+      },
+      "cantidad_disponible": 19,
+      "peso_kg": 5.7
+    },
+    {
+      "id": "P164",
+      "nombre": "Mouse Inalámbrico",
+      "rack_id": "R14",
+      "ubicacion": {
+        "x": 7,
+        "y": 24,
+        "z": 1
+      },
+      "cantidad_disponible": 6,
+      "peso_kg": 3.4
+    },
+    {
+      "id": "P165",
+      "nombre": "Notebook 14",
+      "rack_id": "R13",
+      "ubicacion": {
+        "x": 2,
+        "y": 21,
+        "z": 1
+      },
+      "cantidad_disponible": 13,
+      "peso_kg": 1.1
+    },
+    {
+      "id": "P166",
+      "nombre": "Auriculares BT",
+      "rack_id": "R15",
+      "ubicacion": {
+        "x": 11,
+        "y": 21,
+        "z": 1
+      },
+      "cantidad_disponible": 20,
+      "peso_kg": 4.8
+    },
+    {
+      "id": "P167",
+      "nombre": "Impresora Láser",
+      "rack_id": "R13",
+      "ubicacion": {
+        "x": 3,
+        "y": 22,
+        "z": 1
+      },
+      "cantidad_disponible": 7,
+      "peso_kg": 2.5
+    },
+    {
+      "id": "P168",
+      "nombre": "Cable HDMI",
+      "rack_id": "R15",
+      "ubicacion": {
+        "x": 10,
+        "y": 22,
+        "z": 1
+      },
+      "cantidad_disponible": 14,
+      "peso_kg": 6.2
+    },
+    {
+      "id": "P169",
+      "nombre": "Webcam HD",
+      "rack_id": "R17",
+      "ubicacion": {
+        "x": 18,
+        "y": 23,
+        "z": 1
+      },
+      "cantidad_disponible": 23,
+      "peso_kg": 3.9
+    },
+    {
+      "id": "P170",
+      "nombre": "Micrófono USB",
+      "rack_id": "R18",
+      "ubicacion": {
+        "x": 23,
+        "y": 23,
+        "z": 1
+      },
+      "cantidad_disponible": 10,
+      "peso_kg": 1.6
+    },
+    {
+      "id": "P171",
+      "nombre": "Disco SSD 1TB",
+      "rack_id": "R17",
+      "ubicacion": {
+        "x": 19,
+        "y": 24,
+        "z": 1
+      },
+      "cantidad_disponible": 17,
+      "peso_kg": 5.3
+    },
+    {
+      "id": "P172",
+      "nombre": "Memoria RAM 16GB",
+      "rack_id": "R18",
+      "ubicacion": {
+        "x": 22,
+        "y": 24,
+        "z": 1
+      },
+      "cantidad_disponible": 22,
+      "peso_kg": 3.0
+    },
+    {
+      "id": "P173",
+      "nombre": "Fuente 650W",
+      "rack_id": "R14",
+      "ubicacion": {
+        "x": 6,
+        "y": 25,
+        "z": 1
+      },
+      "cantidad_disponible": 9,
+      "peso_kg": 0.7
+    },
+    {
+      "id": "P174",
+      "nombre": "Gabinete ATX",
+      "rack_id": "R14",
+      "ubicacion": {
+        "x": 7,
+        "y": 25,
+        "z": 1
+      },
+      "cantidad_disponible": 18,
+      "peso_kg": 4.4
+    },
+    {
+      "id": "P175",
+      "nombre": "Placa de Video",
+      "rack_id": "R16",
+      "ubicacion": {
+        "x": 15,
+        "y": 21,
+        "z": 1
+      },
+      "cantidad_disponible": 27,
+      "peso_kg": 2.1
+    },
+    {
+      "id": "P176",
+      "nombre": "Silla de Oficina",
+      "rack_id": "R13",
+      "ubicacion": {
+        "x": 2,
+        "y": 22,
+        "z": 1
+      },
+      "cantidad_disponible": 12,
+      "peso_kg": 5.8
+    },
+    {
+      "id": "P177",
+      "nombre": "Router WiFi",
+      "rack_id": "R15",
+      "ubicacion": {
+        "x": 11,
+        "y": 22,
+        "z": 1
+      },
+      "cantidad_disponible": 19,
+      "peso_kg": 3.5
+    },
+    {
+      "id": "P178",
+      "nombre": "Parlantes",
+      "rack_id": "R13",
+      "ubicacion": {
+        "x": 3,
+        "y": 23,
+        "z": 1
+      },
+      "cantidad_disponible": 26,
+      "peso_kg": 1.2
+    },
+    {
+      "id": "P179",
+      "nombre": "Tablet 10",
+      "rack_id": "R15",
+      "ubicacion": {
+        "x": 10,
+        "y": 23,
+        "z": 1
+      },
+      "cantidad_disponible": 13,
+      "peso_kg": 4.9
+    },
+    {
+      "id": "P180",
+      "nombre": "Cargador USB-C",
+      "rack_id": "R17",
+      "ubicacion": {
+        "x": 18,
+        "y": 24,
+        "z": 1
+      },
+      "cantidad_disponible": 20,
+      "peso_kg": 2.6
+    },
+    {
+      "id": "P181",
+      "nombre": "Monitor 27",
+      "rack_id": "R18",
+      "ubicacion": {
+        "x": 23,
+        "y": 24,
+        "z": 1
+      },
+      "cantidad_disponible": 7,
+      "peso_kg": 0.3
+    },
+    {
+      "id": "P182",
+      "nombre": "Monitor 24",
+      "rack_id": "R17",
+      "ubicacion": {
+        "x": 19,
+        "y": 25,
+        "z": 1
+      },
+      "cantidad_disponible": 12,
+      "peso_kg": 4.0
+    },
+    {
+      "id": "P183",
+      "nombre": "Teclado Mecánico",
+      "rack_id": "R18",
+      "ubicacion": {
+        "x": 22,
+        "y": 25,
+        "z": 1
+      },
+      "cantidad_disponible": 19,
+      "peso_kg": 1.7
+    },
+    {
+      "id": "P184",
+      "nombre": "Mouse Inalámbrico",
+      "rack_id": "R14",
+      "ubicacion": {
+        "x": 6,
+        "y": 26,
+        "z": 1
+      },
+      "cantidad_disponible": 6,
+      "peso_kg": 5.4
+    },
+    {
+      "id": "P185",
+      "nombre": "Notebook 14",
+      "rack_id": "R14",
+      "ubicacion": {
+        "x": 7,
+        "y": 26,
+        "z": 1
+      },
+      "cantidad_disponible": 13,
+      "peso_kg": 3.1
+    },
+    {
+      "id": "P186",
+      "nombre": "Auriculares BT",
+      "rack_id": "R16",
+      "ubicacion": {
+        "x": 14,
+        "y": 21,
+        "z": 1
+      },
+      "cantidad_disponible": 20,
+      "peso_kg": 0.8
+    },
+    {
+      "id": "P187",
+      "nombre": "Impresora Láser",
+      "rack_id": "R16",
+      "ubicacion": {
+        "x": 15,
+        "y": 22,
+        "z": 1
+      },
+      "cantidad_disponible": 7,
+      "peso_kg": 4.5
+    },
+    {
+      "id": "P188",
+      "nombre": "Cable HDMI",
+      "rack_id": "R13",
+      "ubicacion": {
+        "x": 2,
+        "y": 23,
+        "z": 1
+      },
+      "cantidad_disponible": 17,
+      "peso_kg": 2.2
+    },
+    {
+      "id": "P189",
+      "nombre": "Webcam HD",
+      "rack_id": "R15",
+      "ubicacion": {
+        "x": 11,
+        "y": 23,
+        "z": 1
+      },
+      "cantidad_disponible": 24,
+      "peso_kg": 5.9
+    },
+    {
+      "id": "P190",
+      "nombre": "Micrófono USB",
+      "rack_id": "R13",
+      "ubicacion": {
+        "x": 3,
+        "y": 24,
+        "z": 1
+      },
+      "cantidad_disponible": 11,
+      "peso_kg": 3.6
+    },
+    {
+      "id": "P191",
+      "nombre": "Disco SSD 1TB",
+      "rack_id": "R15",
+      "ubicacion": {
+        "x": 10,
+        "y": 24,
+        "z": 1
+      },
+      "cantidad_disponible": 18,
+      "peso_kg": 1.3
+    },
+    {
+      "id": "P192",
+      "nombre": "Memoria RAM 16GB",
+      "rack_id": "R17",
+      "ubicacion": {
+        "x": 18,
+        "y": 25,
+        "z": 1
+      },
+      "cantidad_disponible": 25,
+      "peso_kg": 5.0
+    },
+    {
+      "id": "P193",
+      "nombre": "Fuente 650W",
+      "rack_id": "R18",
+      "ubicacion": {
+        "x": 23,
+        "y": 25,
+        "z": 1
+      },
+      "cantidad_disponible": 9,
+      "peso_kg": 2.7
+    },
+    {
+      "id": "P194",
+      "nombre": "Gabinete ATX",
+      "rack_id": "R17",
+      "ubicacion": {
+        "x": 19,
+        "y": 26,
+        "z": 1
+      },
+      "cantidad_disponible": 19,
+      "peso_kg": 0.4
+    },
+    {
+      "id": "P195",
+      "nombre": "Placa de Video",
+      "rack_id": "R18",
+      "ubicacion": {
+        "x": 22,
+        "y": 26,
+        "z": 1
+      },
+      "cantidad_disponible": 26,
+      "peso_kg": 4.1
+    },
+    {
+      "id": "P196",
+      "nombre": "Silla de Oficina",
+      "rack_id": "R16",
+      "ubicacion": {
+        "x": 14,
+        "y": 22,
+        "z": 1
+      },
+      "cantidad_disponible": 13,
+      "peso_kg": 1.8
+    },
+    {
+      "id": "P197",
+      "nombre": "Router WiFi",
+      "rack_id": "R16",
+      "ubicacion": {
+        "x": 15,
+        "y": 23,
+        "z": 1
+      },
+      "cantidad_disponible": 17,
+      "peso_kg": 5.5
+    },
+    {
+      "id": "P198",
+      "nombre": "Parlantes",
+      "rack_id": "R13",
+      "ubicacion": {
+        "x": 2,
+        "y": 24,
+        "z": 1
+      },
+      "cantidad_disponible": 24,
+      "peso_kg": 3.2
+    },
+    {
+      "id": "P199",
+      "nombre": "Tablet 10",
+      "rack_id": "R15",
+      "ubicacion": {
+        "x": 11,
+        "y": 24,
+        "z": 1
+      },
+      "cantidad_disponible": 11,
+      "peso_kg": 0.9
+    },
+    {
+      "id": "P200",
+      "nombre": "Cargador USB-C",
+      "rack_id": "R13",
+      "ubicacion": {
+        "x": 3,
+        "y": 25,
+        "z": 1
+      },
+      "cantidad_disponible": 18,
+      "peso_kg": 4.6
+    }
+  ],
+  "pedidos": [
+    {
+      "id": "PED_01",
+      "prioridad": 1,
+      "estado": "PENDIENTE",
+      "items": [
+        {
+          "producto_id": "P001",
+          "cantidad": 1
+        }
+      ]
+    },
+    {
+      "id": "PED_02",
+      "prioridad": 3,
+      "estado": "PENDIENTE",
+      "items": [
+        {
+          "producto_id": "P018",
+          "cantidad": 2
+        },
+        {
+          "producto_id": "P085",
+          "cantidad": 3
+        },
+        {
+          "producto_id": "P152",
+          "cantidad": 1
+        }
+      ]
+    },
+    {
+      "id": "PED_03",
+      "prioridad": 5,
+      "estado": "PENDIENTE",
+      "items": [
+        {
+          "producto_id": "P035",
+          "cantidad": 3
+        },
+        {
+          "producto_id": "P102",
+          "cantidad": 1
+        },
+        {
+          "producto_id": "P169",
+          "cantidad": 2
+        },
+        {
+          "producto_id": "P036",
+          "cantidad": 3
+        },
+        {
+          "producto_id": "P103",
+          "cantidad": 1
+        }
+      ]
+    },
+    {
+      "id": "PED_04",
+      "prioridad": 2,
+      "estado": "PENDIENTE",
+      "items": [
+        {
+          "producto_id": "P052",
+          "cantidad": 1
+        },
+        {
+          "producto_id": "P119",
+          "cantidad": 2
+        }
+      ]
+    },
+    {
+      "id": "PED_05",
+      "prioridad": 4,
+      "estado": "PENDIENTE",
+      "items": [
+        {
+          "producto_id": "P069",
+          "cantidad": 2
+        },
+        {
+          "producto_id": "P136",
+          "cantidad": 3
+        },
+        {
+          "producto_id": "P003",
+          "cantidad": 1
+        },
+        {
+          "producto_id": "P070",
+          "cantidad": 2
+        }
+      ]
+    },
+    {
+      "id": "PED_06",
+      "prioridad": 2,
+      "estado": "PENDIENTE",
+      "items": [
+        {
+          "producto_id": "P086",
+          "cantidad": 3
+        },
+        {
+          "producto_id": "P153",
+          "cantidad": 1
+        }
+      ]
+    },
+    {
+      "id": "PED_07",
+      "prioridad": 4,
+      "estado": "PENDIENTE",
+      "items": [
+        {
+          "producto_id": "P103",
+          "cantidad": 1
+        },
+        {
+          "producto_id": "P170",
+          "cantidad": 2
+        },
+        {
+          "producto_id": "P037",
+          "cantidad": 3
+        },
+        {
+          "producto_id": "P104",
+          "cantidad": 1
+        }
+      ]
+    },
+    {
+      "id": "PED_08",
+      "prioridad": 1,
+      "estado": "PENDIENTE",
+      "items": [
+        {
+          "producto_id": "P120",
+          "cantidad": 2
+        }
+      ]
+    },
+    {
+      "id": "PED_09",
+      "prioridad": 3,
+      "estado": "PENDIENTE",
+      "items": [
+        {
+          "producto_id": "P137",
+          "cantidad": 3
+        },
+        {
+          "producto_id": "P004",
+          "cantidad": 1
+        },
+        {
+          "producto_id": "P071",
+          "cantidad": 2
+        }
+      ]
+    },
+    {
+      "id": "PED_10",
+      "prioridad": 5,
+      "estado": "PENDIENTE",
+      "items": [
+        {
+          "producto_id": "P154",
+          "cantidad": 1
+        },
+        {
+          "producto_id": "P021",
+          "cantidad": 2
+        },
+        {
+          "producto_id": "P088",
+          "cantidad": 3
+        },
+        {
+          "producto_id": "P155",
+          "cantidad": 1
+        },
+        {
+          "producto_id": "P022",
+          "cantidad": 2
+        }
+      ]
+    },
+    {
+      "id": "PED_11",
+      "prioridad": 3,
+      "estado": "PENDIENTE",
+      "items": [
+        {
+          "producto_id": "P171",
+          "cantidad": 2
+        },
+        {
+          "producto_id": "P038",
+          "cantidad": 3
+        },
+        {
+          "producto_id": "P105",
+          "cantidad": 1
+        }
+      ]
+    },
+    {
+      "id": "PED_12",
+      "prioridad": 5,
+      "estado": "PENDIENTE",
+      "items": [
+        {
+          "producto_id": "P188",
+          "cantidad": 3
+        },
+        {
+          "producto_id": "P055",
+          "cantidad": 1
+        },
+        {
+          "producto_id": "P122",
+          "cantidad": 2
+        },
+        {
+          "producto_id": "P189",
+          "cantidad": 3
+        },
+        {
+          "producto_id": "P056",
+          "cantidad": 1
+        }
+      ]
+    },
+    {
+      "id": "PED_13",
+      "prioridad": 2,
+      "estado": "PENDIENTE",
+      "items": [
+        {
+          "producto_id": "P005",
+          "cantidad": 1
+        },
+        {
+          "producto_id": "P072",
+          "cantidad": 2
+        }
+      ]
+    },
+    {
+      "id": "PED_14",
+      "prioridad": 4,
+      "estado": "PENDIENTE",
+      "items": [
+        {
+          "producto_id": "P022",
+          "cantidad": 2
+        },
+        {
+          "producto_id": "P089",
+          "cantidad": 3
+        },
+        {
+          "producto_id": "P156",
+          "cantidad": 1
+        },
+        {
+          "producto_id": "P023",
+          "cantidad": 2
+        }
+      ]
+    },
+    {
+      "id": "PED_15",
+      "prioridad": 1,
+      "estado": "PENDIENTE",
+      "items": [
+        {
+          "producto_id": "P039",
+          "cantidad": 3
+        }
+      ]
+    },
+    {
+      "id": "PED_16",
+      "prioridad": 4,
+      "estado": "PENDIENTE",
+      "items": [
+        {
+          "producto_id": "P056",
+          "cantidad": 1
+        },
+        {
+          "producto_id": "P123",
+          "cantidad": 2
+        },
+        {
+          "producto_id": "P190",
+          "cantidad": 3
+        },
+        {
+          "producto_id": "P057",
+          "cantidad": 1
+        }
+      ]
+    },
+    {
+      "id": "PED_17",
+      "prioridad": 1,
+      "estado": "PENDIENTE",
+      "items": [
+        {
+          "producto_id": "P073",
+          "cantidad": 2
+        }
+      ]
+    },
+    {
+      "id": "PED_18",
+      "prioridad": 3,
+      "estado": "PENDIENTE",
+      "items": [
+        {
+          "producto_id": "P090",
+          "cantidad": 3
+        },
+        {
+          "producto_id": "P157",
+          "cantidad": 1
+        },
+        {
+          "producto_id": "P024",
+          "cantidad": 2
+        }
+      ]
+    },
+    {
+      "id": "PED_19",
+      "prioridad": 5,
+      "estado": "PENDIENTE",
+      "items": [
+        {
+          "producto_id": "P107",
+          "cantidad": 1
+        },
+        {
+          "producto_id": "P174",
+          "cantidad": 2
+        },
+        {
+          "producto_id": "P041",
+          "cantidad": 3
+        },
+        {
+          "producto_id": "P108",
+          "cantidad": 1
+        },
+        {
+          "producto_id": "P175",
+          "cantidad": 2
+        }
+      ]
+    },
+    {
+      "id": "PED_20",
+      "prioridad": 2,
+      "estado": "PENDIENTE",
+      "items": [
+        {
+          "producto_id": "P124",
+          "cantidad": 2
+        },
+        {
+          "producto_id": "P191",
+          "cantidad": 3
+        }
+      ]
+    },
+    {
+      "id": "PED_21",
+      "prioridad": 5,
+      "estado": "PENDIENTE",
+      "items": [
+        {
+          "producto_id": "P141",
+          "cantidad": 3
+        },
+        {
+          "producto_id": "P008",
+          "cantidad": 1
+        },
+        {
+          "producto_id": "P075",
+          "cantidad": 2
+        },
+        {
+          "producto_id": "P142",
+          "cantidad": 3
+        },
+        {
+          "producto_id": "P009",
+          "cantidad": 1
+        }
+      ]
+    },
+    {
+      "id": "PED_22",
+      "prioridad": 2,
+      "estado": "PENDIENTE",
+      "items": [
+        {
+          "producto_id": "P158",
+          "cantidad": 1
+        },
+        {
+          "producto_id": "P025",
+          "cantidad": 2
+        }
+      ]
+    },
+    {
+      "id": "PED_23",
+      "prioridad": 4,
+      "estado": "PENDIENTE",
+      "items": [
+        {
+          "producto_id": "P175",
+          "cantidad": 2
+        },
+        {
+          "producto_id": "P042",
+          "cantidad": 3
+        },
+        {
+          "producto_id": "P109",
+          "cantidad": 1
+        },
+        {
+          "producto_id": "P176",
+          "cantidad": 2
+        }
+      ]
+    },
+    {
+      "id": "PED_24",
+      "prioridad": 1,
+      "estado": "PENDIENTE",
+      "items": [
+        {
+          "producto_id": "P192",
+          "cantidad": 3
+        }
+      ]
+    },
+    {
+      "id": "PED_25",
+      "prioridad": 3,
+      "estado": "PENDIENTE",
+      "items": [
+        {
+          "producto_id": "P009",
+          "cantidad": 1
+        },
+        {
+          "producto_id": "P076",
+          "cantidad": 2
+        },
+        {
+          "producto_id": "P143",
+          "cantidad": 3
+        }
+      ]
+    },
+    {
+      "id": "PED_26",
+      "prioridad": 1,
+      "estado": "PENDIENTE",
+      "items": [
+        {
+          "producto_id": "P026",
+          "cantidad": 2
+        }
+      ]
+    },
+    {
+      "id": "PED_27",
+      "prioridad": 3,
+      "estado": "PENDIENTE",
+      "items": [
+        {
+          "producto_id": "P043",
+          "cantidad": 3
+        },
+        {
+          "producto_id": "P110",
+          "cantidad": 1
+        },
+        {
+          "producto_id": "P177",
+          "cantidad": 2
+        }
+      ]
+    },
+    {
+      "id": "PED_28",
+      "prioridad": 5,
+      "estado": "PENDIENTE",
+      "items": [
+        {
+          "producto_id": "P060",
+          "cantidad": 1
+        },
+        {
+          "producto_id": "P127",
+          "cantidad": 2
+        },
+        {
+          "producto_id": "P194",
+          "cantidad": 3
+        },
+        {
+          "producto_id": "P061",
+          "cantidad": 1
+        },
+        {
+          "producto_id": "P128",
+          "cantidad": 2
+        }
+      ]
+    },
+    {
+      "id": "PED_29",
+      "prioridad": 2,
+      "estado": "PENDIENTE",
+      "items": [
+        {
+          "producto_id": "P077",
+          "cantidad": 2
+        },
+        {
+          "producto_id": "P144",
+          "cantidad": 3
+        }
+      ]
+    },
+    {
+      "id": "PED_30",
+      "prioridad": 4,
+      "estado": "PENDIENTE",
+      "items": [
+        {
+          "producto_id": "P094",
+          "cantidad": 3
+        },
+        {
+          "producto_id": "P161",
+          "cantidad": 1
+        },
+        {
+          "producto_id": "P028",
+          "cantidad": 2
+        },
+        {
+          "producto_id": "P095",
+          "cantidad": 3
+        }
+      ]
+    },
+    {
+      "id": "PED_31",
+      "prioridad": 2,
+      "estado": "PENDIENTE",
+      "items": [
+        {
+          "producto_id": "P111",
+          "cantidad": 1
+        },
+        {
+          "producto_id": "P178",
+          "cantidad": 2
+        }
+      ]
+    },
+    {
+      "id": "PED_32",
+      "prioridad": 4,
+      "estado": "PENDIENTE",
+      "items": [
+        {
+          "producto_id": "P128",
+          "cantidad": 2
+        },
+        {
+          "producto_id": "P195",
+          "cantidad": 3
+        },
+        {
+          "producto_id": "P062",
+          "cantidad": 1
+        },
+        {
+          "producto_id": "P129",
+          "cantidad": 2
+        }
+      ]
+    },
+    {
+      "id": "PED_33",
+      "prioridad": 1,
+      "estado": "PENDIENTE",
+      "items": [
+        {
+          "producto_id": "P145",
+          "cantidad": 3
+        }
+      ]
+    },
+    {
+      "id": "PED_34",
+      "prioridad": 3,
+      "estado": "PENDIENTE",
+      "items": [
+        {
+          "producto_id": "P162",
+          "cantidad": 1
+        },
+        {
+          "producto_id": "P029",
+          "cantidad": 2
+        },
+        {
+          "producto_id": "P096",
+          "cantidad": 3
+        }
+      ]
+    },
+    {
+      "id": "PED_35",
+      "prioridad": 5,
+      "estado": "PENDIENTE",
+      "items": [
+        {
+          "producto_id": "P179",
+          "cantidad": 2
+        },
+        {
+          "producto_id": "P046",
+          "cantidad": 3
+        },
+        {
+          "producto_id": "P113",
+          "cantidad": 1
+        },
+        {
+          "producto_id": "P180",
+          "cantidad": 2
+        },
+        {
+          "producto_id": "P047",
+          "cantidad": 3
+        }
+      ]
+    },
+    {
+      "id": "PED_36",
+      "prioridad": 3,
+      "estado": "PENDIENTE",
+      "items": [
+        {
+          "producto_id": "P196",
+          "cantidad": 3
+        },
+        {
+          "producto_id": "P063",
+          "cantidad": 1
+        },
+        {
+          "producto_id": "P130",
+          "cantidad": 2
+        }
+      ]
+    },
+    {
+      "id": "PED_37",
+      "prioridad": 5,
+      "estado": "PENDIENTE",
+      "items": [
+        {
+          "producto_id": "P013",
+          "cantidad": 1
+        },
+        {
+          "producto_id": "P080",
+          "cantidad": 2
+        },
+        {
+          "producto_id": "P147",
+          "cantidad": 3
+        },
+        {
+          "producto_id": "P014",
+          "cantidad": 1
+        },
+        {
+          "producto_id": "P081",
+          "cantidad": 2
+        }
+      ]
+    },
+    {
+      "id": "PED_38",
+      "prioridad": 2,
+      "estado": "PENDIENTE",
+      "items": [
+        {
+          "producto_id": "P030",
+          "cantidad": 2
+        },
+        {
+          "producto_id": "P097",
+          "cantidad": 3
+        }
+      ]
+    },
+    {
+      "id": "PED_39",
+      "prioridad": 4,
+      "estado": "PENDIENTE",
+      "items": [
+        {
+          "producto_id": "P047",
+          "cantidad": 3
+        },
+        {
+          "producto_id": "P114",
+          "cantidad": 1
+        },
+        {
+          "producto_id": "P181",
+          "cantidad": 2
+        },
+        {
+          "producto_id": "P048",
+          "cantidad": 3
+        }
+      ]
+    },
+    {
+      "id": "PED_40",
+      "prioridad": 1,
+      "estado": "PENDIENTE",
+      "items": [
+        {
+          "producto_id": "P064",
+          "cantidad": 1
+        }
+      ]
+    }
+  ],
+  "configuracion": {
+    "wave_max_pedidos": 4,
+    "wave_max_productos": 20
+  },
+  "_generador": {
+    "cantidad_estantes": 24,
+    "cantidad_pasillos": 7,
+    "cantidad_productos": 200,
+    "cantidad_pedidos": 40,
+    "max_productos_por_pedido": 5,
+    "wave_max_pedidos": 4,
+    "wave_max_productos": 20,
+    "cantidad_pickers": 4,
+    "localizacion": "CERCA_DESPACHO"
+  }
+}

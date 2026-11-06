@@ -1,100 +1,31 @@
-from typing import Dict, List, Tuple, Optional, Set, Any
-from BackEnd.enums.enums import TipoCelda, SentidoCirculacion as Sentido, EstadoPedido
+from typing import Any, Dict, List, Optional
+
+from BackEnd.data_structures.digrafo import Coord, Digrafo, NodoGrafo
+from BackEnd.enums.enums import (
+    EstadoPedido,
+    SentidoCirculacion as Sentido,
+    TipoCelda,
+)
 from BackEnd.models.entities import (
     Celda,
     CeldaPasillo,
-    CeldaRack,
-    Rack,
-    ZonaDespacho,
-    Puerta,
-    Product,
     Pedido,
     Picker,
+    Producto,
+    Puerta,
+    Rack,
+    ZonaDespacho,
 )
-
-Coord = Tuple[int, int]
-
-
-class NodoGrafo:
-    """Una celda de PASILLO transitable. Es la única clase de celda que es nodo del grafo."""
-
-    def __init__(
-        self, x: int, y: int, sentido: Sentido, pasillo_id: Optional[str] = None
-    ):
-        self.x = x
-        self.y = y
-        self.sentido_permitido = sentido
-        self.pasillo_id = pasillo_id
-        self.racks_adyacentes: List[CeldaRack] = []
-        self.zonas_despacho_adyacentes: List[str] = []
-
-
-class Digrafo:
-    """Grafo dirigido representado mediante Lista de Adyacencia con soporte de bloqueos temporales."""
-
-    def __init__(self):
-        self.nodos: Dict[Coord, NodoGrafo] = {}
-        self.lista_adyacencia: Dict[Coord, List[Coord]] = {}
-        self.bloqueos_temporales: Dict[Tuple[int, int, int], str] = {}
-        self.nodos_evasion_actual: Set[Coord] = set()
-
-    def agregar_nodo(
-        self, x: int, y: int, sentido: Sentido, pasillo_id: Optional[str] = None
-    ) -> NodoGrafo:
-        coord = (x, y)
-        if coord not in self.nodos:
-            self.nodos[coord] = NodoGrafo(x, y, sentido, pasillo_id)
-            self.lista_adyacencia[coord] = []
-        return self.nodos[coord]
-
-    def agregar_arista_dirigida(self, origen: Coord, destino: Coord) -> None:
-        if origen in self.lista_adyacencia and destino in self.nodos:
-            if destino not in self.lista_adyacencia[origen]:
-                self.lista_adyacencia[origen].append(destino)
-
-    def obtener_vecinos(self, coord: Coord) -> List[Coord]:
-        return self.lista_adyacencia.get(coord, [])
-
-    def bloquear_celda_temporal(
-        self, coord: Coord, paso_tiempo: int, picker_id: str
-    ) -> None:
-        self.bloqueos_temporales[(coord[0], coord[1], int(paso_tiempo))] = picker_id
-
-    def limpiar_bloqueos_antiguos(self, paso_actual: int) -> None:
-        claves_borrar = [k for k in self.bloqueos_temporales if k[2] < paso_actual]
-        for k in claves_borrar:
-            del self.bloqueos_temporales[k]
-
-    def obtener_vecinos_validos(
-        self,
-        nodo_actual: Coord,
-        paso_tiempo: int = 0,
-        picker_id_solicitante: Optional[str] = None,
-    ) -> List[Coord]:
-        vecinos_base = self.lista_adyacencia.get(nodo_actual, [])
-        if not self.bloqueos_temporales and not self.nodos_evasion_actual:
-            return list(vecinos_base)
-
-        validos: List[Coord] = []
-        for v in vecinos_base:
-            if v in self.nodos_evasion_actual:
-                continue
-            if paso_tiempo > 0:
-                ocupante = self.bloqueos_temporales.get((v[0], v[1], paso_tiempo))
-                if ocupante is not None and ocupante != picker_id_solicitante:
-                    continue
-            validos.append(v)
-        return validos
 
 
 class Warehouse:
-    """
-    Almacén de ancho_x por largo_y (el eje y crece hacia arriba).
-    Centraliza el Dígrafo de pasillos, los obstáculos y las Tablas Hash (dict O(1))
-    de productos y pedidos, reemplazando por completo a CatalogManager.
+    """Modelo central del almacén de ancho_x por largo_y (el eje y crece hacia arriba).
+
+    Contiene el dígrafo de pasillos, los obstáculos físicos, las tablas hash en O(1)
+    de productos y pedidos, y los accesos entre estanterías, zonas y pasillos.
     """
 
-    def __init__(self, ancho_x: int, largo_y: int):
+    def __init__(self, ancho_x: int, largo_y: int) -> None:
         self.ancho_x = ancho_x
         self.largo_y = largo_y
         self.grafo_pasillos = Digrafo()
@@ -104,8 +35,7 @@ class Warehouse:
         self.zonas_despacho: Dict[str, ZonaDespacho] = {}
         self.puertas: Dict[str, Puerta] = {}
 
-        # Tablas Hash O(1) de Productos y Pedidos + Flota de Pickers y Configuración
-        self.catalogo_productos: Dict[str, Product] = {}
+        self.catalogo_productos: Dict[str, Producto] = {}
         self.pedidos: Dict[str, Pedido] = {}
         self.pickers: List[Picker] = []
         self.wave_max_pedidos: int = 3
@@ -129,16 +59,16 @@ class Warehouse:
             return None
         return CeldaPasillo(x, y, nodo.sentido_permitido, nodo.pasillo_id)
 
-    # =========================================================================
-    # OPERACIONES O(1) DE PRODUCTOS, STOCK Y PEDIDOS
-    # =========================================================================
-    def buscar_producto_O1(self, prod_id: str) -> Optional[Product]:
+    # ------------------------------------------------------------------
+    # Consultas y actualizaciones en O(1) de productos, stock y pedidos
+    # ------------------------------------------------------------------
+    def buscar_producto_O1(self, prod_id: str) -> Optional[Producto]:
         return self.catalogo_productos.get(prod_id)
 
     def buscar_pedido_O1(self, id_pedido: str) -> Optional[Pedido]:
         return self.pedidos.get(id_pedido)
 
-    def obtener_todos_los_productos(self) -> List[Product]:
+    def obtener_todos_los_productos(self) -> List[Producto]:
         lista = list(self.catalogo_productos.values())
         lista.sort(key=lambda p: p.id_producto)
         return lista
@@ -158,19 +88,16 @@ class Warehouse:
         return True
 
     def descontar_stock(self, prod_id: str, cantidad: int) -> bool:
-        """
-        Descuenta en O(1) el stock real del producto únicamente cuando el Picker
-        finaliza su recorrido y descarga en la Zona de Despacho.
-        """
+        """Descuenta el stock físico del producto cuando el picker descarga en despacho."""
         prod = self.catalogo_productos.get(prod_id)
         if prod is None or cantidad < 0 or prod.cantidad_disponible < cantidad:
             return False
         prod.cantidad_disponible -= cantidad
         return True
 
-    # =========================================================================
-    # TRADUCCIÓN DE RACKS Y ZONAS DE DESPACHO A CELDAS DE PASILLO
-    # =========================================================================
+    # ------------------------------------------------------------------
+    # Traducción de coordenadas de racks y zonas a celdas de pasillo
+    # ------------------------------------------------------------------
     def obtener_celda_acceso_pasillo(self, rx: int, ry: int) -> Optional[Coord]:
         if (rx, ry) in self.grafo_pasillos.nodos:
             return (rx, ry)
@@ -235,4 +162,7 @@ class Warehouse:
                         else simbolos_sentido[nodo.sentido_permitido]
                     )
             print(fila_str)
-        print("     +" + "-" * self.ancho_x)
+        print("      +" + "-" * self.ancho_x)
+
+
+__all__ = ["Warehouse", "Digrafo", "NodoGrafo", "Coord"]

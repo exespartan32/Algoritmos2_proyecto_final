@@ -1,21 +1,16 @@
-import time
 import argparse
-from typing import Optional, List, Dict
+import time
+from typing import Dict, List, Optional
 
-from BackEnd.utils.file_parser import FileParser
-from BackEnd.models.warehouse import Warehouse
-from BackEnd.models.entities import Wave
-from BackEnd.controllers.wave_manager import WaveManager
 from BackEnd.controllers.path_finding import Pathfinding
 from BackEnd.controllers.turn_collision_manager import TurnAndCollisionManager
+from BackEnd.controllers.wave_manager import WaveManager
 from BackEnd.enums.enums import EstrategiaRuteo
+from BackEnd.models.entities import Wave
+from BackEnd.models.warehouse import Warehouse
+from BackEnd.utils.file_parser import FileParser
 
-# =============================================================================
-# PARÁMETROS DE EJECUCIÓN (DEFINIDOS UNA ÚNICA VEZ AQUÍ)
-# =============================================================================
-ESCENARIO_A_CARGAR: str = (
-    "escenario_grande.json"  # "escenario_basico.json" o "escenario_grande.json"
-)
+ESCENARIO_A_CARGAR: str = "escenario_grande.json"
 ARCHIVO_SALIDA_JSON: str = "estado_guardado.json"
 
 SELECCIONAR_WAVES_INTERACTIVAMENTE: bool = True
@@ -38,9 +33,7 @@ def mostrar_waves_disponibles_y_pickers(
     pickers_libres = gestor_waves.obtener_pickers_libres(warehouse.pickers)
 
     print("\n" + "=" * 95)
-    print(
-        f" PASO 2: WAVES DISPONIBLES PARA SELECCIONAR ({len(waves_disponibles)} Waves en estado PENDIENTE)"
-    )
+    print(f" PASO 2: WAVES DISPONIBLES ({len(waves_disponibles)} en estado PENDIENTE)")
     print("=" * 95)
     for idx, w in enumerate(waves_disponibles, start=1):
         ids_ped = [f"{p.id_pedido}(P:{p.prioridad})" for p in w.pedidos]
@@ -55,7 +48,7 @@ def mostrar_waves_disponibles_y_pickers(
     print(f" PICKERS LIBRES ({len(pickers_libres)}/{len(warehouse.pickers)}):")
     for pk in pickers_libres:
         print(
-            f"  * {pk.id_picker} -> Posición actual: {pk.posicion_actual} | "
+            f"  * {pk.id_picker} -> Posición: {pk.posicion_actual} | "
             f"Capacidad máx: {pk.capacidad_carga_kg:.1f} kg | Wave activa: {pk.id_wave_actual}"
         )
     print("=" * 95)
@@ -71,7 +64,7 @@ def solicitar_seleccion_waves_usuario(
         return seleccion_por_defecto
 
     print("\n" + "=" * 95)
-    print(" PASO 3: SELECCIÓN DE LAS WAVES A EJECUTAR EN SIMULTÁNEO")
+    print(" PASO 3: SELECCIÓN DE WAVES A EJECUTAR EN SIMULTÁNEO")
     print("=" * 95)
     try:
         entrada = input(
@@ -107,9 +100,6 @@ def ejecutar_orquestador(
     archivo_entrada: str,
     waves_preseleccionadas: List[str],
 ) -> None:
-    # -------------------------------------------------------------------------
-    # 1. CARGAR WAREHOUSE, DÍGRAFO, PRODUCTOS Y PEDIDOS CON EL PARSER DE LAUREANO
-    # -------------------------------------------------------------------------
     t0 = time.perf_counter()
     ruta_cargada = FileParser.resolver_ruta(archivo_entrada)
     warehouse = FileParser.cargar_warehouse_desde_json(ruta_cargada)
@@ -129,7 +119,6 @@ def ejecutar_orquestador(
         else warehouse.wave_max_productos
     )
 
-    # Precalcular matriz APSP sobre los productos en el Dígrafo de Laureano
     t_pre = time.perf_counter()
     coords_productos = {
         p.coordenadas_xy for p in warehouse.obtener_todos_los_productos()
@@ -141,9 +130,6 @@ def ejecutar_orquestador(
     )
     t_pre_ms = (time.perf_counter() - t_pre) * 1000.0
 
-    # -------------------------------------------------------------------------
-    # PASO 1: ARMAR LAS WAVES (MAX-HEAP + AVERAGE LINKAGE EN DÍGRAFO)
-    # -------------------------------------------------------------------------
     t_wave = time.perf_counter()
     gestor_waves = WaveManager(
         wave_max_pedidos=max_pedidos,
@@ -165,43 +151,33 @@ def ejecutar_orquestador(
     )
 
     print("=" * 95)
-    print(
-        " PASO 1: ARMADO DE WAVES DIRECTAMENTE SOBRE EL WAREHOUSE DE LAUREANO (SIN CATALOG_MANAGER)"
-    )
+    print(" PASO 1: CONSTRUCCIÓN DEL DÍGRAFO Y ARMADO DE WAVES")
     print("=" * 95)
     print(f"  * Escenario cargado           : {ruta_cargada} ({t_carga_ms:.2f} ms)")
     print(
-        f"  * Nodos de Pasillo (Laureano) : {len(warehouse.grafo_pasillos.nodos)} celdas | "
-        f"Zonas Despacho: {list(warehouse.zonas_despacho.keys())}"
+        f"  * Nodos de pasillo            : {len(warehouse.grafo_pasillos.nodos)} celdas | "
+        f"Zonas de despacho: {list(warehouse.zonas_despacho.keys())}"
     )
     print(
-        f"  * Catálogo O(1) en Warehouse  : {len(warehouse.catalogo_productos)} productos | "
+        f"  * Catálogo e inventario       : {len(warehouse.catalogo_productos)} productos | "
         f"{len(warehouse.pedidos)} pedidos"
     )
     print(
-        f"  * Matriz APSP Dígrafo         : {len(matriz_distancias)} pares en {t_pre_ms:.2f} ms"
+        f"  * Matriz de distancias        : {len(matriz_distancias)} pares en {t_pre_ms:.2f} ms"
     )
     print(
-        f"  * Waves armadas (PENDIENTE)   : {len(waves_armadas)} olas en {t_wave_ms:.3f} ms"
+        f"  * Waves generadas (PENDIENTE) : {len(waves_armadas)} waves en {t_wave_ms:.3f} ms"
     )
     print(
-        f"  * Stock modificado al armar   : {alterados_en_armado} productos (Invariancia 100% cumplida)"
+        f"  * Stock descontado al armar   : {alterados_en_armado} productos (se descuenta al descargar)"
     )
 
-    # -------------------------------------------------------------------------
-    # PASO 2 Y 3: VER WAVES DISPONIBLES Y SELECCIONAR CUÁLES EJECUTAR
-    # -------------------------------------------------------------------------
     waves_disponibles = mostrar_waves_disponibles_y_pickers(gestor_waves, warehouse)
     ids_seleccionados = solicitar_seleccion_waves_usuario(
         waves_disponibles, waves_preseleccionadas
     )
-    print(
-        f"\n  -> Waves seleccionadas para ejecutar al mismo tiempo: {ids_seleccionados}"
-    )
+    print(f"\n  -> Waves seleccionadas para iniciar: {ids_seleccionados}")
 
-    # -------------------------------------------------------------------------
-    # PASO 4: ASIGNAR A PICKERS MÁS CERCANOS (SIN MEZCLAR WAVES POR PICKER)
-    # -------------------------------------------------------------------------
     resultado = gestor_waves.asignar_y_ejecutar_waves_seleccionadas(
         ids_waves_seleccionadas=ids_seleccionados,
         warehouse=warehouse,
@@ -209,7 +185,7 @@ def ejecutar_orquestador(
     )
 
     print("\n" + "=" * 95)
-    print(" PASO 4: ASIGNACIÓN A LOS PICKERS MÁS CERCANOS (1 WAVE POR PICKER ACTIVO)")
+    print(" PASO 4: ASIGNACIÓN DE WAVES A PICKERS Y CÁLCULO DE RUTAS")
     print("=" * 95)
     mapa_pickers = {p.id_picker: p for p in warehouse.pickers}
 
@@ -218,32 +194,27 @@ def ejecutar_orquestador(
         w_obj = gestor_waves.waves_por_id[wid]
         print(
             f"\n  [EN_EJECUCION] {wid} -> Zona: {w_obj.id_zona_despacho} | "
-            f"Peso Total: {w_obj.peso_total_kg:.2f} kg | Pickers asignados: {asig['ids_pickers']}"
+            f"Peso total: {w_obj.peso_total_kg:.2f} kg | Pickers: {asig['ids_pickers']}"
         )
         for pid in asig["ids_pickers"]:
             pk = mapa_pickers[pid]
             dist_ini = asig["distancias_picker_a_wave"][pid]
             ruta_pk = asig["rutas_por_picker"][pid]
             print(
-                f"    -> Picker {pid} (estaba a {dist_ini:.0f} pasos) realiza {wid} | "
+                f"    -> Picker {pid} (a {dist_ini:.0f} pasos) realiza {wid} | "
                 f"Pedidos: {asig['pedidos_por_picker'][pid]} | "
                 f"Carga: {asig['peso_por_picker'][pid]:.2f}/{pk.capacidad_carga_kg:.1f} kg | "
-                f"Longitud ruta inicial: {max(0, len(ruta_pk) - 1)} celdas"
+                f"Ruta planificada: {max(0, len(ruta_pk) - 1)} pasos"
             )
 
     if resultado["waves_sin_picker_disponible"]:
         print(
-            f"\n  [!] Waves seleccionadas en espera por falta de Pickers libres "
-            f"(no se mezclan Waves en un mismo viaje): {resultado['waves_sin_picker_disponible']}"
+            f"\n  [!] Waves en espera de que se libere un picker: "
+            f"{resultado['waves_sin_picker_disponible']}"
         )
 
-    # -------------------------------------------------------------------------
-    # PASO 5: SIMULACIÓN PASO A PASO CON EL GESTOR DE COLISIONES DE LEONEL
-    # -------------------------------------------------------------------------
     print("\n" + "=" * 95)
-    print(
-        " PASO 5: SIMULACIÓN CONCURRENTE PASO A PASO (TURN & COLLISION MANAGER - LEONEL)"
-    )
+    print(" PASO 5: SIMULACIÓN POR TURNOS Y CONTROL DE TRÁFICO")
     print("=" * 95)
 
     gestor_colisiones = TurnAndCollisionManager(max_turnos_bloqueo_recalculo=2)
@@ -262,17 +233,15 @@ def ejecutar_orquestador(
             break
         paso_tiempo += 1
 
-    print(f"  * Turnos totales simulados          : {paso_tiempo} pasos de tiempo")
+    print(f"  * Turnos simulados            : {paso_tiempo}")
     print(
-        f"  * Pausas/Esperas por prioridad      : {gestor_colisiones.total_esperas_aplicadas}"
+        f"  * Esperas por tráfico         : {gestor_colisiones.total_esperas_aplicadas}"
     )
     print(
-        f"  * Desvíos recalculados con Dijkstra : {gestor_colisiones.total_desvios_recalculados}"
+        f"  * Desvíos recalculados        : {gestor_colisiones.total_desvios_recalculados}"
     )
     if gestor_colisiones.eventos_colision:
-        print(
-            "  * Primeros eventos de evasión registrados por TurnAndCollisionManager:"
-        )
+        print("  * Primeros eventos de tráfico :")
         for ev in gestor_colisiones.eventos_colision[:5]:
             print(f"      - {ev}")
 
@@ -280,33 +249,33 @@ def ejecutar_orquestador(
         w.id_wave for w in gestor_waves.waves_creadas if w.estado.value == "FINALIZADA"
     ]
     waves_pendientes = [w.id_wave for w in gestor_waves.obtener_waves_disponibles()]
-    print(f"  * Waves FINALIZADAS y descargadas   : {waves_finalizadas}")
-    print(f"  * Waves aún PENDIENTES para elegir  : {waves_pendientes}")
+    print(f"  * Waves finalizadas           : {waves_finalizadas}")
+    print(f"  * Waves aún pendientes        : {waves_pendientes}")
 
     ruta_salida = FileParser.guardar_estado_warehouse_json(
         warehouse, ARCHIVO_SALIDA_JSON
     )
-    print(f"  * Estado guardado en JSON           : {ruta_salida}")
+    print(f"  * Estado exportado en JSON    : {ruta_salida}")
     print("=" * 95)
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="Orquestador unificado sin CatalogManager: Laureano (Warehouse/Grafo) + Exequiel (WaveManager) + Leonel (Pathfinding/Colisiones)"
+        description="Simulación de Wave Picking por consola"
     )
     parser.add_argument(
         "-i",
         "--input",
         type=str,
         default=ESCENARIO_A_CARGAR,
-        help="Escenario JSON a cargar (escenario_basico.json o escenario_grande.json)",
+        help="Escenario JSON a cargar (ej.: escenario_basico.json o escenario_grande.json)",
     )
     parser.add_argument(
         "-w",
         "--waves",
         type=str,
         default=None,
-        help="IDs de Waves a ejecutar en simultáneo separados por coma (ej: WAVE_01,WAVE_02)",
+        help="IDs de waves a ejecutar separados por coma (ej.: WAVE_01,WAVE_02)",
     )
     args = parser.parse_args()
 

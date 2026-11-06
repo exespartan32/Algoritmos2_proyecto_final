@@ -1,12 +1,12 @@
 from typing import List, Optional
+
 from BackEnd.models.entities import Pedido
 
 
 class MaxHeapPedidos:
-    """
-    Montículo Binario de Máximos (Max-Heap) para priorizar objetos Pedido.
-    - Construye el montículo en tiempo lineal O(N).
-    - Extrae el pedido raíz de mayor prioridad en O(log N).
+    """Cola de prioridad sobre un montículo binario de máximos (Max-Heap).
+
+    Construye el montículo en O(N) y extrae el pedido de mayor prioridad en O(log N).
     """
 
     def __init__(self) -> None:
@@ -28,10 +28,7 @@ class MaxHeapPedidos:
         return len(self._heap)
 
     def _tiene_mayor_prioridad(self, a: Pedido, b: Pedido) -> bool:
-        """
-        1. Mayor prioridad numérica (5 > 4 > 3 > 2 > 1).
-        2. Desempate determinista por menor id_pedido.
-        """
+        """Prioriza mayor número (5 a 1) y desempata por menor ID de pedido."""
         if a.prioridad != b.prioridad:
             return a.prioridad > b.prioridad
         return a.id_pedido < b.id_pedido
@@ -64,10 +61,7 @@ class MaxHeapPedidos:
         return maximo
 
     def eliminar_pedido(self, id_pedido: str) -> bool:
-        """
-        Elimina en O(log N) (tras localizar el índice) el candidato ganador
-        seleccionado por Costo Marginal Promedio, manteniendo los omitidos en el Heap.
-        """
+        """Quita un pedido específico del montículo y restaura la propiedad de orden."""
         idx = -1
         for i, p in enumerate(self._heap):
             if p.id_pedido == id_pedido:
@@ -80,7 +74,6 @@ class MaxHeapPedidos:
         ultimo = self._heap.pop()
         if idx < len(self._heap):
             self._heap[idx] = ultimo
-            # Restaurar invariante hacia arriba o hacia abajo según corresponda
             padre = self._parent(idx)
             if idx > 0 and self._tiene_mayor_prioridad(
                 self._heap[idx], self._heap[padre]
@@ -99,10 +92,7 @@ class MaxHeapPedidos:
         return True
 
     def obtener_candidatos_factibles(self, capacidad_restante: int) -> List[Pedido]:
-        """
-        Poda Anticipada: Devuelve únicamente los pedidos en el Heap cuyo total de
-        productos sea <= capacidad_restante. Los que exceden permanecen en el Heap.
-        """
+        """Devuelve los pedidos en espera cuyas unidades entran en el cupo restante de la wave."""
         return [
             p
             for p in self._heap
