@@ -1,6 +1,6 @@
-import time
 import heapq
-from typing import List, Tuple, Set, Dict, Optional, Any
+import time
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 CoordXY = Tuple[int, int]
 
@@ -12,6 +12,8 @@ class RutaResultado:
         nodos_explorados: List[CoordXY],
         tiempo_ejecucion_ms: float,
         destinos_inalcanzables: Optional[List[CoordXY]] = None,
+        expansiones: int = 0,
+        orden_exploracion: Optional[List[CoordXY]] = None,
     ) -> None:
         self.camino_completo = camino_completo
         self.nodos_explorados = nodos_explorados
@@ -19,6 +21,8 @@ class RutaResultado:
         self.aristas_recorridas = self.distancia_total
         self.tiempo_ejecucion_ms = tiempo_ejecucion_ms
         self.destinos_inalcanzables = destinos_inalcanzables or []
+        self.expansiones = expansiones
+        self.orden_exploracion = orden_exploracion or []
 
 
 class Pathfinding:
@@ -107,9 +111,12 @@ class Pathfinding:
         destino_retorno: Optional[CoordXY] = None,
         warehouse: Any = None,
     ) -> RutaResultado:
+        """Visita los productos en la secuencia exacta de los pedidos usando Dijkstra tramo a tramo."""
         tiempo_inicio = time.perf_counter()
         nodos_explorados_totales: Set[CoordXY] = set()
         destinos_inalcanzables: List[CoordXY] = []
+        expansiones = 0
+        orden: List[CoordXY] = []
 
         origen_pasillo = Pathfinding.obtener_celda_acceso_pasillo(
             origen, grafo, warehouse
@@ -135,9 +142,10 @@ class Pathfinding:
                 continue
 
             ruta_tramo, explorados_tramo = Pathfinding.calcular_ruta_dijkstra(
-                posicion_actual, destino, grafo
+                posicion_actual, destino, grafo, orden_exploracion=orden
             )
             nodos_explorados_totales.update(explorados_tramo)
+            expansiones += len(explorados_tramo)
 
             if not ruta_tramo:
                 destinos_inalcanzables.append(destino_raw)
@@ -148,9 +156,10 @@ class Pathfinding:
 
         if posicion_actual != cierre_pasillo:
             ruta_regreso, explorados_regreso = Pathfinding.calcular_ruta_dijkstra(
-                posicion_actual, cierre_pasillo, grafo
+                posicion_actual, cierre_pasillo, grafo, orden_exploracion=orden
             )
             nodos_explorados_totales.update(explorados_regreso)
+            expansiones += len(explorados_regreso)
             if ruta_regreso:
                 ruta_total.extend(ruta_regreso[1:])
             else:
@@ -162,6 +171,8 @@ class Pathfinding:
             list(nodos_explorados_totales),
             tiempo_ms,
             destinos_inalcanzables,
+            expansiones,
+            orden,
         )
 
     @staticmethod
@@ -172,9 +183,12 @@ class Pathfinding:
         destino_retorno: Optional[CoordXY] = None,
         warehouse: Any = None,
     ) -> RutaResultado:
+        """En cada paso elige el próximo producto pendiente más cercano en el dígrafo."""
         tiempo_inicio = time.perf_counter()
         nodos_explorados_totales: Set[CoordXY] = set()
         destinos_inalcanzables: List[CoordXY] = []
+        expansiones = 0
+        orden: List[CoordXY] = []
 
         origen_pasillo = Pathfinding.obtener_celda_acceso_pasillo(
             origen, grafo, warehouse
@@ -200,9 +214,12 @@ class Pathfinding:
 
         while pendientes:
             ruta_tramo, destino_alcanzado, explorados_tramo = (
-                Pathfinding.calcular_ruta_greedy(posicion_actual, pendientes, grafo)
+                Pathfinding.calcular_ruta_greedy(
+                    posicion_actual, pendientes, grafo, orden_exploracion=orden
+                )
             )
             nodos_explorados_totales.update(explorados_tramo)
+            expansiones += len(explorados_tramo)
 
             if not destino_alcanzado or not ruta_tramo:
                 destinos_inalcanzables.extend(pendientes)
@@ -214,9 +231,10 @@ class Pathfinding:
 
         if posicion_actual != cierre_pasillo:
             ruta_regreso, explorados_regreso = Pathfinding.calcular_ruta_dijkstra(
-                posicion_actual, cierre_pasillo, grafo
+                posicion_actual, cierre_pasillo, grafo, orden_exploracion=orden
             )
             nodos_explorados_totales.update(explorados_regreso)
+            expansiones += len(explorados_regreso)
             if ruta_regreso:
                 ruta_total.extend(ruta_regreso[1:])
             else:
@@ -228,6 +246,8 @@ class Pathfinding:
             list(nodos_explorados_totales),
             tiempo_ms,
             destinos_inalcanzables,
+            expansiones,
+            orden,
         )
 
     @staticmethod
@@ -261,6 +281,7 @@ class Pathfinding:
         grafo: Any,
         paso_tiempo_inicial: int = 0,
         picker_id: Optional[str] = None,
+        orden_exploracion: Optional[List[CoordXY]] = None,
     ) -> Tuple[List[CoordXY], Set[CoordXY]]:
         if origen == destino:
             return [origen], {origen}
@@ -276,6 +297,8 @@ class Pathfinding:
                 continue
 
             nodos_explorados.add(nodo_actual)
+            if orden_exploracion is not None:
+                orden_exploracion.append(nodo_actual)
             if nodo_actual == destino:
                 return Pathfinding._reconstruir_ruta(padres, destino), nodos_explorados
 
@@ -301,6 +324,7 @@ class Pathfinding:
         destinos_pendientes: Any,
         grafo: Any,
         paso_tiempo_inicial: int = 0,
+        orden_exploracion: Optional[List[CoordXY]] = None,
     ) -> Tuple[List[CoordXY], Optional[CoordXY], Set[CoordXY]]:
         if not destinos_pendientes:
             return [], None, set()
@@ -324,6 +348,8 @@ class Pathfinding:
                 continue
 
             nodos_explorados.add(nodo_actual)
+            if orden_exploracion is not None:
+                orden_exploracion.append(nodo_actual)
             if nodo_actual in set_destinos:
                 return (
                     Pathfinding._reconstruir_ruta(padres, nodo_actual),
@@ -354,20 +380,15 @@ class Pathfinding:
         paso_actual: int,
         celdas_bloqueadas: Optional[Set[CoordXY]] = None,
     ) -> List[CoordXY]:
-        """
-        Recalcula la ruta del picker hacia su próximo waypoint o destino final
-        evitando las celdas bloqueadas en el turno actual.
-        Si no existe desvío posible, inserta una espera de 1 turno en su posición actual.
+        """Busca un desvío hacia el próximo objetivo evitando las celdas ocupadas.
+
+        Si no existe un camino alternativo en este turno, el picker espera un turno
+        en su celda actual sin perder el resto de su recorrido.
         """
         if not picker.ruta_asignada:
             return []
 
-        # Determinar el próximo objetivo importante (waypoint o final de ruta)
-        objetivo_inmediato = (
-            picker.objetivos_pendientes[0]
-            if getattr(picker, "objetivos_pendientes", None)
-            else picker.ruta_asignada[-1]
-        )
+        objetivo_inmediato = Pathfinding.proximo_objetivo_en_ruta(picker)
 
         bloqueos_previos = set(getattr(grafo, "nodos_evasion_actual", set()))
         if hasattr(grafo, "nodos_evasion_actual") and celdas_bloqueadas:
@@ -386,15 +407,36 @@ class Pathfinding:
                 grafo.nodos_evasion_actual = bloqueos_previos
 
         if nueva_ruta and len(nueva_ruta) > 1:
-            # Reemplazar el tramo hasta objetivo_inmediato y conservar el resto de la ruta
             resto_ruta: List[CoordXY] = []
             if objetivo_inmediato in picker.ruta_asignada:
                 idx = picker.ruta_asignada.index(objetivo_inmediato)
                 resto_ruta = picker.ruta_asignada[idx + 1 :]
             return nueva_ruta[1:] + resto_ruta
 
-        # Si no hay desvío válido, el picker espera 1 turno en su celda actual
         return [picker.posicion_actual] + list(picker.ruta_asignada)
+
+    @staticmethod
+    def proximo_objetivo_en_ruta(picker: Any) -> CoordXY:
+        """Devuelve la próxima parada de recolección en la ruta o la zona de despacho al final."""
+        pendientes = set(getattr(picker, "objetivos_pendientes", None) or [])
+        for celda in picker.ruta_asignada:
+            if celda in pendientes:
+                return celda
+        return picker.ruta_asignada[-1]
+
+    @staticmethod
+    def desviar_por(
+        picker: Any, celda_escape: CoordXY, grafo: Any
+    ) -> Optional[List[CoordXY]]:
+        """Genera una ruta que da un paso hacia celda_escape y retoma hacia el próximo objetivo."""
+        if not picker.ruta_asignada:
+            return None
+        objetivo = Pathfinding.proximo_objetivo_en_ruta(picker)
+        tramo, _ = Pathfinding.calcular_ruta_dijkstra(celda_escape, objetivo, grafo)
+        if not tramo:
+            return None
+        idx = picker.ruta_asignada.index(objetivo)
+        return [celda_escape] + tramo[1:] + picker.ruta_asignada[idx + 1 :]
 
     @staticmethod
     def _reconstruir_ruta(
@@ -437,6 +479,7 @@ class Pathfinding:
         grafo: Any,
         warehouse: Any = None,
     ) -> Dict[Tuple[CoordXY, CoordXY], float]:
+        """Precalcula las distancias mínimas entre todas las ubicaciones de productos en el dígrafo."""
         mapa_rack_a_pasillo: Dict[CoordXY, CoordXY] = {
             coord_rack: Pathfinding.obtener_celda_acceso_pasillo(
                 coord_rack, grafo, warehouse

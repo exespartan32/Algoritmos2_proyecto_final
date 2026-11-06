@@ -1,12 +1,26 @@
 from dataclasses import dataclass, field
-from typing import List, Tuple, Dict, Any, Optional, Set
+from typing import Any, Dict, List, Optional, Set, Tuple
+
 from BackEnd.enums.enums import (
-    TipoCelda,
-    SentidoCirculacion,
-    TipoPuerta,
     EstadoPedido,
     EstadoWave,
+    SentidoCirculacion,
+    TipoCelda,
+    TipoPuerta,
 )
+
+
+class ListaDeInmutables(list):
+    """Lista cuyos elementos son inmutables (tuplas o cadenas).
+
+    Al hacer deepcopy solo se duplica el contenedor y se reutilizan las
+    referencias internas, reduciendo el consumo de memoria del historial.
+    """
+
+    def __deepcopy__(self, memo):
+        copia = type(self)(self)
+        memo[id(self)] = copia
+        return copia
 
 
 class Celda:
@@ -105,17 +119,7 @@ class Puerta:
         return self.tipo in (TipoPuerta.OUTBOUND, TipoPuerta.AMBOS)
 
 
-@dataclass
 class Producto:
-    id_producto: str
-    nombre: str
-    rack_id: str
-    ubicacion_x: int
-    ubicacion_y: int
-    ubicacion_z: int = 1
-    cantidad_disponible: int = 0
-    peso_kg: float = 0.0
-
     def __init__(
         self,
         id_producto: str,
@@ -253,6 +257,7 @@ class TareaWavePicker:
     destinos_recoleccion_pasillo: List[Tuple[int, int]]
     peso_lote_kg: float
     ruta_calculada: List[Tuple[int, int]] = field(default_factory=list)
+    resultado_ruta: Optional[Any] = None
 
 
 @dataclass
@@ -268,7 +273,12 @@ class Picker:
     cola_waves_asignadas: List[TareaWavePicker] = field(default_factory=list)
     productos_recogidos: Dict[str, int] = field(default_factory=dict)
     turnos_bloqueado: int = 0
-    historial_recorrido: List[Tuple[int, int]] = field(default_factory=list)
+    turnos_pausa: int = 0
+    turnos_busqueda: int = 0
+    turnos_descargando: int = 0
+    historial_recorrido: List[Tuple[int, int]] = field(
+        default_factory=ListaDeInmutables
+    )
 
     def puede_cargar(self, peso_adicional: float) -> bool:
         return (self.peso_actual_kg + peso_adicional) <= self.capacidad_carga_kg
@@ -377,10 +387,19 @@ class Wave:
                 self.peso_por_picker[mejor_pid] + peso_ped, 4
             )
 
-            if warehouse_o_tabla is not None:
-                for x, y, _ in ped.obtener_ubicaciones_xyz(warehouse_o_tabla):
-                    if (x, y) not in self.destinos_xy_por_picker[mejor_pid]:
-                        self.destinos_xy_por_picker[mejor_pid].append((x, y))
+        # Conservamos el orden original de los pedidos de la wave para el recorrido.
+        if warehouse_o_tabla is not None:
+            dueno = {
+                pid_ped: pid
+                for pid, peds in self.pedidos_por_picker.items()
+                for pid_ped in peds
+            }
+            for ped in self.pedidos:
+                destinos = self.destinos_xy_por_picker[dueno[ped.id_pedido]]
+                for item in ped.items:
+                    prod = Pedido._buscar_producto(warehouse_o_tabla, item.producto_id)
+                    if prod is not None and prod.coordenadas_xy not in destinos:
+                        destinos.append(prod.coordenadas_xy)
 
     def puede_agregar_pedido(
         self,

@@ -1,6 +1,7 @@
-import os
 import json
-from typing import Dict, Any
+import os
+from typing import Any, Dict
+
 from BackEnd.models.warehouse import Warehouse
 from BackEnd.utils.graph_builder import GraphBuilder
 
@@ -17,7 +18,7 @@ class FileParser:
     @staticmethod
     def leer_json(ruta_archivo: str) -> Dict[str, Any]:
         ruta_resuelta = FileParser.resolver_ruta(ruta_archivo)
-        with open(ruta_resuelta, "r", encoding="utf-8") as archivo:
+        with open(ruta_resuelta, "r", encoding="utf-8-sig") as archivo:
             return json.load(archivo)
 
     @staticmethod
@@ -29,10 +30,7 @@ class FileParser:
     def guardar_estado_warehouse_json(
         warehouse: Warehouse, nombre_archivo_salida: str = "estado_guardado.json"
     ) -> str:
-        """
-        Exporta el estado actual del Warehouse (con stock y estados de pedidos actualizados)
-        a un archivo JSON sin pisar los archivos base (escenario_basico.json / escenario_grande.json).
-        """
+        """Exporta el estado actual del almacén (stock y pedidos) a un archivo JSON."""
         dir_actual = os.path.dirname(os.path.abspath(__file__))
         ruta_data = os.path.join(os.path.dirname(dir_actual), "data")
         os.makedirs(ruta_data, exist_ok=True)

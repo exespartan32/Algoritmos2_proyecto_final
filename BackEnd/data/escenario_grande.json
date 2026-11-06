@@ -293,7 +293,7 @@
         },
         "ancho": 4,
         "alto": 10,
-        "sentido": "N"
+        "sentido": "AMBOS"
       },
       {
         "id": "PAS_VA01",
@@ -413,7 +413,7 @@
         },
         "ancho": 4,
         "alto": 10,
-        "sentido": "S"
+        "sentido": "AMBOS"
       },
       {
         "id": "PAS_VB01",

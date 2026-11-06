@@ -293,7 +293,7 @@
         },
         "ancho": 4,
         "alto": 10,
-        "sentido": "N"
+        "sentido": "AMBOS"
       },
       {
         "id": "PAS_VA01",
@@ -413,7 +413,7 @@
         },
         "ancho": 4,
         "alto": 10,
-        "sentido": "S"
+        "sentido": "AMBOS"
       },
       {
         "id": "PAS_VB01",
@@ -569,24 +569,24 @@
     {
       "id": "PK_02",
       "posicion_inicial": {
-        "x": 36,
-        "y": 1
+        "x": 45,
+        "y": 4
       },
       "capacidad_carga_kg": 120.0
     },
     {
       "id": "PK_03",
       "posicion_inicial": {
-        "x": 36,
-        "y": 1
+        "x": 30,
+        "y": 32
       },
       "capacidad_carga_kg": 100.0
     },
     {
       "id": "PK_04",
       "posicion_inicial": {
-        "x": 36,
-        "y": 1
+        "x": 5,
+        "y": 17
       },
       "capacidad_carga_kg": 80.0
     }
@@ -733,7 +733,7 @@
         "y": 29,
         "z": 2
       },
-      "cantidad_disponible": 30,
+      "cantidad_disponible": 31,
       "peso_kg": 7.23
     },
     {
@@ -745,7 +745,7 @@
         "y": 9,
         "z": 1
       },
-      "cantidad_disponible": 23,
+      "cantidad_disponible": 27,
       "peso_kg": 0.26
     },
     {
@@ -793,7 +793,7 @@
         "y": 22,
         "z": 1
       },
-      "cantidad_disponible": 49,
+      "cantidad_disponible": 51,
       "peso_kg": 0.9
     },
     {
@@ -925,7 +925,7 @@
         "y": 22,
         "z": 1
       },
-      "cantidad_disponible": 19,
+      "cantidad_disponible": 23,
       "peso_kg": 0.21
     },
     {
@@ -1021,7 +1021,7 @@
         "y": 7,
         "z": 2
       },
-      "cantidad_disponible": 2,
+      "cantidad_disponible": 6,
       "peso_kg": 5.13
     },
     {
@@ -1261,7 +1261,7 @@
         "y": 10,
         "z": 2
       },
-      "cantidad_disponible": 50,
+      "cantidad_disponible": 51,
       "peso_kg": 0.49
     },
     {
@@ -1345,7 +1345,7 @@
         "y": 23,
         "z": 2
       },
-      "cantidad_disponible": 31,
+      "cantidad_disponible": 33,
       "peso_kg": 0.25
     },
     {
@@ -1381,7 +1381,7 @@
         "y": 26,
         "z": 2
       },
-      "cantidad_disponible": 11,
+      "cantidad_disponible": 12,
       "peso_kg": 23.2
     },
     {
@@ -1429,7 +1429,7 @@
         "y": 12,
         "z": 2
       },
-      "cantidad_disponible": 10,
+      "cantidad_disponible": 12,
       "peso_kg": 3.17
     },
     {
@@ -1561,7 +1561,7 @@
         "y": 6,
         "z": 2
       },
-      "cantidad_disponible": 45,
+      "cantidad_disponible": 46,
       "peso_kg": 10.89
     },
     {
@@ -1597,7 +1597,7 @@
         "y": 29,
         "z": 1
       },
-      "cantidad_disponible": 42,
+      "cantidad_disponible": 45,
       "peso_kg": 0.12
     },
     {
@@ -1681,7 +1681,7 @@
         "y": 20,
         "z": 1
       },
-      "cantidad_disponible": 32,
+      "cantidad_disponible": 34,
       "peso_kg": 0.22
     },
     {
@@ -1765,7 +1765,7 @@
         "y": 25,
         "z": 1
       },
-      "cantidad_disponible": 33,
+      "cantidad_disponible": 35,
       "peso_kg": 0.23
     },
     {
@@ -2005,7 +2005,7 @@
         "y": 10,
         "z": 1
       },
-      "cantidad_disponible": 49,
+      "cantidad_disponible": 53,
       "peso_kg": 0.15
     },
     {
@@ -2053,7 +2053,7 @@
         "y": 14,
         "z": 1
       },
-      "cantidad_disponible": 33,
+      "cantidad_disponible": 34,
       "peso_kg": 0.86
     },
     {
@@ -2077,7 +2077,7 @@
         "y": 14,
         "z": 2
       },
-      "cantidad_disponible": 9,
+      "cantidad_disponible": 13,
       "peso_kg": 0.71
     },
     {
@@ -2089,7 +2089,7 @@
         "y": 14,
         "z": 1
       },
-      "cantidad_disponible": 51,
+      "cantidad_disponible": 54,
       "peso_kg": 0.62
     },
     {
@@ -2173,7 +2173,7 @@
         "y": 22,
         "z": 1
       },
-      "cantidad_disponible": 52,
+      "cantidad_disponible": 56,
       "peso_kg": 0.36
     },
     {
@@ -2221,7 +2221,7 @@
         "y": 21,
         "z": 1
       },
-      "cantidad_disponible": 12,
+      "cantidad_disponible": 13,
       "peso_kg": 22.68
     },
     {
@@ -2233,7 +2233,7 @@
         "y": 8,
         "z": 1
       },
-      "cantidad_disponible": 48,
+      "cantidad_disponible": 49,
       "peso_kg": 0.75
     },
     {
@@ -2317,7 +2317,7 @@
         "y": 28,
         "z": 1
       },
-      "cantidad_disponible": 6,
+      "cantidad_disponible": 10,
       "peso_kg": 0.97
     },
     {
@@ -2413,7 +2413,7 @@
         "y": 29,
         "z": 1
       },
-      "cantidad_disponible": 27,
+      "cantidad_disponible": 32,
       "peso_kg": 11.31
     },
     {
@@ -2473,7 +2473,7 @@
         "y": 22,
         "z": 1
       },
-      "cantidad_disponible": 50,
+      "cantidad_disponible": 51,
       "peso_kg": 1.13
     },
     {
@@ -2497,7 +2497,7 @@
         "y": 27,
         "z": 1
       },
-      "cantidad_disponible": 20,
+      "cantidad_disponible": 24,
       "peso_kg": 0.78
     },
     {
@@ -2545,7 +2545,7 @@
         "y": 10,
         "z": 1
       },
-      "cantidad_disponible": 24,
+      "cantidad_disponible": 27,
       "peso_kg": 2.21
     },
     {
@@ -2581,7 +2581,7 @@
         "y": 7,
         "z": 3
       },
-      "cantidad_disponible": 29,
+      "cantidad_disponible": 32,
       "peso_kg": 0.46
     },
     {
@@ -2593,7 +2593,7 @@
         "y": 24,
         "z": 1
       },
-      "cantidad_disponible": 3,
+      "cantidad_disponible": 6,
       "peso_kg": 0.31
     },
     {
@@ -2637,7 +2637,7 @@
     {
       "id": "PED_01",
       "prioridad": 4,
-      "estado": "PREPARADO",
+      "estado": "PENDIENTE",
       "items": [
         {
           "producto_id": "P118",
@@ -2664,7 +2664,7 @@
     {
       "id": "PED_02",
       "prioridad": 5,
-      "estado": "PREPARADO",
+      "estado": "PENDIENTE",
       "items": [
         {
           "producto_id": "P163",
@@ -2691,7 +2691,7 @@
     {
       "id": "PED_03",
       "prioridad": 4,
-      "estado": "EN_WAVE",
+      "estado": "PENDIENTE",
       "items": [
         {
           "producto_id": "P136",
@@ -2718,7 +2718,7 @@
     {
       "id": "PED_04",
       "prioridad": 1,
-      "estado": "EN_WAVE",
+      "estado": "PENDIENTE",
       "items": [
         {
           "producto_id": "P148",
@@ -2749,7 +2749,7 @@
     {
       "id": "PED_05",
       "prioridad": 1,
-      "estado": "PREPARADO",
+      "estado": "PENDIENTE",
       "items": [
         {
           "producto_id": "P137",
@@ -2764,7 +2764,7 @@
     {
       "id": "PED_06",
       "prioridad": 4,
-      "estado": "EN_WAVE",
+      "estado": "PENDIENTE",
       "items": [
         {
           "producto_id": "P134",
@@ -2791,7 +2791,7 @@
     {
       "id": "PED_07",
       "prioridad": 4,
-      "estado": "PREPARADO",
+      "estado": "PENDIENTE",
       "items": [
         {
           "producto_id": "P132",
@@ -2806,7 +2806,7 @@
     {
       "id": "PED_08",
       "prioridad": 1,
-      "estado": "EN_WAVE",
+      "estado": "PENDIENTE",
       "items": [
         {
           "producto_id": "P153",
@@ -2821,7 +2821,7 @@
     {
       "id": "PED_09",
       "prioridad": 5,
-      "estado": "PREPARADO",
+      "estado": "PENDIENTE",
       "items": [
         {
           "producto_id": "P122",
@@ -2848,7 +2848,7 @@
     {
       "id": "PED_10",
       "prioridad": 3,
-      "estado": "IRREALIZABLE",
+      "estado": "PENDIENTE",
       "items": [
         {
           "producto_id": "P036",
@@ -2871,7 +2871,7 @@
     {
       "id": "PED_11",
       "prioridad": 4,
-      "estado": "EN_WAVE",
+      "estado": "PENDIENTE",
       "items": [
         {
           "producto_id": "P134",
@@ -2898,7 +2898,7 @@
     {
       "id": "PED_12",
       "prioridad": 4,
-      "estado": "PREPARADO",
+      "estado": "PENDIENTE",
       "items": [
         {
           "producto_id": "P028",
@@ -2909,7 +2909,7 @@
     {
       "id": "PED_13",
       "prioridad": 1,
-      "estado": "PREPARADO",
+      "estado": "PENDIENTE",
       "items": [
         {
           "producto_id": "P063",
@@ -2920,7 +2920,7 @@
     {
       "id": "PED_14",
       "prioridad": 2,
-      "estado": "EN_WAVE",
+      "estado": "PENDIENTE",
       "items": [
         {
           "producto_id": "P044",
@@ -2939,7 +2939,7 @@
     {
       "id": "PED_15",
       "prioridad": 4,
-      "estado": "PREPARADO",
+      "estado": "PENDIENTE",
       "items": [
         {
           "producto_id": "P056",
@@ -2950,7 +2950,7 @@
     {
       "id": "PED_16",
       "prioridad": 1,
-      "estado": "EN_WAVE",
+      "estado": "PENDIENTE",
       "items": [
         {
           "producto_id": "P010",
@@ -2977,7 +2977,7 @@
     {
       "id": "PED_17",
       "prioridad": 1,
-      "estado": "PREPARADO",
+      "estado": "PENDIENTE",
       "items": [
         {
           "producto_id": "P167",
@@ -2992,7 +2992,7 @@
     {
       "id": "PED_18",
       "prioridad": 5,
-      "estado": "PREPARADO",
+      "estado": "PENDIENTE",
       "items": [
         {
           "producto_id": "P159",
@@ -3011,7 +3011,7 @@
     {
       "id": "PED_19",
       "prioridad": 1,
-      "estado": "EN_WAVE",
+      "estado": "PENDIENTE",
       "items": [
         {
           "producto_id": "P141",
@@ -3026,7 +3026,7 @@
     {
       "id": "PED_20",
       "prioridad": 4,
-      "estado": "EN_WAVE",
+      "estado": "PENDIENTE",
       "items": [
         {
           "producto_id": "P091",
@@ -3053,7 +3053,7 @@
     {
       "id": "PED_21",
       "prioridad": 3,
-      "estado": "EN_WAVE",
+      "estado": "PENDIENTE",
       "items": [
         {
           "producto_id": "P023",
@@ -3080,7 +3080,7 @@
     {
       "id": "PED_22",
       "prioridad": 2,
-      "estado": "EN_WAVE",
+      "estado": "PENDIENTE",
       "items": [
         {
           "producto_id": "P168",
@@ -3111,7 +3111,7 @@
     {
       "id": "PED_23",
       "prioridad": 5,
-      "estado": "IRREALIZABLE",
+      "estado": "PENDIENTE",
       "items": [
         {
           "producto_id": "P141",
@@ -3134,7 +3134,7 @@
     {
       "id": "PED_24",
       "prioridad": 1,
-      "estado": "EN_WAVE",
+      "estado": "PENDIENTE",
       "items": [
         {
           "producto_id": "P132",
@@ -3153,7 +3153,7 @@
     {
       "id": "PED_25",
       "prioridad": 3,
-      "estado": "EN_WAVE",
+      "estado": "PENDIENTE",
       "items": [
         {
           "producto_id": "P063",
@@ -3176,7 +3176,7 @@
     {
       "id": "PED_26",
       "prioridad": 5,
-      "estado": "EN_WAVE",
+      "estado": "PENDIENTE",
       "items": [
         {
           "producto_id": "P045",
@@ -3207,7 +3207,7 @@
     {
       "id": "PED_27",
       "prioridad": 4,
-      "estado": "EN_WAVE",
+      "estado": "PENDIENTE",
       "items": [
         {
           "producto_id": "P080",
@@ -3234,7 +3234,7 @@
     {
       "id": "PED_28",
       "prioridad": 3,
-      "estado": "EN_WAVE",
+      "estado": "PENDIENTE",
       "items": [
         {
           "producto_id": "P032",
@@ -3261,7 +3261,7 @@
     {
       "id": "PED_29",
       "prioridad": 2,
-      "estado": "EN_WAVE",
+      "estado": "PENDIENTE",
       "items": [
         {
           "producto_id": "P115",
@@ -3280,7 +3280,7 @@
     {
       "id": "PED_30",
       "prioridad": 2,
-      "estado": "PREPARADO",
+      "estado": "PENDIENTE",
       "items": [
         {
           "producto_id": "P157",
@@ -3291,7 +3291,7 @@
     {
       "id": "PED_31",
       "prioridad": 2,
-      "estado": "EN_WAVE",
+      "estado": "PENDIENTE",
       "items": [
         {
           "producto_id": "P076",
@@ -3306,7 +3306,7 @@
     {
       "id": "PED_32",
       "prioridad": 2,
-      "estado": "EN_WAVE",
+      "estado": "PENDIENTE",
       "items": [
         {
           "producto_id": "P059",
@@ -3317,7 +3317,7 @@
     {
       "id": "PED_33",
       "prioridad": 2,
-      "estado": "EN_WAVE",
+      "estado": "PENDIENTE",
       "items": [
         {
           "producto_id": "P086",
@@ -3344,7 +3344,7 @@
     {
       "id": "PED_34",
       "prioridad": 3,
-      "estado": "EN_WAVE",
+      "estado": "PENDIENTE",
       "items": [
         {
           "producto_id": "P131",
@@ -3359,7 +3359,7 @@
     {
       "id": "PED_35",
       "prioridad": 4,
-      "estado": "EN_WAVE",
+      "estado": "PENDIENTE",
       "items": [
         {
           "producto_id": "P111",
@@ -3374,7 +3374,7 @@
     {
       "id": "PED_36",
       "prioridad": 3,
-      "estado": "EN_WAVE",
+      "estado": "PENDIENTE",
       "items": [
         {
           "producto_id": "P128",
@@ -3405,7 +3405,7 @@
     {
       "id": "PED_37",
       "prioridad": 5,
-      "estado": "EN_WAVE",
+      "estado": "PENDIENTE",
       "items": [
         {
           "producto_id": "P135",
@@ -3428,7 +3428,7 @@
     {
       "id": "PED_38",
       "prioridad": 2,
-      "estado": "EN_WAVE",
+      "estado": "PENDIENTE",
       "items": [
         {
           "producto_id": "P097",
@@ -3455,7 +3455,7 @@
     {
       "id": "PED_39",
       "prioridad": 4,
-      "estado": "EN_WAVE",
+      "estado": "PENDIENTE",
       "items": [
         {
           "producto_id": "P132",
@@ -3478,7 +3478,7 @@
     {
       "id": "PED_40",
       "prioridad": 5,
-      "estado": "PREPARADO",
+      "estado": "PENDIENTE",
       "items": [
         {
           "producto_id": "P118",
@@ -3490,5 +3490,208 @@
   "configuracion": {
     "wave_max_pedidos": 5,
     "wave_max_productos": 25
+  },
+  "_sesion": {
+    "version": 2,
+    "config": {
+      "wave_max_pedidos": 5,
+      "wave_max_productos": 25,
+      "max_pickers_por_wave": 2,
+      "estrategia_waves": "CERCANIA"
+    },
+    "estrategia": "CERCANIA",
+    "pickers_por_wave": 1,
+    "acciones": [
+      [
+        "cambiar_estrategia",
+        [
+          "ORDEN"
+        ]
+      ],
+      [
+        "cambiar_estrategia",
+        [
+          "CERCANIA"
+        ]
+      ],
+      [
+        "cambiar_estrategia",
+        [
+          "ORDEN"
+        ]
+      ],
+      [
+        "cambiar_estrategia",
+        [
+          "CERCANIA"
+        ]
+      ],
+      [
+        "cambiar_estrategia",
+        [
+          "ORDEN"
+        ]
+      ],
+      [
+        "cambiar_estrategia",
+        [
+          "CERCANIA"
+        ]
+      ],
+      [
+        "cambiar_estrategia",
+        [
+          "ORDEN"
+        ]
+      ],
+      [
+        "cambiar_estrategia",
+        [
+          "CERCANIA"
+        ]
+      ],
+      [
+        "cambiar_estrategia",
+        [
+          "ORDEN"
+        ]
+      ],
+      [
+        "cambiar_estrategia",
+        [
+          "CERCANIA"
+        ]
+      ],
+      [
+        "cambiar_estrategia",
+        [
+          "ORDEN"
+        ]
+      ],
+      [
+        "cambiar_estrategia",
+        [
+          "CERCANIA"
+        ]
+      ],
+      [
+        "cambiar_estrategia",
+        [
+          "ORDEN"
+        ]
+      ],
+      [
+        "cambiar_estrategia",
+        [
+          "CERCANIA"
+        ]
+      ],
+      [
+        "cambiar_estrategia",
+        [
+          "ORDEN"
+        ]
+      ],
+      [
+        "cambiar_estrategia",
+        [
+          "CERCANIA"
+        ]
+      ],
+      [
+        "cambiar_estrategia",
+        [
+          "ORDEN"
+        ]
+      ],
+      [
+        "cambiar_estrategia",
+        [
+          "CERCANIA"
+        ]
+      ],
+      [
+        "cambiar_estrategia",
+        [
+          "ORDEN"
+        ]
+      ],
+      [
+        "cambiar_estrategia",
+        [
+          "CERCANIA"
+        ]
+      ],
+      [
+        "generar_waves",
+        []
+      ],
+      [
+        "iniciar_waves",
+        [
+          [
+            "WAVE_01",
+            "WAVE_02",
+            "WAVE_03",
+            "WAVE_04",
+            "WAVE_05",
+            "WAVE_06",
+            "WAVE_07",
+            "WAVE_08",
+            "WAVE_09",
+            "WAVE_10",
+            "WAVE_11",
+            "WAVE_12",
+            "WAVE_13",
+            "WAVE_14",
+            "WAVE_15"
+          ],
+          "CERCANIA",
+          1
+        ]
+      ],
+      [
+        "avanzar",
+        [
+          1110
+        ]
+      ],
+      [
+        "cambiar_estrategia",
+        [
+          "ORDEN"
+        ]
+      ],
+      [
+        "cambiar_estrategia",
+        [
+          "CERCANIA"
+        ]
+      ],
+      [
+        "cambiar_estrategia",
+        [
+          "ORDEN"
+        ]
+      ],
+      [
+        "cambiar_estrategia",
+        [
+          "CERCANIA"
+        ]
+      ],
+      [
+        "cambiar_estrategia",
+        [
+          "ORDEN"
+        ]
+      ],
+      [
+        "cambiar_estrategia",
+        [
+          "CERCANIA"
+        ]
+      ]
+    ]
   }
 }

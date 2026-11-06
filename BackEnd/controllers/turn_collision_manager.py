@@ -1,25 +1,32 @@
-from typing import Dict, List, Tuple, Set, Optional, Any
-from BackEnd.models.entities import Picker
+from typing import Any, Dict, List, Optional, Set, Tuple
+
 from BackEnd.controllers.path_finding import Pathfinding
+from BackEnd.models.entities import ListaDeInmutables, Picker
 
 CoordXY = Tuple[int, int]
 
 
 class TurnAndCollisionManager:
-    """
-    Gestor de Turnos y Evasión de Colisiones Multi-Picker sobre el Dígrafo.
-    Previene:
-    1. Colisiones de vértice (misma celda destino en t + 1).
-    2. Head-on Deadlocks (intercambio de aristas u <-> v en t + 1).
-    3. Colisiones en cadena (alcance trasero cuando un picker frena).
-    4. Livelocks / Bloqueos cíclicos (recálculo con Dijkstra tras X turnos bloqueado).
-    """
+    """Gestor de avance por turnos y evasión de colisiones para múltiples pickers en el dígrafo."""
 
-    def __init__(self, max_turnos_bloqueo_recalculo: int = 2) -> None:
+    def __init__(
+        self,
+        max_turnos_bloqueo_recalculo: int = 2,
+        turnos_estela: int = 2,
+        turnos_recogida: int = 4,
+        turnos_descarga: int = 3,
+    ) -> None:
         self.reservas_celdas: Dict[Tuple[int, int, int], str] = {}
         self.pathfinding = Pathfinding()
         self.max_turnos_bloqueo_recalculo = max_turnos_bloqueo_recalculo
-        self.eventos_colision: List[str] = []
+        self.turnos_para_ceder = max_turnos_bloqueo_recalculo + 1
+        # Estela: bloquea temporalmente la celda recién abandonada para mantener distancia entre pickers.
+        self.turnos_estela = max(0, int(turnos_estela))
+        self.estela: Dict[CoordXY, Tuple[str, int]] = {}
+        # Turnos que demora recoger un producto en estantería y descargar en despacho.
+        self.turnos_recogida = max(0, int(turnos_recogida))
+        self.turnos_descarga = max(0, int(turnos_descarga))
+        self.eventos_colision: List[str] = ListaDeInmutables()
         self.total_esperas_aplicadas: int = 0
         self.total_desvios_recalculados: int = 0
 
@@ -27,11 +34,11 @@ class TurnAndCollisionManager:
         sig_p1 = p1.ruta_asignada[0] if p1.ruta_asignada else p1.posicion_actual
         sig_p2 = p2.ruta_asignada[0] if p2.ruta_asignada else p2.posicion_actual
 
-        # 1. Colisión en la misma celda destino
+        # Misma celda de destino en el siguiente turno
         if sig_p1 == sig_p2:
             return True
 
-        # 2. Cruce frontal de aristas (intercambio de posiciones A <-> B)
+        # Cruce frontal intercambiando posiciones (u <-> v)
         if sig_p1 == p2.posicion_actual and sig_p2 == p1.posicion_actual:
             return True
 
@@ -43,10 +50,7 @@ class TurnAndCollisionManager:
         celdas_prohibidas: Set[CoordXY],
         grafo: Any,
     ) -> Optional[CoordXY]:
-        """
-        Busca una celda vecina válida en el dígrafo que no esté ocupada ni prohibida
-        para destrabar un cruce frontal (Head-on Deadlock).
-        """
+        """Busca una celda adyacente libre en el dígrafo para destrabar un cruce de frente."""
         vecinos = Pathfinding._obtener_vecinos(
             grafo, picker.posicion_actual, paso_tiempo=0, picker_id=picker.id_picker
         )
@@ -97,25 +101,22 @@ class TurnAndCollisionManager:
             )
 
         if es_cruce_frontal:
-            # Caso 1: Head-on Deadlock. Intentar que el cedente esquive a una celda lateral
             celda_escape = self._buscar_celda_evasion_lateral(
                 picker_cedente, prohibidas, grafo
             )
             if celda_escape is not None:
-                destino_final = picker_cedente.ruta_asignada[-1]
-                tramo_retorno, _ = Pathfinding.calcular_ruta_dijkstra(
-                    celda_escape, destino_final, grafo
+                nueva_ruta = Pathfinding.desviar_por(
+                    picker_cedente, celda_escape, grafo
                 )
-                if tramo_retorno:
-                    picker_cedente.ruta_asignada = [celda_escape] + tramo_retorno[1:]
+                if nueva_ruta:
+                    picker_cedente.ruta_asignada = nueva_ruta
                     self.total_desvios_recalculados += 1
                     self.eventos_colision.append(
-                        f"[Turno {paso_actual}] Head-on Deadlock evitado: {picker_cedente.id_picker} "
-                        f"cede paso lateralmente hacia {celda_escape} ante {picker_prioritario.id_picker}."
+                        f"[Turno {paso_actual}] Cruce frontal resuelto: {picker_cedente.id_picker} "
+                        f"se aparta hacia {celda_escape} para dar paso a {picker_prioritario.id_picker}."
                     )
                     return
 
-            # Si el cedente está encajonado, probar si el prioritario puede correrse a un costado
             prohibidas_prio = (ocupadas_actuales or set()) | {
                 sig_ced,
                 picker_cedente.posicion_actual,
@@ -124,18 +125,14 @@ class TurnAndCollisionManager:
                 picker_prioritario, prohibidas_prio, grafo
             )
             if escape_prio is not None and picker_prioritario.ruta_asignada:
-                destino_final_prio = picker_prioritario.ruta_asignada[-1]
-                tramo_ret_prio, _ = Pathfinding.calcular_ruta_dijkstra(
-                    escape_prio, destino_final_prio, grafo
+                nueva_ruta = Pathfinding.desviar_por(
+                    picker_prioritario, escape_prio, grafo
                 )
-                if tramo_ret_prio:
-                    picker_prioritario.ruta_asignada = [escape_prio] + tramo_ret_prio[
-                        1:
-                    ]
+                if nueva_ruta:
+                    picker_prioritario.ruta_asignada = nueva_ruta
                     self.total_desvios_recalculados += 1
                     return
 
-        # Caso 2: Colisión hacia la misma celda o bloqueo prolongado (> X turnos)
         if picker_cedente.turnos_bloqueado >= self.max_turnos_bloqueo_recalculo:
             nueva_ruta = self.pathfinding.recalcular_evitando_obstaculo(
                 grafo,
@@ -146,11 +143,10 @@ class TurnAndCollisionManager:
             picker_cedente.ruta_asignada = nueva_ruta
             self.total_desvios_recalculados += 1
             self.eventos_colision.append(
-                f"[Turno {paso_actual}] Recálculo anti-livelock en {picker_cedente.id_picker} "
-                f"tras {picker_cedente.turnos_bloqueado} turnos bloqueado."
+                f"[Turno {paso_actual}] {picker_cedente.id_picker} recalcula su camino "
+                f"tras {picker_cedente.turnos_bloqueado} turnos de espera."
             )
         else:
-            # Pausa coordinada de 1 turno (Wait-Step) en su posición actual
             if (
                 not picker_cedente.ruta_asignada
                 or picker_cedente.ruta_asignada[0] != picker_cedente.posicion_actual
@@ -159,40 +155,116 @@ class TurnAndCollisionManager:
                 self.total_esperas_aplicadas += 1
                 self.eventos_colision.append(
                     f"[Turno {paso_actual}] {picker_cedente.id_picker} espera en "
-                    f"{picker_cedente.posicion_actual} cediendo paso a {picker_prioritario.id_picker} en {sig_prio}."
+                    f"{picker_cedente.posicion_actual} cediendo el paso a {picker_prioritario.id_picker} en {sig_prio}."
                 )
 
     def validar_movimiento_simultaneo(
         self, pickers: List[Picker], paso_actual: int, grafo: Any
     ) -> None:
-        """
-        Orquesta las intenciones de movimiento de todos los pickers activos en el turno:
-        - Ordena por prioridad dinámica (los pickers que llevan más turnos esperando tienen prioridad
-          para evitar inanición/livelock).
-        - Resuelve colisiones directas, cruces frontales y colisiones en cadena (efecto dominó).
-        """
         if hasattr(grafo, "limpiar_bloqueos_antiguos"):
             grafo.limpiar_bloqueos_antiguos(paso_actual)
+
+        self.reservas_celdas = {
+            k: v for k, v in self.reservas_celdas.items() if k[2] > paso_actual
+        }
+        self.estela = {c: v for c, v in self.estela.items() if v[1] > paso_actual}
+        estela_de = {c: pid for c, (pid, _) in self.estela.items()}
 
         pickers_activos = [
             p for p in pickers if p.id_wave_actual is not None or p.ruta_asignada
         ]
-        if len(pickers_activos) <= 1:
-            for p in pickers_activos:
-                if p.ruta_asignada:
-                    nx, ny = p.ruta_asignada[0]
-                    self.reservas_celdas[(nx, ny, paso_actual + 1)] = p.id_picker
+        ids_activos = {id(p) for p in pickers_activos}
+        estacionados = {
+            p.posicion_actual: p for p in pickers if id(p) not in ids_activos
+        }
+        if not pickers_activos:
             return
 
-        # Ordenar por prioridad anti-starvation: mayor turnos_bloqueado primero, luego menor ruta restante
+        # Si un picker ya recogió todo, está demorado y ya se encuentra adyacente a su zona de despacho, descarga ahí.
+        nodos = getattr(grafo, "nodos", {})
+        for p in pickers_activos:
+            if (
+                p.ruta_asignada
+                and p.turnos_bloqueado >= 2
+                and not p.objetivos_pendientes
+                and p.id_wave_actual is not None
+                and any(
+                    q is not p and q.posicion_actual in p.ruta_asignada
+                    for q in pickers_activos
+                )
+            ):
+                aca = nodos.get(p.posicion_actual)
+                destino = nodos.get(p.ruta_asignada[-1])
+                if (
+                    aca is not None
+                    and destino is not None
+                    and set(aca.zonas_despacho_adyacentes)
+                    & set(destino.zonas_despacho_adyacentes)
+                ):
+                    p.ruta_asignada = []
+                    p.destino_despacho_actual = p.posicion_actual
+                    p.turnos_bloqueado = 0
+                    self.eventos_colision.append(
+                        f"[Turno {paso_actual}] {p.id_picker} descarga en {p.posicion_actual} "
+                        f"junto a la zona de despacho porque el paso estaba obstruido."
+                    )
+
+        # Si un picker libre obstruye a uno activo durante 2 turnos, se desplaza a una celda vecina libre.
+        for p in pickers_activos:
+            if not p.ruta_asignada or p.turnos_bloqueado < 2:
+                continue
+            proxima = next((c for c in p.ruta_asignada if c != p.posicion_actual), None)
+            libre = estacionados.get(proxima)
+            if libre is None:
+                continue
+            ocupadas = {q.posicion_actual for q in pickers} | {
+                q.ruta_asignada[0] for q in pickers_activos if q.ruta_asignada
+            }
+            for vecino in Pathfinding._obtener_vecinos(grafo, libre.posicion_actual, 0):
+                if vecino not in ocupadas and vecino not in estela_de:
+                    libre.ruta_asignada = [vecino]
+                    del estacionados[libre.posicion_actual]
+                    self.eventos_colision.append(
+                        f"[Turno {paso_actual}] {libre.id_picker} (libre) se corre a {vecino} "
+                        f"para dejar pasar a {p.id_picker}."
+                    )
+                    break
+            else:
+                faltan = [c for c in p.ruta_asignada if c != p.posicion_actual]
+                aca = nodos.get(p.posicion_actual)
+                destino = nodos.get(proxima)
+                if (
+                    faltan == [proxima]
+                    and aca is not None
+                    and destino is not None
+                    and set(aca.zonas_despacho_adyacentes)
+                    & set(destino.zonas_despacho_adyacentes)
+                ):
+                    p.ruta_asignada = []
+                    p.destino_despacho_actual = p.posicion_actual
+                    p.turnos_bloqueado = 0
+                    self.eventos_colision.append(
+                        f"[Turno {paso_actual}] {p.id_picker} descarga en {p.posicion_actual} porque "
+                        f"{libre.id_picker} está estacionado en {proxima}."
+                    )
+
+        pickers_activos = [
+            p for p in pickers if p.id_wave_actual is not None or p.ruta_asignada
+        ]
+        ids_en_marcha = {id(p) for p in pickers_activos}
+
+        # Orden de prioridad: primero el que lleva más turnos esperando, luego el que está más cerca de terminar.
         pickers_ordenados = sorted(
             pickers_activos,
             key=lambda p: (-p.turnos_bloqueado, len(p.ruta_asignada), p.id_picker),
         )
 
-        ocupadas_actuales = {p.posicion_actual for p in pickers_activos}
+        ocupadas_actuales = {p.posicion_actual for p in pickers_activos} | set(
+            estacionados
+        )
+        ocupadas_actuales |= set(estela_de)
 
-        # Pasada 1: Resolver conflictos entre pares usando resolver_conflicto
+        # Primera pasada: resolución de cruces y colisiones entre pares
         for i in range(len(pickers_ordenados)):
             for j in range(i + 1, len(pickers_ordenados)):
                 p_prio = pickers_ordenados[i]
@@ -202,8 +274,9 @@ class TurnAndCollisionManager:
                         p_prio, p_ced, grafo, paso_actual, ocupadas_actuales
                     )
 
-        # Pasada 2 (Punto Fijo anti-Efecto Dominó):
-        # Si un picker frenó en su celda actual, ningún otro picker puede entrar a esa celda en este turno
+        por_id = {p.id_picker: p for p in pickers}
+
+        # Segunda pasada: si un picker frena, los que vienen detrás también esperan su turno
         cambio = True
         iteraciones = 0
         while cambio and iteraciones < len(pickers_ordenados) + 2:
@@ -211,13 +284,20 @@ class TurnAndCollisionManager:
             iteraciones += 1
             celdas_reservadas_turno: Dict[CoordXY, Picker] = {}
 
-            # Primero fijar a los que están quietos (sin ruta o esperando en su lugar)
             for p in pickers_ordenados:
                 sig = p.ruta_asignada[0] if p.ruta_asignada else p.posicion_actual
                 if sig == p.posicion_actual:
                     celdas_reservadas_turno[sig] = p
 
-            # Luego validar a los que intentan avanzar
+            for p in pickers_ordenados:
+                if p.posicion_actual not in celdas_reservadas_turno:
+                    celdas_reservadas_turno[p.posicion_actual] = p
+            for celda, p in estacionados.items():
+                celdas_reservadas_turno.setdefault(celda, p)
+            for celda, pid in estela_de.items():
+                if celda not in celdas_reservadas_turno and pid in por_id:
+                    celdas_reservadas_turno[celda] = por_id[pid]
+
             for p in pickers_ordenados:
                 if not p.ruta_asignada:
                     continue
@@ -226,8 +306,14 @@ class TurnAndCollisionManager:
                     continue
 
                 ocupante = celdas_reservadas_turno.get(sig)
-                if ocupante is not None and ocupante != p:
-                    # La celda está ocupada por alguien con mayor prioridad o que frenó adelante
+                if (
+                    ocupante is not None
+                    and ocupante is not p
+                    and id(ocupante) not in ids_en_marcha
+                    and p.turnos_bloqueado >= self.turnos_para_ceder
+                ):
+                    celdas_reservadas_turno[sig] = p
+                elif ocupante is not None and ocupante is not p:
                     p.ruta_asignada.insert(0, p.posicion_actual)
                     celdas_reservadas_turno[p.posicion_actual] = p
                     self.total_esperas_aplicadas += 1
@@ -235,7 +321,35 @@ class TurnAndCollisionManager:
                 else:
                     celdas_reservadas_turno[sig] = p
 
-        # Registrar reservas definitivas del turno t + 1
+        # Tercera pasada: si un picker sigue trabado tras varios turnos, cede el lugar hacia una celda vecina libre
+        reservadas = {
+            (p.ruta_asignada[0] if p.ruta_asignada else p.posicion_actual)
+            for p in pickers_ordenados
+        }
+        for p in pickers_ordenados:
+            if (
+                not p.ruta_asignada
+                or p.ruta_asignada[0] != p.posicion_actual
+                or p.turnos_bloqueado < self.turnos_para_ceder
+            ):
+                continue
+            mejor: Optional[List[CoordXY]] = None
+            for vecino in Pathfinding._obtener_vecinos(grafo, p.posicion_actual, 0):
+                if vecino in reservadas or vecino in ocupadas_actuales:
+                    continue
+                ruta = Pathfinding.desviar_por(p, vecino, grafo)
+                if ruta and (mejor is None or len(ruta) < len(mejor)):
+                    mejor = ruta
+            if mejor is not None:
+                reservadas.discard(p.posicion_actual)
+                reservadas.add(mejor[0])
+                p.ruta_asignada = mejor
+                self.total_desvios_recalculados += 1
+                self.eventos_colision.append(
+                    f"[Turno {paso_actual}] {p.id_picker} cede el paso hacia {mejor[0]} "
+                    f"tras {p.turnos_bloqueado} turnos detenido."
+                )
+
         for p in pickers_ordenados:
             sig = p.ruta_asignada[0] if p.ruta_asignada else p.posicion_actual
             self.reservas_celdas[(sig[0], sig[1], paso_actual + 1)] = p.id_picker
@@ -248,44 +362,47 @@ class TurnAndCollisionManager:
         gestor_waves: Any = None,
         catalogo: Any = None,
     ) -> int:
-        """
-        Ejecuta 1 tick completo de la simulación paso a paso:
-        1. Activa la siguiente Wave de la cola para los Pickers que estén en Despacho con 0 kg.
-        2. Valida colisiones y cruces simultáneos.
-        3. Mueve cada Picker 1 celda a lo largo de su ruta_asignada.
-        4. Al terminar su recorrido en la Zona de Despacho, descarga el peso a 0 kg y cierra su tarea.
-        Retorna la cantidad de Pickers que siguen en movimiento.
-        """
-        # 1. Asignar siguiente tarea de la cola a pickers libres (Prohibición de mezcla de Waves)
+        """Avanza un turno completo para todos los pickers y devuelve cuántos siguen activos."""
         for p in pickers:
             if p.id_wave_actual is None and p.cola_waves_asignadas:
                 p.iniciar_siguiente_tarea_en_cola()
 
-        # 2. Resolver colisiones antes de dar el paso
         self.validar_movimiento_simultaneo(pickers, paso_actual, grafo)
 
         pickers_en_movimiento = 0
 
-        # 3. Efectuar el movimiento físico de 1 celda
         for p in pickers:
             if not p.ruta_asignada:
                 if p.id_wave_actual is not None:
-                    # Llegó al final de su ruta en la Zona de Despacho -> Descarga a 0 kg
-                    wave_terminada = p.id_wave_actual
-                    p.peso_actual_kg = 0.0
-                    p.id_wave_actual = None
-                    if gestor_waves is not None:
-                        gestor_waves.notificar_picker_descargo_en_despacho(
-                            wave_terminada, p.id_picker, pickers, catalogo
-                        )
+                    pickers_en_movimiento += 1
+                    p.turnos_descargando += 1
+                    if p.turnos_descargando >= self.turnos_descarga:
+                        p.turnos_descargando = 0
+                        wave_terminada = p.id_wave_actual
+                        p.peso_actual_kg = 0.0
+                        p.id_wave_actual = None
+                        if gestor_waves is not None:
+                            gestor_waves.notificar_picker_descargo_en_despacho(
+                                wave_terminada, p.id_picker, pickers, catalogo
+                            )
                 continue
 
             pickers_en_movimiento += 1
             siguiente_celda = p.ruta_asignada.pop(0)
 
             if siguiente_celda == p.posicion_actual:
-                p.turnos_bloqueado += 1
+                if p.turnos_busqueda > 0:
+                    p.turnos_busqueda -= 1
+                elif p.turnos_pausa > 0:
+                    p.turnos_pausa -= 1
+                else:
+                    p.turnos_bloqueado += 1
             else:
+                if self.turnos_estela and p.id_wave_actual is not None:
+                    self.estela[p.posicion_actual] = (
+                        p.id_picker,
+                        paso_actual + 1 + self.turnos_estela,
+                    )
                 p.posicion_actual = siguiente_celda
                 p.turnos_bloqueado = 0
                 if (
@@ -293,11 +410,19 @@ class TurnAndCollisionManager:
                     and p.posicion_actual in p.objetivos_pendientes
                 ):
                     p.objetivos_pendientes.remove(p.posicion_actual)
+                    if self.turnos_recogida:
+                        p.ruta_asignada[0:0] = [
+                            p.posicion_actual
+                        ] * self.turnos_recogida
+                        p.turnos_pausa = self.turnos_recogida
 
             p.historial_recorrido.append(p.posicion_actual)
 
-            # Si acaba de consumir su último paso y llegó a la Zona de Despacho, descarga en este turno
-            if not p.ruta_asignada and p.id_wave_actual is not None:
+            if (
+                self.turnos_descarga == 0
+                and not p.ruta_asignada
+                and p.id_wave_actual is not None
+            ):
                 wave_terminada = p.id_wave_actual
                 p.peso_actual_kg = 0.0
                 p.id_wave_actual = None

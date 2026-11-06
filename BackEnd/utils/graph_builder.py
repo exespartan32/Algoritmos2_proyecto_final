@@ -1,27 +1,29 @@
-from typing import Dict, Any, List, Tuple, Optional
+from typing import Any, Dict, List, Optional, Tuple
+
+from BackEnd.data_structures.digrafo import Coord
 from BackEnd.enums.enums import (
-    TipoCelda,
-    SentidoCirculacion as Sentido,
     EstadoPedido,
+    SentidoCirculacion as Sentido,
+    TipoCelda,
 )
 from BackEnd.models.entities import (
     Celda,
     CeldaRack,
+    DetallePedido,
+    Pedido,
+    Picker,
+    Producto,
+    Puerta,
     Rack,
     ZonaDespacho,
-    Puerta,
-    Product,
-    Pedido,
-    DetallePedido,
-    Picker,
 )
-from BackEnd.models.warehouse import Warehouse, Coord
+from BackEnd.models.warehouse import Warehouse
 
 DIRECCIONES_ORTOGONALES: List[Tuple[int, int]] = [(0, 1), (0, -1), (1, 0), (-1, 0)]
 
 
 class GraphBuilder:
-    """Construye el dígrafo de pasillos y carga productos, pedidos y pickers en Warehouse."""
+    """Construye el dígrafo de pasillos, valida la conectividad con Kosaraju y puebla el Warehouse."""
 
     @staticmethod
     def construir_warehouse_desde_dict(data: Dict[str, Any]) -> Warehouse:
@@ -35,7 +37,7 @@ class GraphBuilder:
         ocupado_por: Dict[Coord, str] = {}
         pasillos_declarados: Dict[Coord, Tuple[Sentido, str]] = {}
 
-        def ocupar(x: int, y: int, elem_id: str):
+        def ocupar(x: int, y: int, elem_id: str) -> None:
             if not wh.dentro(x, y):
                 raise ValueError(
                     f"El elemento {elem_id} ocupa la celda ({x},{y}), fuera del almacén ({ancho_x}x{largo_y})."
@@ -45,11 +47,11 @@ class GraphBuilder:
                 advertencias.append(f"{elem_id} pisa a {anterior} en ({x},{y}).")
             ocupado_por[(x, y)] = elem_id
 
-        def ocupar_obstaculo(x: int, y: int, celda: Celda, elem_id: str):
+        def ocupar_obstaculo(x: int, y: int, celda: Celda, elem_id: str) -> None:
             ocupar(x, y, elem_id)
             wh.obstaculos[(x, y)] = celda
 
-        # 1. Pasillos declarados (En cruces con AMBOS prevalece AMBOS para permitir giro)
+        # 1. Pasillos declarados (en los cruces con AMBOS prevalece AMBOS para habilitar el giro)
         validos = [s.value for s in Sentido]
         for pas in wh_data.get("pasillos", []):
             try:
@@ -105,7 +107,7 @@ class GraphBuilder:
                     ocupar_obstaculo(x, y, CeldaRack(x, y, r["id"]), r["id"])
             wh.racks[r["id"]] = Rack(r["id"], rx, ry, ancho_r, alto_r)
 
-        # 5. Productos -> wh.catalogo_productos (O(1))
+        # 5. Catálogo de productos
         for prod in data.get("productos", []):
             ub = prod["ubicacion"]
             px, py, pz = int(ub["x"]), int(ub["y"]), int(ub.get("z", 1))
@@ -113,7 +115,7 @@ class GraphBuilder:
                 raise ValueError(
                     f"El producto {prod['id']} está en ({px},{py}), fuera del almacén."
                 )
-            prod_obj = Product(
+            prod_obj = Producto(
                 id_producto=prod["id"],
                 nombre=prod["nombre"],
                 rack_id=prod["rack_id"],
@@ -128,7 +130,7 @@ class GraphBuilder:
             if isinstance(celda, CeldaRack):
                 celda.apilar_producto(pz, prod_obj)
 
-        # 6. Construir Dígrafo de pasillos y validar con Kosaraju
+        # 6. Construcción del dígrafo y verificación de conectividad (Kosaraju)
         GraphBuilder._construir_digrafo(wh, pasillos_declarados)
 
         posiciones_pickers = [
@@ -138,7 +140,7 @@ class GraphBuilder:
         advertencias.extend(GraphBuilder.validar_grafo(wh, posiciones_pickers))
         wh.advertencias = advertencias
 
-        # 7. Cargar Configuración, Pedidos (O(1)) y Pickers en el mismo Warehouse
+        # 7. Configuración, pedidos y pickers
         config = data.get("configuracion", {})
         wh.wave_max_pedidos = int(config.get("wave_max_pedidos", 3))
         wh.wave_max_productos = int(config.get("wave_max_productos", 15))
@@ -264,6 +266,7 @@ class GraphBuilder:
 
     @staticmethod
     def componentes_fuertemente_conexas(wh: Warehouse) -> List[List[Coord]]:
+        """Algoritmo de Kosaraju iterativo en O(V + E)."""
         grafo = wh.grafo_pasillos
         adyacencia = grafo.lista_adyacencia
 
@@ -314,6 +317,7 @@ class GraphBuilder:
 
     @staticmethod
     def validar_grafo(wh: Warehouse, posiciones_pickers=None) -> List[str]:
+        """Comprueba que todos los accesos y pickers estén en la componente conexa principal."""
         advertencias: List[str] = []
         componentes = GraphBuilder.componentes_fuertemente_conexas(wh)
         principal = set(componentes[0]) if componentes else set()
@@ -325,7 +329,42 @@ class GraphBuilder:
 
         if len(componentes) > 1:
             fuera = [c for comp in componentes[1:] for c in comp]
+            xs = [c[0] for c in fuera]
+            ys = [c[1] for c in fuera]
             advertencias.append(
-                f"Hay {len(componentes)} componentes fuertemente conexas ({len(fuera)} celdas fuera de la red principal)."
+                f"Hay {len(componentes)} componentes fuertemente conexas: "
+                f"{len(fuera)} celdas de pasillo quedan aisladas de la red principal "
+                f"(x={min(xs)}..{max(xs)}, y={min(ys)}..{max(ys)})."
             )
+
+        for prod in wh.catalogo_productos.values():
+            accesos = wh.accesos_rack_a_pasillo.get((prod.x, prod.y), [])
+            if not accesos:
+                advertencias.append(
+                    f"El producto {prod.id} en ({prod.x},{prod.y}) no tiene pasillo de acceso."
+                )
+            elif not any(a in principal for a in accesos):
+                advertencias.append(
+                    f"El producto {prod.id} no tiene acceso en la red principal."
+                )
+
+        for zona_id in wh.zonas_despacho:
+            accesos = wh.accesos_zona_a_pasillo.get(zona_id, [])
+            if not accesos:
+                advertencias.append(f"La zona {zona_id} no tiene pasillos adyacentes.")
+            elif not any(a in principal for a in accesos):
+                advertencias.append(
+                    f"La zona {zona_id} no tiene pasillo en la red principal."
+                )
+
+        for picker_id, pos in posiciones_pickers or []:
+            pos = tuple(pos)
+            if pos not in wh.grafo_pasillos.nodos:
+                advertencias.append(
+                    f"Picker {picker_id} arranca en {pos}, que no es pasillo."
+                )
+            elif pos not in principal:
+                advertencias.append(
+                    f"Picker {picker_id} arranca fuera de la red principal."
+                )
         return advertencias
