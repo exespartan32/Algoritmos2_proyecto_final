@@ -11,6 +11,7 @@ from BackEnd.models.entities import (
     Pedido,
     Picker,
 )
+from BackEnd.data_structures.tabla_hash import TablaHashUniversal
 
 Coord = Tuple[int, int]
 
@@ -30,11 +31,18 @@ class NodoGrafo:
 
 
 class Digrafo:
-    """Grafo dirigido representado mediante Lista de Adyacencia con soporte de bloqueos temporales."""
+    """Grafo dirigido representado mediante Lista de Adyacencia con soporte de bloqueos temporales.
+
+    nodos y lista_adyacencia son tablas hash propias (hashing universal +
+    encadenamiento, ver data_structures/tabla_hash.py), indexadas por la
+    coordenada (x, y) de cada celda de pasillo.
+    """
 
     def __init__(self):
-        self.nodos: Dict[Coord, NodoGrafo] = {}
-        self.lista_adyacencia: Dict[Coord, List[Coord]] = {}
+        # (x, y) -> NodoGrafo
+        self.nodos: TablaHashUniversal = TablaHashUniversal()
+        # (x, y) -> [celdas a las que se puede ir en un paso]
+        self.lista_adyacencia: TablaHashUniversal = TablaHashUniversal()
         self.bloqueos_temporales: Dict[Tuple[int, int, int], str] = {}
         self.nodos_evasion_actual: Set[Coord] = set()
 
@@ -98,7 +106,8 @@ class Warehouse:
         self.ancho_x = ancho_x
         self.largo_y = largo_y
         self.grafo_pasillos = Digrafo()
-        self.obstaculos: Dict[Coord, Celda] = {}
+        # (x, y) -> Celda de rack, zona o puerta (tabla hash propia)
+        self.obstaculos: TablaHashUniversal = TablaHashUniversal()
 
         self.racks: Dict[str, Rack] = {}
         self.zonas_despacho: Dict[str, ZonaDespacho] = {}

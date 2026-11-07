@@ -5,6 +5,11 @@ from typing import List, Tuple, Set, Dict, Optional, Any
 CoordXY = Tuple[int, int]
 
 
+def _es_tabla(obj) -> bool:
+    """Un dict o la tabla hash propia del dígrafo: algo con get e 'in'."""
+    return hasattr(obj, "get") and hasattr(obj, "__contains__")
+
+
 class RutaResultado:
     def __init__(
         self,
@@ -77,11 +82,9 @@ class Pathfinding:
     def _es_celda_pasillo_en_grafo(coord: CoordXY, grafo: Any) -> bool:
         if grafo is None:
             return False
-        if hasattr(grafo, "nodos") and isinstance(grafo.nodos, dict):
+        if hasattr(grafo, "nodos") and _es_tabla(grafo.nodos):
             return coord in grafo.nodos
-        if hasattr(grafo, "lista_adyacencia") and isinstance(
-            grafo.lista_adyacencia, dict
-        ):
+        if hasattr(grafo, "lista_adyacencia") and _es_tabla(grafo.lista_adyacencia):
             return coord in grafo.lista_adyacencia
         return False
 
@@ -268,9 +271,7 @@ class Pathfinding:
                 return grafo.obtener_vecinos_validos(
                     nodo_actual, paso_tiempo=paso_tiempo
                 )
-        if hasattr(grafo, "lista_adyacencia") and isinstance(
-            grafo.lista_adyacencia, dict
-        ):
+        if hasattr(grafo, "lista_adyacencia") and _es_tabla(grafo.lista_adyacencia):
             return grafo.lista_adyacencia.get(nodo_actual, [])
         return []
 

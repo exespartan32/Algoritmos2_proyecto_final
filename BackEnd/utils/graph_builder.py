@@ -16,6 +16,7 @@ from BackEnd.models.entities import (
     Picker,
 )
 from BackEnd.models.warehouse import Warehouse, Coord
+from BackEnd.data_structures.tabla_hash import TablaHashUniversal
 
 DIRECCIONES_ORTOGONALES: List[Tuple[int, int]] = [(0, 1), (0, -1), (1, 0), (-1, 0)]
 
@@ -287,7 +288,9 @@ class GraphBuilder:
                     pila.pop()
                     orden_fin.append(nodo)
 
-        transpuesto: Dict[Coord, List[Coord]] = {c: [] for c in grafo.nodos}
+        transpuesto = TablaHashUniversal()  # (x, y) -> lista de predecesores
+        for c in grafo.nodos:
+            transpuesto[c] = []
         for origen, destinos in adyacencia.items():
             for destino in destinos:
                 transpuesto[destino].append(origen)

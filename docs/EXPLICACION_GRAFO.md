@@ -47,7 +47,9 @@ Para el código que antes leía `matriz[x][y]` (por ejemplo, la interfaz), `Ware
 - Una matriz de adyacencia ocuparía **N²**. En el escenario grande (N = 1898) son unas 3,6 millones de celdas, casi todas en 0, cuando las aristas reales son 6048.
 - La lista de adyacencia ocupa **O(N + E) = O(N)**. Recorrer los vecinos de un nodo cuesta O(grado) ≤ 4, que es la operación central de cualquier recorrido (BFS, Dijkstra). Con una matriz habría que barrer toda una fila: O(N).
 
-### 2.3 ¿Por qué un `dict` indexado por coordenadas?
+### 2.3 ¿Por qué una tabla hash indexada por coordenadas?
+
+`nodos`, `lista_adyacencia` y `obstaculos` son tablas hash propias (`TablaHashUniversal`, en `BackEnd/data_structures/tabla_hash.py`): la coordenada se convierte en k = x · 1 000 003 + y, se aplica hashing universal h(k) = ((a·k + b) mod p) mod m y las colisiones se resuelven por encadenamiento, con rehashing cuando α = n/m pasa de 0,75.
 
 - La identidad natural de un nodo es su posición `(x, y)`. Productos, pickers y racks vienen del JSON con coordenadas, así que el nodo se encuentra **directo** con `nodos[(x, y)]`, en O(1) promedio, sin una tabla de traducción coordenada→índice.
 - Como no todas las celdas son nodos, un arreglo tendría huecos. El diccionario guarda **solo** los pasillos, y `obstaculos` guarda **solo** los obstáculos.

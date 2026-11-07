@@ -45,9 +45,9 @@ Documentos relacionados:
 
 | Elemento | Representación | Motivo |
 |---|---|---|
-| Celda de pasillo | Nodo `(x, y)` en `Digrafo.nodos` (dict) | La posición es la identidad natural: se llega al nodo en O(1) desde el JSON. |
+| Celda de pasillo | Nodo `(x, y)` en `Digrafo.nodos` (tabla hash propia) | La posición es la identidad natural: se llega al nodo en O(1) desde el JSON. |
 | Paso permitido | Arista dirigida de costo 1 en `lista_adyacencia` | Los pasillos tienen sentido: un grafo no dirigido no puede representarlo. |
-| Rack, zona, puerta | Obstáculo en `Warehouse.obstaculos` (dict) | El picker no los atraviesa; se recogen desde el pasillo de al lado. |
+| Rack, zona, puerta | Obstáculo en `Warehouse.obstaculos` (tabla hash propia) | El picker no los atraviesa; se recogen desde el pasillo de al lado. |
 | Producto en altura | `CeldaRack.productos_en_z` (dict por nivel z) | Cada posición `<x,y,z>` guarda un solo producto. |
 | Dónde frenar por un producto | `acceso_rack_a_pasillo[(x,y)]` | Se calcula una vez al construir; consultarlo es O(1). |
 | Productos y pedidos | `catalogo_productos`, `pedidos` (dict por id) | Búsqueda y actualización de estado y stock en O(1). |
@@ -57,6 +57,22 @@ cada celda tiene a lo sumo 4 vecinos, así que E ≤ 4N. Ocupa O(N + E) en vez d
 O(N²), y obtener los vecinos de un nodo, que es la operación central de
 Dijkstra, cuesta O(1). En el escenario grande hay N = 1898 nodos y E = 6048
 aristas. Una matriz tendría 3,6 millones de celdas.
+
+**Tabla hash propia.** `Digrafo.nodos`, `Digrafo.lista_adyacencia` y
+`Warehouse.obstaculos` usan `TablaHashUniversal`
+(`BackEnd/data_structures/tabla_hash.py`), implementada por nosotros:
+
+- La coordenada se pasa a un entero único: k = x · 1 000 003 + y.
+- Se aplica hashing universal: h(k) = ((a·k + b) mod p) mod m, con
+  p = 2⁶¹ − 1 (primo de Mersenne), a y b elegidos al azar una vez con
+  semilla fija (determinista) y m primo.
+- Las colisiones se resuelven por **encadenamiento**: cada casilla guarda
+  una lista enlazada.
+- Cuando el factor de carga α = n/m pasa de 0,75, la tabla crece al primo
+  siguiente a 2m y se reinsertan las claves (rehashing).
+- Buscar, insertar y borrar cuestan O(1 + α) = O(1) en promedio; el peor
+  caso es O(n). En el escenario grande quedan 1898 nodos en 2729 casillas
+  (α = 0,70) y la cadena más larga tiene 2 elementos.
 
 ---
 
