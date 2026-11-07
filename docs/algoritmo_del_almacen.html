@@ -1,0 +1,738 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Algoritmo del almacén</title>
+<style>
+  :root {
+    --bg: #0d1117;
+    --panel: #151b23;
+    --panel2: #1b222c;
+    --line: #2b3440;
+    --ink: #e6edf3;
+    --soft: #9aa7b4;
+    --blue: #58a6ff;
+    --green: #3fb950;
+    --orange: #f0883e;
+    --purple: #bc8cff;
+    --red: #ff7b8a;
+    --code: #ffa657;
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 17px/1.6 "Segoe UI", system-ui, -apple-system, Arial, sans-serif; }
+  .layout { display: grid; grid-template-columns: 270px minmax(0, 1fr); max-width: 1320px; margin: 0 auto; }
+  nav { position: sticky; top: 0; align-self: start; height: 100vh; overflow-y: auto; padding: 28px 20px; border-right: 1px solid var(--line); }
+  nav .marca { font-size: 13px; letter-spacing: .12em; text-transform: uppercase; color: var(--blue); font-weight: 700; }
+  nav h2 { margin: 6px 0 18px; font-size: 20px; line-height: 1.25; }
+  nav ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; counter-reset: s; }
+  nav li { counter-increment: s; }
+  nav a { display: flex; gap: 10px; padding: 7px 10px; border-radius: 8px; color: var(--soft); text-decoration: none; font-size: 15px; line-height: 1.3; }
+  nav a::before { content: counter(s); color: var(--blue); font-weight: 700; min-width: 16px; }
+  nav a:hover, nav a:focus-visible { background: var(--panel2); color: var(--ink); outline: none; }
+  main { padding: 36px 48px 80px; min-width: 0; }
+  header.portada { border: 1px solid var(--line); background: linear-gradient(180deg, var(--panel2), var(--panel)); border-radius: 16px; padding: 28px 30px; margin-bottom: 34px; }
+  header.portada .eyebrow { color: var(--blue); font-size: 13px; letter-spacing: .12em; text-transform: uppercase; font-weight: 700; }
+  header.portada h1 { margin: 6px 0 10px; font-size: 40px; line-height: 1.1; }
+  header.portada p { margin: 0; color: var(--soft); max-width: 70ch; }
+  .cifras { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 20px; }
+  .cifra { background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 10px 16px; }
+  .cifra b { display: block; font-size: 26px; color: var(--green); font-variant-numeric: tabular-nums; }
+  .cifra span { font-size: 14px; color: var(--soft); }
+  section { margin: 0 0 46px; scroll-margin-top: 20px; }
+  h2.sec { font-size: 28px; margin: 0 0 14px; display: flex; gap: 12px; align-items: baseline; }
+  h2.sec .num { color: var(--bg); background: var(--blue); border-radius: 8px; font-size: 18px; padding: 2px 10px; }
+  h3 { font-size: 20px; margin: 26px 0 8px; color: var(--blue); }
+  p, li { max-width: 78ch; }
+  strong, b { color: #ffffff; }
+  code { font-family: Consolas, "Cascadia Mono", ui-monospace, monospace; font-size: 15px; color: var(--code); background: var(--panel2); border-radius: 5px; padding: 1px 5px; }
+  pre { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 18px; overflow-x: auto; font: 15px/1.55 Consolas, "Cascadia Mono", ui-monospace, monospace; color: var(--ink); }
+  pre .c { color: var(--soft); }
+  pre .k { color: var(--purple); }
+  .tabla { overflow-x: auto; margin: 12px 0 6px; }
+  table { border-collapse: collapse; width: 100%; font-size: 15.5px; }
+  th, td { border: 1px solid var(--line); padding: 8px 12px; text-align: left; vertical-align: top; }
+  th { background: var(--panel2); color: #fff; }
+  td { background: var(--panel); }
+  .nota { border-left: 4px solid var(--orange); background: #2a1a0c; padding: 10px 16px; border-radius: 0 10px 10px 0; margin: 14px 0; max-width: 78ch; }
+  .clave { border-left: 4px solid var(--green); background: #0e2416; padding: 10px 16px; border-radius: 0 10px 10px 0; margin: 14px 0; max-width: 78ch; }
+  .ok { color: var(--green); font-weight: 700; }
+  .no { color: var(--red); font-weight: 700; }
+  .figura { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px; margin: 14px 0; max-width: 760px; }
+  .figura svg { display: block; width: 100%; height: auto; }
+  .figura .pie { color: var(--soft); font-size: 14px; margin-top: 8px; }
+  .preguntas { display: grid; gap: 12px; }
+  details { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px 16px; max-width: 78ch; }
+  summary { cursor: pointer; font-weight: 700; color: #fff; }
+  details p { margin: 8px 0 2px; color: var(--ink); }
+  .mapa-caja { background: #0d1117; border: 1px solid var(--line); border-radius: 12px; overflow: auto; max-height: 85vh; }
+  .mapa-caja svg { display: block; width: 100%; height: auto; }
+  .mapa-caja.real svg { width: 2854px; max-width: none; }
+  .barra { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 10px 0; }
+  button { font: inherit; font-size: 15px; font-weight: 700; cursor: pointer; color: var(--bg); background: var(--blue); border: 0; border-radius: 8px; padding: 8px 14px; }
+  button:focus-visible { outline: 3px solid #fff; outline-offset: 2px; }
+  .leyenda-mapa { display: flex; flex-wrap: wrap; gap: 8px 16px; font-size: 14.5px; color: var(--soft); }
+  .leyenda-mapa span::before { content: ""; display: inline-block; width: 14px; height: 14px; border-radius: 4px; margin-right: 6px; vertical-align: -2px; border: 2px solid var(--c); background: var(--f); }
+  .criollo { border: 1px solid #3d4652; background: #11161d; border-radius: 12px; padding: 14px 18px; margin: 14px 0; max-width: 78ch; }
+  .criollo b.t { display: block; color: var(--orange); margin-bottom: 4px; }
+  .pasos-json { counter-reset: pj; list-style: none; padding: 0; display: grid; gap: 10px; max-width: 80ch; }
+  .pasos-json li { counter-increment: pj; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px 14px 10px 52px; position: relative; }
+  .pasos-json li::before { content: counter(pj); position: absolute; left: 14px; top: 10px; width: 26px; height: 26px; border-radius: 50%; background: var(--orange); color: var(--bg); font-weight: 800; display: grid; place-items: center; font-size: 14px; }
+  @media (max-width: 900px) {
+    .layout { grid-template-columns: 1fr; }
+    nav { position: static; height: auto; border-right: 0; border-bottom: 1px solid var(--line); }
+    main { padding: 24px 16px 60px; }
+    header.portada h1 { font-size: 30px; }
+  }
+@media (max-width:700px){p code,li code,td code{word-break:break-all}table{display:block;overflow-x:auto;max-width:100%}}
+
+  .ficha { display: grid; gap: 8px; margin-top: 18px; }
+  .ficha div { background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 8px 14px; }
+  .ficha span { display: inline-block; min-width: 110px; color: var(--blue); font-weight: 700; }
+  .glosario { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 10px; }
+  .glosario div { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px 14px; font-size: 15.5px; }
+  .glosario b { display: block; color: var(--blue); margin-bottom: 2px; }
+  .adv { color: var(--orange); font-weight: 700; }
+  .quien { color: var(--soft); }
+  .pasos { padding-left: 24px; max-width: 80ch; }
+  .pasos > li { margin: 6px 0; }
+  .pasos ul { margin: 4px 0; }
+  .sub { border: 1px dashed var(--purple); background: #1a1424; border-radius: 10px; padding: 10px 16px; margin: 14px 0; max-width: 78ch; }
+  .sub > b { color: var(--purple); }
+  .sub ol { margin: 6px 0 2px; }
+  .linea { list-style: none; padding: 0; margin: 0; border-left: 3px solid var(--blue); max-width: 78ch; }
+  .linea li { position: relative; padding: 6px 0 6px 22px; }
+  .linea li::before { content: ""; position: absolute; left: -8px; top: 14px; width: 13px; height: 13px; border-radius: 50%; background: var(--bg); border: 3px solid var(--blue); }
+  td.h { color: var(--purple); font-weight: 700; }
+  table.chica td { font-family: Consolas, ui-monospace, monospace; font-size: 14.5px; }
+  .figura text.eje { fill: #9aa7b4; font-size: 12px; text-anchor: middle; font-family: Consolas, monospace; }
+  .figura text.ey { text-anchor: end; }
+  .figura text.lab { font-size: 10.5px; font-weight: 700; text-anchor: middle; font-family: "Segoe UI", sans-serif; }
+  .figura text.sym { fill: #e6edf3; font-size: 17px; text-anchor: middle; font-weight: 700; font-family: "Segoe UI", sans-serif; }
+  .figura text.mini { fill: #e6edf3; font-size: 8.5px; text-anchor: middle; font-family: Consolas, monospace; }
+  .cifras { margin-top: 14px; }
+  .ficha div { min-width: 0; overflow-wrap: anywhere; }
+  @media (max-width:700px){ .ficha code { word-break: break-all; } main { overflow-x: clip; } }
+</style>
+</head>
+<body>
+<div class="layout">
+  <nav aria-label="Pasos">
+    <div class="marca">Algoritmos II · Parte 1</div>
+    <h2>El algoritmo completo</h2>
+    <ol>
+      <li><a href="#vocab">Palabras que vamos a usar</a></li>
+      <li><a href="#ejemplo">El ejemplo que seguimos</a></li>
+      <li><a href="#vista">Vista general: los 13 pasos</a></li>
+      <li><a href="#p0">Paso 0 · Revisar el JSON</a></li>
+      <li><a href="#p1">Paso 1 · Preparar el almacén vacío</a></li>
+      <li><a href="#p2">Paso 2 · Anotar los pasillos</a></li>
+      <li><a href="#p3">Paso 3 · Puertas</a></li>
+      <li><a href="#p4">Paso 4 · Zonas de despacho</a></li>
+      <li><a href="#p5">Paso 5 · Racks</a></li>
+      <li><a href="#p6">Paso 6 · Productos</a></li>
+      <li><a href="#p7">Paso 7 · Crear los nodos</a></li>
+      <li><a href="#p8">Paso 8 · Accesos a racks y zonas</a></li>
+      <li><a href="#p9">Paso 9 · Crear las aristas</a></li>
+      <li><a href="#p10">Paso 10 · Kosaraju</a></li>
+      <li><a href="#p11">Paso 11 · Validar</a></li>
+      <li><a href="#p12">Paso 12 · Pedidos, pickers y config</a></li>
+      <li><a href="#p13">Paso 13 · Devolver el almacén</a></li>
+      <li><a href="#hash">Sub-algoritmo: la tabla hash</a></li>
+      <li><a href="#costos">Cuánto cuesta todo</a></li>
+      <li><a href="#repaso">Repaso para el oral</a></li>
+    </ol>
+  </nav>
+
+  <main>
+    <header class="portada">
+      <div class="eyebrow">Wave Picking · modelo del almacén</div>
+      <h1>CONSTRUIR_ALMACÉN, paso por paso</h1>
+      <p>Todo el modelo del almacén contado como <strong>un solo procedimiento</strong>: qué recibe, qué hace en cada paso, con qué estructura lo hace y qué deja armado. Sin código: pasos. Lo seguimos con un almacén chiquito de 6 × 5 que corrí con el código real, así cada número de esta página es lo que de verdad da el programa.</p>
+      <div class="ficha">
+        <div><span>Entrada</span>el archivo JSON del escenario</div>
+        <div><span>Salida</span>un <code>Warehouse</code> con el dígrafo de pasillos armado y controlado, más una lista de advertencias</div>
+        <div><span>Herramienta</span>la tabla hash propia (hashing universal + encadenamiento), que se usa en casi todos los pasos</div>
+        <div><span>Dónde vive</span><code>GraphBuilder.construir_warehouse_desde_dict</code> en <code>graph_builder.py</code></div>
+      </div>
+    </header>
+
+    <!-- ===================================================== -->
+    <section id="vocab">
+      <h2 class="sec"><span class="num">A</span>Palabras que vamos a usar</h2>
+      <p>Antes de los pasos, el vocabulario. Si alguna de estas palabras no queda clara, el resto no se entiende, así que vale la pena leerlas una vez.</p>
+      <div class="glosario">
+        <div><b>Celda</b>Un cuadradito del piso del almacén. El almacén es una grilla de celdas.</div>
+        <div><b>Coordenada (x, y)</b>La dirección de una celda. <code>x</code> es la columna (crece hacia la derecha), <code>y</code> es la fila (crece <strong>hacia arriba</strong>). La celda de abajo a la izquierda es (0, 0).</div>
+        <div><b>Rectángulo</b>Casi todo en el JSON viene como «empieza en (x, y) y mide <code>ancho</code> × <code>alto</code>». Ocupa las columnas x … x+ancho−1 y las filas y … y+alto−1.</div>
+        <div><b>Obstáculo</b>Una celda que el picker <strong>no puede pisar</strong>: rack, zona de despacho o puerta.</div>
+        <div><b>Pasillo</b>Una celda que sí se puede pisar. Algunos pasillos tienen <strong>sentido</strong> (mano única).</div>
+        <div><b>Sentido</b>N (se avanza hacia arriba), S (hacia abajo), E (hacia la derecha), O (hacia la izquierda) o AMBOS (doble mano, para cualquier lado).</div>
+        <div><b>Contramano</b>Entrar a una celda moviéndote en contra de su sentido. Por ejemplo, entrar subiendo a una celda que es «S».</div>
+        <div><b>Nodo</b>Un punto del grafo. Acá: <strong>cada celda de pasillo es un nodo</strong>. Los obstáculos no son nodos.</div>
+        <div><b>Arista dirigida (flecha)</b>«Desde la celda A puedo ir a la celda B en un paso». Es dirigida porque puede existir A → B sin que exista B → A (por el sentido).</div>
+        <div><b>Dígrafo</b>Grafo dirigido: nodos + flechas.</div>
+        <div><b>Lista de adyacencia</b>Para cada nodo, la lista de nodos a los que llega con una flecha. Es la forma de guardar el dígrafo.</div>
+        <div><b>Tabla hash</b>Estructura que guarda pares clave → valor y encuentra un valor por su clave en O(1) promedio. La nuestra es propia (sección <a href="#hash">Tabla hash</a>).</div>
+        <div><b>Acceso</b>La celda de pasillo donde frena el picker para sacar algo de un rack o dejar algo en una zona.</div>
+        <div><b>Componente fuertemente conexa (CFC)</b>Un grupo de nodos donde desde cualquiera podés llegar a cualquier otro <strong>y volver</strong>.</div>
+        <div><b>Error vs. advertencia</b>Un <span class="no">error</span> corta todo: el almacén no se construye. Una <span class="adv">advertencia</span> es un aviso: el almacén se construye igual, pero algo es sospechoso.</div>
+      </div>
+    </section>
+
+    <!-- ===================================================== -->
+    <section id="ejemplo">
+      <h2 class="sec"><span class="num">B</span>El ejemplo que seguimos</h2>
+      <p>Un almacén de <strong>6 columnas × 5 filas</strong> (30 celdas). Este es el JSON, recortado a lo importante:</p>
+<pre>{
+  "warehouse": {
+    "dimensiones": { "ancho_x": 6, "largo_y": 5 },
+    "pasillos": [
+      { "id": "PAS_IZQ",    "ubicacion": {"x":1,"y":0}, "ancho":1, "alto":5, "sentido":"N" },
+      { "id": "PAS_DER",    "ubicacion": {"x":4,"y":0}, "ancho":1, "alto":5, "sentido":"S" },
+      { "id": "PAS_ABAJO",  "ubicacion": {"x":0,"y":0}, "ancho":6, "alto":1, "sentido":"AMBOS" },
+      { "id": "PAS_ARRIBA", "ubicacion": {"x":0,"y":4}, "ancho":6, "alto":1, "sentido":"AMBOS" }
+    ],
+    "racks":          [ { "id":"R1", "ubicacion":{"x":2,"y":1}, "ancho":2, "alto":3 } ],
+    "puertas":        [ { "id":"PUERTA_1", "tipo":"OUTBOUND", "ubicacion":{"x":5,"y":3} } ],
+    "zonas_despacho": [ { "id":"ZONA_A", "puerta_id":"PUERTA_1", "ubicacion":{"x":5,"y":1},
+                          "ancho":1, "alto":2, "peso_max_kg":300.0 } ]
+  },
+  "productos": [
+    { "id":"P1", "nombre":"Monitor", "rack_id":"R1", "ubicacion":{"x":2,"y":2,"z":1}, ... },
+    { "id":"P2", "nombre":"Teclado", "rack_id":"R1", "ubicacion":{"x":3,"y":1,"z":2}, ... }
+  ],
+  "pedidos":  [ { "id":"PED_1", "prioridad":3, "items":[ {"producto_id":"P1","cantidad":1}, ... ] } ],
+  "pickers":  [ { "id":"PK_1", "posicion_inicial":{"x":0,"y":0}, "capacidad_carga_kg":100.0 } ],
+  "configuracion": { "wave_max_pedidos":3, "wave_max_productos":15 }
+}</pre>
+      <p>Así queda el piso cuando el algoritmo termina de leerlo:</p>
+      <div class="figura"><svg viewBox="0 0 428 358" role="img" aria-label="Mapa del ejemplo de 6 por 5"><rect x="35" y="267" width="62" height="62" rx="6" fill="#10243d" stroke="#58a6ff" /><text x="66.0" y="304.0" class="sym">⇅⇄</text><rect x="35" y="203" width="62" height="62" rx="6" fill="#10243d" stroke="#2b3440" stroke-dasharray="4 3"/><text x="66.0" y="240.0" class="sym">·</text><rect x="35" y="139" width="62" height="62" rx="6" fill="#10243d" stroke="#2b3440" stroke-dasharray="4 3"/><text x="66.0" y="176.0" class="sym">·</text><rect x="35" y="75" width="62" height="62" rx="6" fill="#10243d" stroke="#2b3440" stroke-dasharray="4 3"/><text x="66.0" y="112.0" class="sym">·</text><rect x="35" y="11" width="62" height="62" rx="6" fill="#10243d" stroke="#58a6ff" /><text x="66.0" y="48.0" class="sym">⇅⇄</text><rect x="99" y="267" width="62" height="62" rx="6" fill="#10243d" stroke="#58a6ff" /><text x="130.0" y="304.0" class="sym">⇅⇄</text><rect x="99" y="203" width="62" height="62" rx="6" fill="#10243d" stroke="#58a6ff" /><text x="130.0" y="240.0" class="sym">↑ N</text><rect x="99" y="139" width="62" height="62" rx="6" fill="#10243d" stroke="#58a6ff" /><text x="130.0" y="176.0" class="sym">↑ N</text><rect x="99" y="75" width="62" height="62" rx="6" fill="#10243d" stroke="#58a6ff" /><text x="130.0" y="112.0" class="sym">↑ N</text><rect x="99" y="11" width="62" height="62" rx="6" fill="#10243d" stroke="#58a6ff" /><text x="130.0" y="48.0" class="sym">⇅⇄</text><rect x="163" y="267" width="62" height="62" rx="6" fill="#10243d" stroke="#58a6ff" /><text x="194.0" y="304.0" class="sym">⇅⇄</text><rect x="163" y="203" width="62" height="62" rx="6" fill="#3a2a12" stroke="#f0883e"/><text x="194.0" y="239.0" class="lab" fill="#f0883e">RACK</text><rect x="163" y="139" width="62" height="62" rx="6" fill="#3a2a12" stroke="#f0883e"/><text x="194.0" y="175.0" class="lab" fill="#f0883e">RACK</text><rect x="163" y="75" width="62" height="62" rx="6" fill="#3a2a12" stroke="#f0883e"/><text x="194.0" y="111.0" class="lab" fill="#f0883e">RACK</text><rect x="163" y="11" width="62" height="62" rx="6" fill="#10243d" stroke="#58a6ff" /><text x="194.0" y="48.0" class="sym">⇅⇄</text><rect x="227" y="267" width="62" height="62" rx="6" fill="#10243d" stroke="#58a6ff" /><text x="258.0" y="304.0" class="sym">⇅⇄</text><rect x="227" y="203" width="62" height="62" rx="6" fill="#3a2a12" stroke="#f0883e"/><text x="258.0" y="239.0" class="lab" fill="#f0883e">RACK</text><rect x="227" y="139" width="62" height="62" rx="6" fill="#3a2a12" stroke="#f0883e"/><text x="258.0" y="175.0" class="lab" fill="#f0883e">RACK</text><rect x="227" y="75" width="62" height="62" rx="6" fill="#3a2a12" stroke="#f0883e"/><text x="258.0" y="111.0" class="lab" fill="#f0883e">RACK</text><rect x="227" y="11" width="62" height="62" rx="6" fill="#10243d" stroke="#58a6ff" /><text x="258.0" y="48.0" class="sym">⇅⇄</text><rect x="291" y="267" width="62" height="62" rx="6" fill="#10243d" stroke="#58a6ff" /><text x="322.0" y="304.0" class="sym">⇅⇄</text><rect x="291" y="203" width="62" height="62" rx="6" fill="#10243d" stroke="#58a6ff" /><text x="322.0" y="240.0" class="sym">↓ S</text><rect x="291" y="139" width="62" height="62" rx="6" fill="#10243d" stroke="#58a6ff" /><text x="322.0" y="176.0" class="sym">↓ S</text><rect x="291" y="75" width="62" height="62" rx="6" fill="#10243d" stroke="#58a6ff" /><text x="322.0" y="112.0" class="sym">↓ S</text><rect x="291" y="11" width="62" height="62" rx="6" fill="#10243d" stroke="#58a6ff" /><text x="322.0" y="48.0" class="sym">⇅⇄</text><rect x="355" y="267" width="62" height="62" rx="6" fill="#10243d" stroke="#58a6ff" /><text x="386.0" y="304.0" class="sym">⇅⇄</text><rect x="355" y="203" width="62" height="62" rx="6" fill="#0e2a1a" stroke="#3fb950"/><text x="386.0" y="239.0" class="lab" fill="#3fb950">ZONA</text><rect x="355" y="139" width="62" height="62" rx="6" fill="#0e2a1a" stroke="#3fb950"/><text x="386.0" y="175.0" class="lab" fill="#3fb950">ZONA</text><rect x="355" y="75" width="62" height="62" rx="6" fill="#2a1030" stroke="#bc8cff"/><text x="386.0" y="111.0" class="lab" fill="#bc8cff">PUERTA</text><rect x="355" y="11" width="62" height="62" rx="6" fill="#10243d" stroke="#58a6ff" /><text x="386.0" y="48.0" class="sym">⇅⇄</text><text x="66.0" y="348" class="eje">x=0</text><text x="130.0" y="348" class="eje">x=1</text><text x="194.0" y="348" class="eje">x=2</text><text x="258.0" y="348" class="eje">x=3</text><text x="322.0" y="348" class="eje">x=4</text><text x="386.0" y="348" class="eje">x=5</text><text x="28" y="303.0" class="eje ey">y=0</text><text x="28" y="239.0" class="eje ey">y=1</text><text x="28" y="175.0" class="eje ey">y=2</text><text x="28" y="111.0" class="eje ey">y=3</text><text x="28" y="47.0" class="eje ey">y=4</text></svg>
+        <div class="pie">Azul: pasillo. <b>⇅⇄</b> = AMBOS; <b>↑ N</b> y <b>↓ S</b> = mano única; <b>·</b> con borde punteado = celda libre que ningún pasillo declaró (queda AMBOS). Naranja: rack R1 (2 × 3). Verde: zona ZONA_A. Violeta: puerta.</div>
+      </div>
+      <div class="cifras">
+        <div class="cifra"><b>30</b><span>celdas</span></div>
+        <div class="cifra"><b>9</b><span>obstáculos</span></div>
+        <div class="cifra"><b>21</b><span>nodos</span></div>
+        <div class="cifra"><b>42</b><span>flechas</span></div>
+        <div class="cifra"><b>1</b><span>componente fuertemente conexa</span></div>
+      </div>
+    </section>
+
+    <!-- ===================================================== -->
+    <section id="vista">
+      <h2 class="sec"><span class="num">C</span>Vista general: los 13 pasos</h2>
+      <p>Primero el mapa del viaje. Después cada paso tiene su propia sección con todo el detalle.</p>
+      <ol class="linea">
+        <li><b>Paso 0 · Revisar el JSON.</b> Si algo está mal, se corta acá.</li>
+        <li><b>Paso 1 · Preparar el almacén vacío.</b> Tamaño de la grilla y estructuras vacías.</li>
+        <li><b>Paso 2 · Anotar los pasillos.</b> Qué sentido tiene cada celda de pasillo.</li>
+        <li><b>Paso 3 · Puertas.</b> Se marcan como obstáculo.</li>
+        <li><b>Paso 4 · Zonas de despacho.</b> Se marcan como obstáculo.</li>
+        <li><b>Paso 5 · Racks.</b> Se marcan como obstáculo y quedan listos para guardar productos.</li>
+        <li><b>Paso 6 · Productos.</b> Al catálogo y a la «pila» de su celda de rack.</li>
+        <li><b>Paso 7 · Crear los nodos.</b> Toda celda que no es obstáculo es nodo.</li>
+        <li><b>Paso 8 · Accesos.</b> Para cada nodo, ¿a qué rack o zona le sirve de parada?</li>
+        <li><b>Paso 9 · Crear las aristas.</b> Las flechas, respetando el sentido.</li>
+        <li><b>Paso 10 · Kosaraju.</b> Buscar las componentes fuertemente conexas.</li>
+        <li><b>Paso 11 · Validar.</b> Advertencias y acceso principal de cada rack.</li>
+        <li><b>Paso 12 · Pedidos, pickers y configuración.</b> Lo del negocio.</li>
+        <li><b>Paso 13 · Devolver el almacén.</b></li>
+      </ol>
+      <div class="criollo"><b class="t">En criollo</b>Los pasos 1 a 6 son «leer y marcar el piso». Los pasos 7 a 9 son «convertir el piso en un grafo». Los pasos 10 y 11 son «controlar que el grafo sirva». El paso 12 es «cargar lo que no es del piso».</div>
+    </section>
+
+    <!-- ===================================================== -->
+    <section id="p0">
+      <h2 class="sec"><span class="num">0</span>Revisar el JSON</h2>
+      <p class="quien"><b>Quién:</b> <code>validar_escenario</code> en <code>validador_escenario.py</code>. Lo llama la aplicación cuando cargás o generás un escenario, <strong>antes</strong> de construir.</p>
+      <p><b>Qué recibe:</b> el JSON ya leído (un diccionario de Python). <b>Qué devuelve:</b> nada si está todo bien, o un <span class="no">error</span> con un mensaje claro.</p>
+      <h3>Qué controla, en orden</h3>
+      <ol class="pasos">
+        <li><b>Tipos y rangos.</b> El ancho y el largo son enteros entre 1 y 200. Las coordenadas, entre 0 y 199. Los ids son textos no vacíos. Pesos y capacidades son números positivos. El nivel z es al menos 1. La prioridad de un pedido va de 1 a 5.</li>
+        <li><b>Ids únicos.</b> No puede haber dos racks, puertas, zonas o pasillos con el mismo id.</li>
+        <li><b>Todo adentro del mapa.</b> Cada rectángulo tiene que caer entero dentro de la grilla.</li>
+        <li><b>Obstáculos sin superponerse.</b> Racks, puertas y zonas no pueden pisarse entre sí. Los pasillos <strong>sí</strong> pueden cruzarse entre ellos.</li>
+        <li><b>Racks.</b> Uno de sus lados tiene que medir 2.</li>
+        <li><b>Puertas.</b> Tienen que estar en el borde del almacén y ser INBOUND, OUTBOUND o AMBOS.</li>
+        <li><b>Pasillos.</b> El sentido tiene que ser N, S, E, O o AMBOS.</li>
+        <li><b>Zonas.</b> Cada zona tiene que tocar a su puerta (estar al lado, distancia 1).</li>
+        <li><b>Productos.</b> Cada producto tiene que estar en una celda de <em>su</em> rack, y no puede haber dos productos en el mismo (x, y, z).</li>
+        <li><b>Pedidos.</b> Ids únicos, al menos un ítem, cantidades positivas, productos que existan y sin el mismo producto repetido dentro de un pedido.</li>
+        <li><b>Pickers.</b> Al menos uno, sin ids ni posiciones repetidas, y que no arranquen arriba de un obstáculo.</li>
+        <li><b>Salida.</b> Tiene que haber al menos una zona cuya puerta sea de salida (OUTBOUND o AMBOS).</li>
+      </ol>
+      <div class="nota"><b>Lo que este paso NO controla:</b> si los pasillos están bien conectados (si se puede ir y volver). Eso lo hace Kosaraju en el paso 10, porque necesita el grafo ya armado.</div>
+      <p><b>En el ejemplo:</b> pasa todos los controles.</p>
+    </section>
+
+    <!-- ===================================================== -->
+    <section id="p1">
+      <h2 class="sec"><span class="num">1</span>Preparar el almacén vacío</h2>
+      <p><b>Qué toma del JSON:</b> <code>dimensiones.ancho_x</code> y <code>dimensiones.largo_y</code>. En el ejemplo, 6 y 5.</p>
+      <h3>Qué hace</h3>
+      <ol class="pasos">
+        <li>Crea el objeto <code>Warehouse(6, 5)</code>. Con eso ya sabe responder <code>dentro(x, y)</code>: «¿esta celda está dentro del almacén?», que es <code>0 ≤ x &lt; 6</code> y <code>0 ≤ y &lt; 5</code>.</li>
+        <li>Crea las estructuras vacías (tabla de abajo).</li>
+        <li>Guarda el JSON original del almacén en <code>warehouse_raw</code>, para poder exportarlo después tal cual.</li>
+        <li>Crea dos «libretas de trabajo» que solo se usan mientras se construye y después se tiran, y una lista de advertencias vacía.</li>
+      </ol>
+      <div class="tabla"><table>
+        <tr><th>Estructura</th><th>Clave → valor</th><th>Tipo</th><th>Para qué</th></tr>
+        <tr><td><code>obstaculos</code></td><td>(x, y) → celda (rack, zona o puerta)</td><td class="h">tabla hash propia</td><td>Saber qué hay en una celda que no se pisa.</td></tr>
+        <tr><td><code>grafo.nodos</code></td><td>(x, y) → NodoGrafo</td><td class="h">tabla hash propia</td><td>Las celdas de pasillo con su sentido.</td></tr>
+        <tr><td><code>grafo.lista_adyacencia</code></td><td>(x, y) → [celdas a las que voy en un paso]</td><td class="h">tabla hash propia</td><td>Las flechas.</td></tr>
+        <tr><td><code>racks</code>, <code>zonas_despacho</code>, <code>puertas</code></td><td>id → objeto</td><td>diccionario</td><td>Los datos de cada elemento entero (no por celda).</td></tr>
+        <tr><td><code>catalogo_productos</code>, <code>pedidos</code></td><td>id → objeto</td><td>diccionario</td><td>Buscar un producto o pedido por id en O(1).</td></tr>
+        <tr><td><code>acceso_rack_a_pasillo</code></td><td>(x, y) del rack → (x, y) de pasillo</td><td>diccionario</td><td>Dónde frena el picker (el acceso principal).</td></tr>
+        <tr><td><code>accesos_rack_a_pasillo</code></td><td>(x, y) del rack → [todas las celdas de acceso]</td><td>diccionario</td><td>Todos los accesos posibles.</td></tr>
+        <tr><td><code>accesos_zona_a_pasillo</code></td><td>id de zona → [celdas de pasillo pegadas]</td><td>diccionario</td><td>Dónde puede descargar el picker.</td></tr>
+        <tr><td><code>pickers</code></td><td>—</td><td>lista</td><td>Los operarios.</td></tr>
+      </table></div>
+      <h3>Las dos libretas de trabajo</h3>
+      <ul>
+        <li><b><code>ocupado_por</code></b>: (x, y) → id del elemento que ocupa esa celda. Sirve para detectar si dos elementos se pisan.</li>
+        <li><b><code>pasillos_declarados</code></b>: (x, y) → (sentido, id del pasillo). Guarda qué sentido le declaró el JSON a cada celda de pasillo.</li>
+      </ul>
+      <div class="criollo"><b class="t">En criollo</b>Antes de dibujar el plano agarrás una hoja cuadriculada de 6 × 5 en blanco y dos anotadores. Todavía no hay nada marcado.</div>
+      <div class="nota">Las tres estructuras del <strong>mapa</strong> (obstáculos, nodos y adyacencia) usan nuestra tabla hash. Cada una arranca con <strong>17 casillas</strong> y con sus números <code>a</code> y <code>b</code> ya sorteados con la semilla fija. Cómo funciona por dentro está en la sección <a href="#hash">Tabla hash</a>.</div>
+    </section>
+
+    <!-- ===================================================== -->
+    <section id="p2">
+      <h2 class="sec"><span class="num">2</span>Anotar los pasillos</h2>
+      <p><b>Qué toma del JSON:</b> la lista <code>pasillos</code>. De cada uno: <code>id</code>, <code>ubicacion</code>, <code>ancho</code>, <code>alto</code> y <code>sentido</code>.</p>
+      <p><b>Dónde anota:</b> en <code>ocupado_por</code> y en <code>pasillos_declarados</code>. Todavía <strong>no</strong> crea nodos.</p>
+      <h3>Qué hace, para cada pasillo</h3>
+      <ol class="pasos">
+        <li>Convierte el texto del sentido («N», «AMBOS»…) a su valor. Si no es uno válido → <span class="no">error</span> «Sentido inválido».</li>
+        <li>Recorre todas las celdas de su rectángulo: columnas de x a x+ancho−1 y, dentro de cada columna, filas de y a y+alto−1.</li>
+        <li>Para cada celda hace <b>OCUPAR</b> (recuadro de abajo).</li>
+        <li>Decide el sentido de la celda:
+          <ul>
+            <li>Si la celda ya tenía anotado <strong>AMBOS</strong> → no se toca: <strong>AMBOS gana</strong>.</li>
+            <li>Si no → se anota el sentido de este pasillo (si había otro, lo pisa).</li>
+          </ul>
+        </li>
+      </ol>
+      <div class="sub"><b>OCUPAR(x, y, id)</b> — se usa en los pasos 2 a 5
+        <ol>
+          <li>Si (x, y) está fuera del almacén → <span class="no">error</span>: «el elemento ocupa una celda fuera del almacén».</li>
+          <li>Si <code>ocupado_por</code> ya tenía otro id distinto en esa celda → <span class="adv">advertencia</span>: «<i>id</i> pisa a <i>anterior</i> en (x, y)».</li>
+          <li>Anota <code>ocupado_por[(x, y)] = id</code>.</li>
+        </ol>
+      </div>
+      <h3>Por qué AMBOS gana en un cruce</h3>
+      <p>En un cruce el picker tiene que poder <strong>doblar</strong>. Si el cruce quedara con la mano única de uno de los dos pasillos, desde el otro no se podría entrar o salir. Con AMBOS se puede ir para cualquier lado.</p>
+      <h3>En el ejemplo</h3>
+      <div class="tabla"><table>
+        <tr><th>Celda</th><th>Qué pasa</th><th>Resultado</th></tr>
+        <tr><td>(1, 2)</td><td>Solo la toca PAS_IZQ.</td><td>N</td></tr>
+        <tr><td>(1, 0)</td><td>Primero PAS_IZQ anota N. Después PAS_ABAJO: lo anterior era N (no AMBOS), así que lo pisa.</td><td>AMBOS + advertencia «PAS_ABAJO pisa a PAS_IZQ en (1,0)»</td></tr>
+        <tr><td>(4, 4)</td><td>PAS_DER anota S; PAS_ARRIBA lo pisa con AMBOS.</td><td>AMBOS + advertencia</td></tr>
+        <tr><td>(0, 2)</td><td>Ningún pasillo la toca.</td><td>No se anota nada (en el paso 7 va a quedar AMBOS).</td></tr>
+      </table></div>
+      <div class="nota"><b>Detalle para saber:</b> como los pasillos también pasan por OCUPAR, cada cruce de pasillos genera una advertencia «pisa». En el ejemplo salen 4, una por cada esquina donde un pasillo vertical cruza uno horizontal. Son solo avisos: el almacén se arma bien.</div>
+    </section>
+
+    <!-- ===================================================== -->
+    <section id="p3">
+      <h2 class="sec"><span class="num">3</span>Puertas</h2>
+      <p><b>Qué toma:</b> la lista <code>puertas</code>: <code>id</code>, <code>tipo</code> y <code>ubicacion</code>. Una puerta ocupa <strong>una sola celda</strong>.</p>
+      <ol class="pasos">
+        <li>Hace <b>MARCAR_OBSTÁCULO</b> en su celda con una <code>Celda</code> de tipo PUERTA.</li>
+        <li>Guarda el objeto <code>Puerta</code> en el diccionario <code>puertas[id]</code>.</li>
+      </ol>
+      <div class="sub"><b>MARCAR_OBSTÁCULO(x, y, celda, id)</b> — se usa en los pasos 3, 4 y 5
+        <ol>
+          <li>Hace OCUPAR(x, y, id) (control de fuera del mapa y de pisarse).</li>
+          <li>Guarda en la <b>tabla hash</b> <code>obstaculos[(x, y)] = celda</code>.</li>
+        </ol>
+      </div>
+      <p><b>En el ejemplo:</b> <code>obstaculos[(5,3)]</code> = celda PUERTA de «PUERTA_1».</p>
+    </section>
+
+    <section id="p4">
+      <h2 class="sec"><span class="num">4</span>Zonas de despacho</h2>
+      <p><b>Qué toma:</b> la lista <code>zonas_despacho</code>: <code>id</code>, <code>puerta_id</code>, <code>ubicacion</code>, <code>ancho</code>, <code>alto</code> y <code>peso_max_kg</code>.</p>
+      <ol class="pasos">
+        <li>Para cada celda de su rectángulo: MARCAR_OBSTÁCULO con una <code>Celda</code> de tipo ZONA_DESPACHO, que guarda el id de la zona.</li>
+        <li>Guarda el objeto <code>ZonaDespacho</code> (con su puerta y su peso máximo) en <code>zonas_despacho[id]</code>.</li>
+      </ol>
+      <p><b>En el ejemplo:</b> (5,1) y (5,2) quedan como ZONA «ZONA_A».</p>
+    </section>
+
+    <section id="p5">
+      <h2 class="sec"><span class="num">5</span>Racks</h2>
+      <p><b>Qué toma:</b> la lista <code>racks</code>: <code>id</code>, <code>ubicacion</code>, <code>ancho</code> y <code>alto</code>.</p>
+      <ol class="pasos">
+        <li>Si ningún lado mide 2 → <span class="adv">advertencia</span> «ningún lado vale 2». (El validador del paso 0 ya lo rechaza; esto es una segunda red de seguridad.)</li>
+        <li>Para cada celda de su rectángulo: MARCAR_OBSTÁCULO con una <code>CeldaRack</code>. La CeldaRack es especial: trae adentro un diccionario <code>productos_en_z</code>, vacío por ahora, que va a ser la «pila» de productos de esa celda (nivel → producto).</li>
+        <li>Guarda el objeto <code>Rack</code> (posición y medidas) en <code>racks[id]</code>.</li>
+      </ol>
+      <p><b>En el ejemplo:</b> R1 empieza en (2,1) y mide 2 × 3, así que ocupa (2,1), (2,2), (2,3), (3,1), (3,2) y (3,3). Son 6 CeldaRack.</p>
+      <div class="nota">Si un rack quedara arriba de una celda que un pasillo ya había anotado, salta la advertencia «pisa» y esa celda queda como <strong>obstáculo</strong>: en el paso 7 se mira primero si es obstáculo, así que no va a ser nodo.</div>
+      <p>Al terminar los pasos 3 a 5, la tabla <code>obstaculos</code> tiene <strong>9 celdas</strong>: 1 puerta + 2 de zona + 6 de rack.</p>
+    </section>
+
+    <!-- ===================================================== -->
+    <section id="p6">
+      <h2 class="sec"><span class="num">6</span>Productos</h2>
+      <p><b>Qué toma:</b> la lista <code>productos</code>: <code>id</code>, <code>nombre</code>, <code>rack_id</code>, <code>ubicacion</code> (x, y, z), <code>cantidad_disponible</code> y <code>peso_kg</code>.</p>
+      <ol class="pasos">
+        <li>Lee x, y y z. Si el JSON no trae z, usa <strong>z = 1</strong> (el estante de abajo).</li>
+        <li>Si (x, y) está fuera del almacén → <span class="no">error</span>.</li>
+        <li>Crea el objeto <code>Product</code> y lo guarda en <code>catalogo_productos[id]</code>. Desde ahora, buscar un producto por id es O(1).</li>
+        <li>Busca en la tabla hash <code>obstaculos</code> qué hay en (x, y). Si es una CeldaRack, <strong>apila</strong> el producto en ella: <code>productos_en_z[z] = producto</code>.</li>
+      </ol>
+      <div class="criollo"><b class="t">En criollo</b>Cada celda de rack es una estantería con pisos numerados (z). El producto se apoya en su piso. Además se anota en una lista general (el catálogo) para encontrarlo rápido por su código.</div>
+      <p><b>En el ejemplo:</b> P1 queda en el catálogo y en el piso 1 de la celda (2,2). P2 queda en el piso 2 de la celda (3,1).</p>
+    </section>
+
+    <!-- ===================================================== -->
+    <section id="p7">
+      <h2 class="sec"><span class="num">7</span>Crear los nodos</h2>
+      <p class="quien"><b>Quién:</b> la primera mitad de <code>_construir_digrafo</code>.</p>
+      <p><b>Qué usa:</b> la tabla <code>obstaculos</code> (pasos 3–5) y la libreta <code>pasillos_declarados</code> (paso 2). Del JSON ya no lee nada.</p>
+      <h3>Qué hace</h3>
+      <ol class="pasos">
+        <li>Recorre <strong>toda la grilla</strong>: para x de 0 a ancho−1 y, dentro, para y de 0 a largo−1.</li>
+        <li>Si (x, y) está en <code>obstaculos</code> → la saltea. No es nodo.</li>
+        <li>Si no, es un lugar pisable. Busca su sentido en <code>pasillos_declarados</code>:
+          <ul>
+            <li>Si está anotado → usa ese sentido y ese id de pasillo.</li>
+            <li>Si no está → sentido <strong>AMBOS</strong> y sin id de pasillo. Es piso libre: se camina para cualquier lado.</li>
+          </ul>
+        </li>
+        <li><b>Agregar nodo</b>: en la tabla hash <code>nodos[(x, y)]</code> guarda un <code>NodoGrafo</code> (x, y, sentido, id de pasillo, y dos listas vacías: racks adyacentes y zonas adyacentes). En la tabla hash <code>lista_adyacencia[(x, y)]</code> guarda una lista vacía, que en el paso 9 se llena de flechas.</li>
+      </ol>
+      <p><b>En el ejemplo:</b> 30 celdas − 9 obstáculos = <strong>21 nodos</strong>. Las celdas (0,1), (0,2) y (0,3) no las declaró ningún pasillo, así que quedan AMBOS sin id.</p>
+      <div class="nota"><b>El orden importa.</b> Como se recorre x y después y, los nodos se insertan en este orden: (0,0), (0,1), (0,2)… (1,0), (1,1)… La tabla hash recuerda el orden de inserción, así que más adelante «para cada nodo» siempre los recorre en este mismo orden. Eso hace que el programa dé siempre el mismo resultado.</div>
+      <p>Mientras se insertan estos 21 nodos, la tabla <code>nodos</code> se agranda una vez: al meter el nodo número 13, la (3,0), pasa de 17 a 37 casillas. Está explicado en <a href="#hash">la tabla hash</a>.</p>
+    </section>
+
+    <!-- ===================================================== -->
+    <section id="p8">
+      <h2 class="sec"><span class="num">8</span>Accesos a racks y zonas</h2>
+      <p class="quien"><b>Quién:</b> la segunda mitad de <code>_construir_digrafo</code>. En el código, este paso y el 9 ocurren <strong>en la misma vuelta</strong> sobre los nodos; acá los separo para que se entienda mejor.</p>
+      <p><b>Qué hace:</b> para cada nodo (en orden de inserción), mira sus 4 vecinos: arriba, abajo, derecha e izquierda. Para cada vecino busca en la tabla <code>obstaculos</code> si es un obstáculo:</p>
+      <ul>
+        <li><b>No es obstáculo</b> (es pasillo o está fuera del mapa) → no hace nada acá.</li>
+        <li><b>Es una celda de rack</b> → se fija si este nodo está del lado por donde se saca mercadería (regla de abajo). Si está:
+          <ol>
+            <li>agrega esa celda de rack a <code>racks_adyacentes</code> del nodo;</li>
+            <li>agrega el nodo a <code>accesos_rack_a_pasillo[celda del rack]</code>;</li>
+            <li>si la celda del rack todavía no tenía acceso principal, este nodo pasa a ser su acceso principal en <code>acceso_rack_a_pasillo</code>.</li>
+          </ol>
+        </li>
+        <li><b>Es una celda de zona</b> → agrega el id de la zona a <code>zonas_despacho_adyacentes</code> del nodo, y el nodo a <code>accesos_zona_a_pasillo[id de zona]</code>, sin repetir.</li>
+        <li><b>Es una puerta</b> → nada.</li>
+      </ul>
+      <h3>La regla del lado largo</h3>
+      <p>Un rack tiene un lado de 2: esa es su «profundidad». Cada celda del rack da a uno de los dos costados largos, y se la agarra desde el pasillo de ese costado. Por la punta no se saca nada.</p>
+      <div class="tabla"><table>
+        <tr><th>Forma del rack</th><th>Celda del rack</th><th>Desde dónde se agarra</th></tr>
+        <tr><td>Ancho 2, alto distinto de 2 (rack «parado», como R1)</td><td>Columna izquierda (x = x del rack)</td><td>Desde la celda de su <strong>izquierda</strong></td></tr>
+        <tr><td></td><td>Columna derecha</td><td>Desde la celda de su <strong>derecha</strong></td></tr>
+        <tr><td>Alto 2, ancho distinto de 2 (rack «acostado»)</td><td>Fila de abajo (y = y del rack)</td><td>Desde <strong>abajo</strong></td></tr>
+        <tr><td></td><td>Fila de arriba</td><td>Desde <strong>arriba</strong></td></tr>
+        <tr><td>2 × 2</td><td>Cualquiera</td><td>Desde cualquier lado</td></tr>
+      </table></div>
+      <h3>En el ejemplo</h3>
+      <div class="figura"><svg viewBox="0 0 428 358" role="img" aria-label="Dígrafo del ejemplo"><defs><marker id="pf" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#9aa7b4"/></marker><marker id="pr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#ff7b8a"/></marker></defs><rect x="165" y="205" width="58" height="58" rx="6" fill="#3a2a12" stroke="#f0883e" opacity=".8"/><text x="194.0" y="238.0" class="lab" fill="#f0883e">RACK</text><rect x="229" y="205" width="58" height="58" rx="6" fill="#3a2a12" stroke="#f0883e" opacity=".8"/><text x="258.0" y="238.0" class="lab" fill="#f0883e">RACK</text><rect x="165" y="141" width="58" height="58" rx="6" fill="#3a2a12" stroke="#f0883e" opacity=".8"/><text x="194.0" y="174.0" class="lab" fill="#f0883e">RACK</text><rect x="229" y="141" width="58" height="58" rx="6" fill="#3a2a12" stroke="#f0883e" opacity=".8"/><text x="258.0" y="174.0" class="lab" fill="#f0883e">RACK</text><rect x="165" y="77" width="58" height="58" rx="6" fill="#3a2a12" stroke="#f0883e" opacity=".8"/><text x="194.0" y="110.0" class="lab" fill="#f0883e">RACK</text><rect x="229" y="77" width="58" height="58" rx="6" fill="#3a2a12" stroke="#f0883e" opacity=".8"/><text x="258.0" y="110.0" class="lab" fill="#f0883e">RACK</text><rect x="357" y="205" width="58" height="58" rx="6" fill="#0e2a1a" stroke="#3fb950" opacity=".8"/><text x="386.0" y="238.0" class="lab" fill="#3fb950">ZONA</text><rect x="357" y="141" width="58" height="58" rx="6" fill="#0e2a1a" stroke="#3fb950" opacity=".8"/><text x="386.0" y="174.0" class="lab" fill="#3fb950">ZONA</text><rect x="357" y="77" width="58" height="58" rx="6" fill="#2a1030" stroke="#bc8cff" opacity=".8"/><text x="386.0" y="110.0" class="lab" fill="#bc8cff">PUERTA</text><line x1="66.0" y1="285.0" x2="66.0" y2="247.0" stroke="#9aa7b4" stroke-width="1.6" marker-end="url(#pf)" marker-start="url(#pf)"/><line x1="79.0" y1="298.0" x2="117.0" y2="298.0" stroke="#9aa7b4" stroke-width="1.6" marker-end="url(#pf)" marker-start="url(#pf)"/><line x1="66.0" y1="221.0" x2="66.0" y2="183.0" stroke="#9aa7b4" stroke-width="1.6" marker-end="url(#pf)" marker-start="url(#pf)"/><line x1="79.0" y1="234.0" x2="117.0" y2="234.0" stroke="#9aa7b4" stroke-width="1.6" marker-end="url(#pf)" marker-start="url(#pf)"/><line x1="66.0" y1="157.0" x2="66.0" y2="119.0" stroke="#9aa7b4" stroke-width="1.6" marker-end="url(#pf)" marker-start="url(#pf)"/><line x1="79.0" y1="170.0" x2="117.0" y2="170.0" stroke="#9aa7b4" stroke-width="1.6" marker-end="url(#pf)" marker-start="url(#pf)"/><line x1="66.0" y1="93.0" x2="66.0" y2="55.0" stroke="#9aa7b4" stroke-width="1.6" marker-end="url(#pf)" marker-start="url(#pf)"/><line x1="79.0" y1="106.0" x2="117.0" y2="106.0" stroke="#9aa7b4" stroke-width="1.6" marker-end="url(#pf)" marker-start="url(#pf)"/><line x1="79.0" y1="42.0" x2="117.0" y2="42.0" stroke="#9aa7b4" stroke-width="1.6" marker-end="url(#pf)" marker-start="url(#pf)"/><line x1="130.0" y1="285.0" x2="130.0" y2="247.0" stroke="#ff7b8a" stroke-width="2.2" marker-end="url(#pr)" /><line x1="143.0" y1="298.0" x2="181.0" y2="298.0" stroke="#9aa7b4" stroke-width="1.6" marker-end="url(#pf)" marker-start="url(#pf)"/><line x1="130.0" y1="221.0" x2="130.0" y2="183.0" stroke="#ff7b8a" stroke-width="2.2" marker-end="url(#pr)" /><line x1="130.0" y1="157.0" x2="130.0" y2="119.0" stroke="#ff7b8a" stroke-width="2.2" marker-end="url(#pr)" /><line x1="130.0" y1="93.0" x2="130.0" y2="55.0" stroke="#ff7b8a" stroke-width="2.2" marker-end="url(#pr)" /><line x1="143.0" y1="42.0" x2="181.0" y2="42.0" stroke="#9aa7b4" stroke-width="1.6" marker-end="url(#pf)" marker-start="url(#pf)"/><line x1="207.0" y1="298.0" x2="245.0" y2="298.0" stroke="#9aa7b4" stroke-width="1.6" marker-end="url(#pf)" marker-start="url(#pf)"/><line x1="207.0" y1="42.0" x2="245.0" y2="42.0" stroke="#9aa7b4" stroke-width="1.6" marker-end="url(#pf)" marker-start="url(#pf)"/><line x1="271.0" y1="298.0" x2="309.0" y2="298.0" stroke="#9aa7b4" stroke-width="1.6" marker-end="url(#pf)" marker-start="url(#pf)"/><line x1="271.0" y1="42.0" x2="309.0" y2="42.0" stroke="#9aa7b4" stroke-width="1.6" marker-end="url(#pf)" marker-start="url(#pf)"/><line x1="335.0" y1="298.0" x2="373.0" y2="298.0" stroke="#9aa7b4" stroke-width="1.6" marker-end="url(#pf)" marker-start="url(#pf)"/><line x1="322.0" y1="247.0" x2="322.0" y2="285.0" stroke="#ff7b8a" stroke-width="2.2" marker-end="url(#pr)" /><line x1="322.0" y1="183.0" x2="322.0" y2="221.0" stroke="#ff7b8a" stroke-width="2.2" marker-end="url(#pr)" /><line x1="322.0" y1="119.0" x2="322.0" y2="157.0" stroke="#ff7b8a" stroke-width="2.2" marker-end="url(#pr)" /><line x1="322.0" y1="55.0" x2="322.0" y2="93.0" stroke="#ff7b8a" stroke-width="2.2" marker-end="url(#pr)" /><line x1="335.0" y1="42.0" x2="373.0" y2="42.0" stroke="#9aa7b4" stroke-width="1.6" marker-end="url(#pf)" marker-start="url(#pf)"/><line x1="165.0" y1="234.0" x2="143.0" y2="234.0" stroke="#f0883e" stroke-width="3" stroke-dasharray="5 3"/><line x1="165.0" y1="170.0" x2="143.0" y2="170.0" stroke="#f0883e" stroke-width="3" stroke-dasharray="5 3"/><line x1="165.0" y1="106.0" x2="143.0" y2="106.0" stroke="#f0883e" stroke-width="3" stroke-dasharray="5 3"/><line x1="287.0" y1="234.0" x2="309.0" y2="234.0" stroke="#f0883e" stroke-width="3" stroke-dasharray="5 3"/><line x1="287.0" y1="170.0" x2="309.0" y2="170.0" stroke="#f0883e" stroke-width="3" stroke-dasharray="5 3"/><line x1="287.0" y1="106.0" x2="309.0" y2="106.0" stroke="#f0883e" stroke-width="3" stroke-dasharray="5 3"/><circle cx="66.0" cy="298.0" r="11" fill="#10243d" stroke="#58a6ff" stroke-width="1.5"/><text x="66.0" y="302.0" class="mini">0,0</text><circle cx="66.0" cy="234.0" r="11" fill="#10243d" stroke="#58a6ff" stroke-width="1.5"/><text x="66.0" y="238.0" class="mini">0,1</text><circle cx="66.0" cy="170.0" r="11" fill="#10243d" stroke="#58a6ff" stroke-width="1.5"/><text x="66.0" y="174.0" class="mini">0,2</text><circle cx="66.0" cy="106.0" r="11" fill="#10243d" stroke="#58a6ff" stroke-width="1.5"/><text x="66.0" y="110.0" class="mini">0,3</text><circle cx="66.0" cy="42.0" r="11" fill="#10243d" stroke="#58a6ff" stroke-width="1.5"/><text x="66.0" y="46.0" class="mini">0,4</text><circle cx="130.0" cy="298.0" r="11" fill="#10243d" stroke="#58a6ff" stroke-width="1.5"/><text x="130.0" y="302.0" class="mini">1,0</text><circle cx="130.0" cy="234.0" r="11" fill="#10243d" stroke="#58a6ff" stroke-width="1.5"/><text x="130.0" y="238.0" class="mini">1,1</text><circle cx="130.0" cy="170.0" r="11" fill="#10243d" stroke="#58a6ff" stroke-width="1.5"/><text x="130.0" y="174.0" class="mini">1,2</text><circle cx="130.0" cy="106.0" r="11" fill="#10243d" stroke="#58a6ff" stroke-width="1.5"/><text x="130.0" y="110.0" class="mini">1,3</text><circle cx="130.0" cy="42.0" r="11" fill="#10243d" stroke="#58a6ff" stroke-width="1.5"/><text x="130.0" y="46.0" class="mini">1,4</text><circle cx="194.0" cy="298.0" r="11" fill="#10243d" stroke="#58a6ff" stroke-width="1.5"/><text x="194.0" y="302.0" class="mini">2,0</text><circle cx="194.0" cy="42.0" r="11" fill="#10243d" stroke="#58a6ff" stroke-width="1.5"/><text x="194.0" y="46.0" class="mini">2,4</text><circle cx="258.0" cy="298.0" r="11" fill="#10243d" stroke="#58a6ff" stroke-width="1.5"/><text x="258.0" y="302.0" class="mini">3,0</text><circle cx="258.0" cy="42.0" r="11" fill="#10243d" stroke="#58a6ff" stroke-width="1.5"/><text x="258.0" y="46.0" class="mini">3,4</text><circle cx="322.0" cy="298.0" r="11" fill="#10243d" stroke="#58a6ff" stroke-width="1.5"/><text x="322.0" y="302.0" class="mini">4,0</text><circle cx="322.0" cy="234.0" r="11" fill="#10243d" stroke="#58a6ff" stroke-width="1.5"/><text x="322.0" y="238.0" class="mini">4,1</text><circle cx="322.0" cy="170.0" r="11" fill="#10243d" stroke="#58a6ff" stroke-width="1.5"/><text x="322.0" y="174.0" class="mini">4,2</text><circle cx="322.0" cy="106.0" r="11" fill="#10243d" stroke="#58a6ff" stroke-width="1.5"/><text x="322.0" y="110.0" class="mini">4,3</text><circle cx="322.0" cy="42.0" r="11" fill="#10243d" stroke="#58a6ff" stroke-width="1.5"/><text x="322.0" y="46.0" class="mini">4,4</text><circle cx="386.0" cy="298.0" r="11" fill="#10243d" stroke="#58a6ff" stroke-width="1.5"/><text x="386.0" y="302.0" class="mini">5,0</text><circle cx="386.0" cy="42.0" r="11" fill="#10243d" stroke="#58a6ff" stroke-width="1.5"/><text x="386.0" y="46.0" class="mini">5,4</text><text x="66.0" y="348" class="eje">x=0</text><text x="130.0" y="348" class="eje">x=1</text><text x="194.0" y="348" class="eje">x=2</text><text x="258.0" y="348" class="eje">x=3</text><text x="322.0" y="348" class="eje">x=4</text><text x="386.0" y="348" class="eje">x=5</text><text x="28" y="303.0" class="eje ey">y=0</text><text x="28" y="239.0" class="eje ey">y=1</text><text x="28" y="175.0" class="eje ey">y=2</text><text x="28" y="111.0" class="eje ey">y=3</text><text x="28" y="47.0" class="eje ey">y=4</text></svg>
+        <div class="pie">Línea naranja punteada: celda del rack → su acceso. La columna izquierda de R1 se agarra desde x = 1 y la derecha desde x = 4.</div>
+      </div>
+      <div class="tabla"><table>
+        <tr><th>Celda del rack</th><th>Acceso</th><th>Por qué</th></tr>
+        <tr><td>(2,1), (2,2), (2,3)</td><td>(1,1), (1,2), (1,3)</td><td>Columna izquierda de R1 → desde la izquierda.</td></tr>
+        <tr><td>(3,1), (3,2), (3,3)</td><td>(4,1), (4,2), (4,3)</td><td>Columna derecha → desde la derecha.</td></tr>
+      </table></div>
+      <p><b>Un caso que NO cuenta:</b> el nodo (2,0) está justo abajo de la celda de rack (2,1), pero eso es la punta del rack. Como R1 se agarra de costado, (2,0) no es acceso.</p>
+      <p><b>Zona ZONA_A:</b> sus accesos son (4,1), (4,2) y (5,0). (4,1) y (4,2) la tocan por la izquierda y (5,0) por abajo.</p>
+      <p><b>Para los productos:</b> P1 está en (2,2), así que el picker frena en (1,2). P2 está en (3,1), así que frena en (4,1).</p>
+    </section>
+
+    <!-- ===================================================== -->
+    <section id="p9">
+      <h2 class="sec"><span class="num">9</span>Crear las aristas (las flechas)</h2>
+      <p><b>Qué usa:</b> la tabla hash <code>nodos</code> (para saber quién es nodo y con qué sentido) y la tabla hash <code>lista_adyacencia</code> (donde agrega las flechas).</p>
+      <h3>Qué hace, para cada nodo origen</h3>
+      <ol class="pasos">
+        <li>Mira el sentido del origen y saca la lista de <strong>direcciones en las que puede salir</strong> (primera tabla de abajo).</li>
+        <li>Para cada una de esas direcciones calcula la celda vecina: origen + dirección.</li>
+        <li>Busca la vecina en la tabla <code>nodos</code>. Si no está (es obstáculo o está fuera del mapa) → <span class="no">no hay flecha</span>.</li>
+        <li>Si está, se fija si entrar a la vecina en esa dirección es <strong>contramano</strong> para ella (segunda tabla). Si lo es → <span class="no">no hay flecha</span>.</li>
+        <li>Si pasó todo → <span class="ok">agrega la flecha</span>: pone la vecina en la lista <code>lista_adyacencia[origen]</code>. Antes revisa que no esté ya, para no repetirla.</li>
+      </ol>
+      <h3>Tabla 1 · Para dónde podés salir según tu sentido</h3>
+      <div class="tabla"><table>
+        <tr><th>Sentido del origen</th><th>Puede ir</th><th>No puede ir</th></tr>
+        <tr><td>N</td><td>arriba, izquierda, derecha</td><td>abajo (sería volver para atrás)</td></tr>
+        <tr><td>S</td><td>abajo, izquierda, derecha</td><td>arriba</td></tr>
+        <tr><td>E</td><td>derecha, arriba, abajo</td><td>izquierda</td></tr>
+        <tr><td>O</td><td>izquierda, arriba, abajo</td><td>derecha</td></tr>
+        <tr><td>AMBOS</td><td>los 4 lados</td><td>—</td></tr>
+      </table></div>
+      <p>Los costados se permiten porque desde un pasillo de mano única tenés que poder <strong>salir</strong> hacia un cruce o hacia otro pasillo.</p>
+      <h3>Tabla 2 · Cuándo entrar a la vecina es contramano</h3>
+      <div class="tabla"><table>
+        <tr><th>Te movés…</th><th>…y la vecina es</th><th>Resultado</th></tr>
+        <tr><td>hacia arriba</td><td>S</td><td class="no">contramano</td></tr>
+        <tr><td>hacia abajo</td><td>N</td><td class="no">contramano</td></tr>
+        <tr><td>hacia la derecha</td><td>O</td><td class="no">contramano</td></tr>
+        <tr><td>hacia la izquierda</td><td>E</td><td class="no">contramano</td></tr>
+        <tr><td>cualquier movimiento</td><td>AMBOS, o la misma mano que llevás, o una mano perpendicular</td><td class="ok">se puede</td></tr>
+      </table></div>
+      <div class="criollo"><b class="t">En criollo</b>Hay dos controles. El primero lo pone la celda donde estás: «¿mi mano me deja salir para ese lado?». El segundo lo pone la celda a donde vas: «¿me deja entrar viniendo de ese lado?». Es como una calle: no podés salir de contramano, ni meterte de contramano en la calle de al lado.</div>
+      <h3>Ejemplos con el almacén chiquito</h3>
+      <div class="tabla"><table>
+        <tr><th>Origen</th><th>Candidatas (según su sentido)</th><th>Qué pasa con cada una</th><th>Flechas</th></tr>
+        <tr><td>(1,1) N</td><td>arriba (1,2) · izquierda (0,1) · derecha (2,1)</td><td>(1,2) es N y subís: <span class="ok">ok</span>. (0,1) es AMBOS: <span class="ok">ok</span>. (2,1) es rack, no es nodo: <span class="no">no</span>.</td><td>(1,2), (0,1)</td></tr>
+        <tr><td>(4,1) S</td><td>abajo (4,0) · izquierda (3,1) · derecha (5,1)</td><td>(4,0) AMBOS: <span class="ok">ok</span>. (3,1) rack: <span class="no">no</span>. (5,1) zona: <span class="no">no</span>.</td><td>(4,0)</td></tr>
+        <tr><td>(1,0) AMBOS</td><td>los 4</td><td>arriba (1,1) es N y subís: <span class="ok">ok</span>. Abajo (1,−1) está fuera del mapa: <span class="no">no</span>. (2,0) y (0,0): <span class="ok">ok</span>.</td><td>(1,1), (2,0), (0,0)</td></tr>
+        <tr><td>(4,0) AMBOS</td><td>los 4</td><td>arriba (4,1) es <b>S</b> y estás subiendo: <span class="no">contramano</span>. (5,0) y (3,0): <span class="ok">ok</span>.</td><td>(5,0), (3,0)</td></tr>
+      </table></div>
+      <p>Las dos últimas filas muestran por qué se necesitan los dos controles: (4,0) es AMBOS y por su lado podría subir, pero <strong>no puede entrar</strong> al pasillo de bajada.</p>
+      <div class="figura"><svg viewBox="0 0 428 358" role="img" aria-label="Dígrafo del ejemplo"><defs><marker id="pf" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#9aa7b4"/></marker><marker id="pr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#ff7b8a"/></marker></defs><rect x="165" y="205" width="58" height="58" rx="6" fill="#3a2a12" stroke="#f0883e" opacity=".8"/><text x="194.0" y="238.0" class="lab" fill="#f0883e">RACK</text><rect x="229" y="205" width="58" height="58" rx="6" fill="#3a2a12" stroke="#f0883e" opacity=".8"/><text x="258.0" y="238.0" class="lab" fill="#f0883e">RACK</text><rect x="165" y="141" width="58" height="58" rx="6" fill="#3a2a12" stroke="#f0883e" opacity=".8"/><text x="194.0" y="174.0" class="lab" fill="#f0883e">RACK</text><rect x="229" y="141" width="58" height="58" rx="6" fill="#3a2a12" stroke="#f0883e" opacity=".8"/><text x="258.0" y="174.0" class="lab" fill="#f0883e">RACK</text><rect x="165" y="77" width="58" height="58" rx="6" fill="#3a2a12" stroke="#f0883e" opacity=".8"/><text x="194.0" y="110.0" class="lab" fill="#f0883e">RACK</text><rect x="229" y="77" width="58" height="58" rx="6" fill="#3a2a12" stroke="#f0883e" opacity=".8"/><text x="258.0" y="110.0" class="lab" fill="#f0883e">RACK</text><rect x="357" y="205" width="58" height="58" rx="6" fill="#0e2a1a" stroke="#3fb950" opacity=".8"/><text x="386.0" y="238.0" class="lab" fill="#3fb950">ZONA</text><rect x="357" y="141" width="58" height="58" rx="6" fill="#0e2a1a" stroke="#3fb950" opacity=".8"/><text x="386.0" y="174.0" class="lab" fill="#3fb950">ZONA</text><rect x="357" y="77" width="58" height="58" rx="6" fill="#2a1030" stroke="#bc8cff" opacity=".8"/><text x="386.0" y="110.0" class="lab" fill="#bc8cff">PUERTA</text><line x1="66.0" y1="285.0" x2="66.0" y2="247.0" stroke="#9aa7b4" stroke-width="1.6" marker-end="url(#pf)" marker-start="url(#pf)"/><line x1="79.0" y1="298.0" x2="117.0" y2="298.0" stroke="#9aa7b4" stroke-width="1.6" marker-end="url(#pf)" marker-start="url(#pf)"/><line x1="66.0" y1="221.0" x2="66.0" y2="183.0" stroke="#9aa7b4" stroke-width="1.6" marker-end="url(#pf)" marker-start="url(#pf)"/><line x1="79.0" y1="234.0" x2="117.0" y2="234.0" stroke="#9aa7b4" stroke-width="1.6" marker-end="url(#pf)" marker-start="url(#pf)"/><line x1="66.0" y1="157.0" x2="66.0" y2="119.0" stroke="#9aa7b4" stroke-width="1.6" marker-end="url(#pf)" marker-start="url(#pf)"/><line x1="79.0" y1="170.0" x2="117.0" y2="170.0" stroke="#9aa7b4" stroke-width="1.6" marker-end="url(#pf)" marker-start="url(#pf)"/><line x1="66.0" y1="93.0" x2="66.0" y2="55.0" stroke="#9aa7b4" stroke-width="1.6" marker-end="url(#pf)" marker-start="url(#pf)"/><line x1="79.0" y1="106.0" x2="117.0" y2="106.0" stroke="#9aa7b4" stroke-width="1.6" marker-end="url(#pf)" marker-start="url(#pf)"/><line x1="79.0" y1="42.0" x2="117.0" y2="42.0" stroke="#9aa7b4" stroke-width="1.6" marker-end="url(#pf)" marker-start="url(#pf)"/><line x1="130.0" y1="285.0" x2="130.0" y2="247.0" stroke="#ff7b8a" stroke-width="2.2" marker-end="url(#pr)" /><line x1="143.0" y1="298.0" x2="181.0" y2="298.0" stroke="#9aa7b4" stroke-width="1.6" marker-end="url(#pf)" marker-start="url(#pf)"/><line x1="130.0" y1="221.0" x2="130.0" y2="183.0" stroke="#ff7b8a" stroke-width="2.2" marker-end="url(#pr)" /><line x1="130.0" y1="157.0" x2="130.0" y2="119.0" stroke="#ff7b8a" stroke-width="2.2" marker-end="url(#pr)" /><line x1="130.0" y1="93.0" x2="130.0" y2="55.0" stroke="#ff7b8a" stroke-width="2.2" marker-end="url(#pr)" /><line x1="143.0" y1="42.0" x2="181.0" y2="42.0" stroke="#9aa7b4" stroke-width="1.6" marker-end="url(#pf)" marker-start="url(#pf)"/><line x1="207.0" y1="298.0" x2="245.0" y2="298.0" stroke="#9aa7b4" stroke-width="1.6" marker-end="url(#pf)" marker-start="url(#pf)"/><line x1="207.0" y1="42.0" x2="245.0" y2="42.0" stroke="#9aa7b4" stroke-width="1.6" marker-end="url(#pf)" marker-start="url(#pf)"/><line x1="271.0" y1="298.0" x2="309.0" y2="298.0" stroke="#9aa7b4" stroke-width="1.6" marker-end="url(#pf)" marker-start="url(#pf)"/><line x1="271.0" y1="42.0" x2="309.0" y2="42.0" stroke="#9aa7b4" stroke-width="1.6" marker-end="url(#pf)" marker-start="url(#pf)"/><line x1="335.0" y1="298.0" x2="373.0" y2="298.0" stroke="#9aa7b4" stroke-width="1.6" marker-end="url(#pf)" marker-start="url(#pf)"/><line x1="322.0" y1="247.0" x2="322.0" y2="285.0" stroke="#ff7b8a" stroke-width="2.2" marker-end="url(#pr)" /><line x1="322.0" y1="183.0" x2="322.0" y2="221.0" stroke="#ff7b8a" stroke-width="2.2" marker-end="url(#pr)" /><line x1="322.0" y1="119.0" x2="322.0" y2="157.0" stroke="#ff7b8a" stroke-width="2.2" marker-end="url(#pr)" /><line x1="322.0" y1="55.0" x2="322.0" y2="93.0" stroke="#ff7b8a" stroke-width="2.2" marker-end="url(#pr)" /><line x1="335.0" y1="42.0" x2="373.0" y2="42.0" stroke="#9aa7b4" stroke-width="1.6" marker-end="url(#pf)" marker-start="url(#pf)"/><circle cx="66.0" cy="298.0" r="11" fill="#10243d" stroke="#58a6ff" stroke-width="1.5"/><text x="66.0" y="302.0" class="mini">0,0</text><circle cx="66.0" cy="234.0" r="11" fill="#10243d" stroke="#58a6ff" stroke-width="1.5"/><text x="66.0" y="238.0" class="mini">0,1</text><circle cx="66.0" cy="170.0" r="11" fill="#10243d" stroke="#58a6ff" stroke-width="1.5"/><text x="66.0" y="174.0" class="mini">0,2</text><circle cx="66.0" cy="106.0" r="11" fill="#10243d" stroke="#58a6ff" stroke-width="1.5"/><text x="66.0" y="110.0" class="mini">0,3</text><circle cx="66.0" cy="42.0" r="11" fill="#10243d" stroke="#58a6ff" stroke-width="1.5"/><text x="66.0" y="46.0" class="mini">0,4</text><circle cx="130.0" cy="298.0" r="11" fill="#10243d" stroke="#58a6ff" stroke-width="1.5"/><text x="130.0" y="302.0" class="mini">1,0</text><circle cx="130.0" cy="234.0" r="11" fill="#10243d" stroke="#58a6ff" stroke-width="1.5"/><text x="130.0" y="238.0" class="mini">1,1</text><circle cx="130.0" cy="170.0" r="11" fill="#10243d" stroke="#58a6ff" stroke-width="1.5"/><text x="130.0" y="174.0" class="mini">1,2</text><circle cx="130.0" cy="106.0" r="11" fill="#10243d" stroke="#58a6ff" stroke-width="1.5"/><text x="130.0" y="110.0" class="mini">1,3</text><circle cx="130.0" cy="42.0" r="11" fill="#10243d" stroke="#58a6ff" stroke-width="1.5"/><text x="130.0" y="46.0" class="mini">1,4</text><circle cx="194.0" cy="298.0" r="11" fill="#10243d" stroke="#58a6ff" stroke-width="1.5"/><text x="194.0" y="302.0" class="mini">2,0</text><circle cx="194.0" cy="42.0" r="11" fill="#10243d" stroke="#58a6ff" stroke-width="1.5"/><text x="194.0" y="46.0" class="mini">2,4</text><circle cx="258.0" cy="298.0" r="11" fill="#10243d" stroke="#58a6ff" stroke-width="1.5"/><text x="258.0" y="302.0" class="mini">3,0</text><circle cx="258.0" cy="42.0" r="11" fill="#10243d" stroke="#58a6ff" stroke-width="1.5"/><text x="258.0" y="46.0" class="mini">3,4</text><circle cx="322.0" cy="298.0" r="11" fill="#10243d" stroke="#58a6ff" stroke-width="1.5"/><text x="322.0" y="302.0" class="mini">4,0</text><circle cx="322.0" cy="234.0" r="11" fill="#10243d" stroke="#58a6ff" stroke-width="1.5"/><text x="322.0" y="238.0" class="mini">4,1</text><circle cx="322.0" cy="170.0" r="11" fill="#10243d" stroke="#58a6ff" stroke-width="1.5"/><text x="322.0" y="174.0" class="mini">4,2</text><circle cx="322.0" cy="106.0" r="11" fill="#10243d" stroke="#58a6ff" stroke-width="1.5"/><text x="322.0" y="110.0" class="mini">4,3</text><circle cx="322.0" cy="42.0" r="11" fill="#10243d" stroke="#58a6ff" stroke-width="1.5"/><text x="322.0" y="46.0" class="mini">4,4</text><circle cx="386.0" cy="298.0" r="11" fill="#10243d" stroke="#58a6ff" stroke-width="1.5"/><text x="386.0" y="302.0" class="mini">5,0</text><circle cx="386.0" cy="42.0" r="11" fill="#10243d" stroke="#58a6ff" stroke-width="1.5"/><text x="386.0" y="46.0" class="mini">5,4</text><text x="66.0" y="348" class="eje">x=0</text><text x="130.0" y="348" class="eje">x=1</text><text x="194.0" y="348" class="eje">x=2</text><text x="258.0" y="348" class="eje">x=3</text><text x="322.0" y="348" class="eje">x=4</text><text x="386.0" y="348" class="eje">x=5</text><text x="28" y="303.0" class="eje ey">y=0</text><text x="28" y="239.0" class="eje ey">y=1</text><text x="28" y="175.0" class="eje ey">y=2</text><text x="28" y="111.0" class="eje ey">y=3</text><text x="28" y="47.0" class="eje ey">y=4</text></svg>
+        <div class="pie">El dígrafo final: 21 nodos y 42 flechas. En gris, los pares que tienen ida y vuelta (doble punta). En rojo, las flechas de una sola mano: la columna x = 1 sube y la x = 4 baja.</div>
+      </div>
+      <h3>La lista de adyacencia completa</h3>
+      <div class="tabla"><table class="chica">
+        <tr><th>Nodo</th><th>→ vecinos</th><th>Nodo</th><th>→ vecinos</th></tr>
+        <tr><td>(0,0)</td><td>(0,1) (1,0)</td><td>(2,0)</td><td>(3,0) (1,0)</td></tr>
+        <tr><td>(0,1)</td><td>(0,2) (0,0) (1,1)</td><td>(2,4)</td><td>(3,4) (1,4)</td></tr>
+        <tr><td>(0,2)</td><td>(0,3) (0,1) (1,2)</td><td>(3,0)</td><td>(4,0) (2,0)</td></tr>
+        <tr><td>(0,3)</td><td>(0,4) (0,2) (1,3)</td><td>(3,4)</td><td>(4,4) (2,4)</td></tr>
+        <tr><td>(0,4)</td><td>(0,3) (1,4)</td><td>(4,0)</td><td>(5,0) (3,0)</td></tr>
+        <tr><td>(1,0)</td><td>(1,1) (2,0) (0,0)</td><td>(4,1)</td><td>(4,0)</td></tr>
+        <tr><td>(1,1)</td><td>(1,2) (0,1)</td><td>(4,2)</td><td>(4,1)</td></tr>
+        <tr><td>(1,2)</td><td>(1,3) (0,2)</td><td>(4,3)</td><td>(4,2)</td></tr>
+        <tr><td>(1,3)</td><td>(1,4) (0,3)</td><td>(4,4)</td><td>(4,3) (5,4) (3,4)</td></tr>
+        <tr><td>(1,4)</td><td>(2,4) (0,4)</td><td>(5,0)</td><td>(4,0)</td></tr>
+        <tr><td></td><td></td><td>(5,4)</td><td>(4,4)</td></tr>
+      </table></div>
+    </section>
+
+    <!-- ===================================================== -->
+    <section id="p10">
+      <h2 class="sec"><span class="num">10</span>Kosaraju: buscar las componentes fuertemente conexas</h2>
+      <p class="quien"><b>Quién:</b> <code>componentes_fuertemente_conexas</code>.</p>
+      <h3>¿Para qué?</h3>
+      <p>Con manos únicas puede pasar que el picker entre a un lugar y <strong>no pueda salir</strong> (una trampa), o que haya pasillos a los que no se llega nunca (una isla). Si todo el almacén es <strong>una sola</strong> componente fuertemente conexa, desde cualquier pasillo se llega a cualquier otro y se vuelve. Eso es lo que queremos.</p>
+      <p><b>Qué usa:</b> la tabla hash <code>lista_adyacencia</code>, un conjunto <code>visitado</code>, una pila hecha a mano, una lista <code>orden_fin</code> y una tabla hash nueva para el grafo transpuesto.</p>
+
+      <h3>10a · Primer recorrido en profundidad (DFS): anotar el orden en que termina cada nodo</h3>
+      <ol class="pasos">
+        <li>Recorre los nodos en orden de inserción. Si un nodo ya fue visitado, lo saltea. Si no, lo marca como visitado y arranca un DFS desde él.</li>
+        <li>El DFS usa una <strong>pila</strong> en vez de recursión. Cada elemento de la pila es un par (nodo, cuál es el próximo vecino que me falta mirar). Así no se rompe con almacenes grandes, porque Python tiene límite de recursión.</li>
+        <li>Mientras la pila no esté vacía, mira el nodo de arriba:
+          <ul>
+            <li>Si le queda algún vecino por mirar, avanza el contador. Si ese vecino no estaba visitado, lo marca y lo apila: <strong>baja</strong> un nivel.</li>
+            <li>Si ya miró todos sus vecinos, ese nodo <strong>terminó</strong>: lo saca de la pila y lo agrega al final de <code>orden_fin</code>.</li>
+          </ul>
+        </li>
+      </ol>
+      <p><b>En el ejemplo</b>, el orden de terminación sale:</p>
+      <pre>(5,0) (1,3) (1,2) (1,1) (1,0) (2,0) (3,0) (4,0) (4,1) (4,2) (4,3)
+(5,4) (4,4) (3,4) (2,4) (1,4) (0,4) (0,3) (0,2) (0,1) <b>(0,0)</b></pre>
+      <p>(0,0) termina <strong>último</strong>, porque fue el primero en arrancar y todo lo demás se recorrió «adentro» de él.</p>
+
+      <h3>10b · Armar el grafo transpuesto</h3>
+      <ol class="pasos">
+        <li>Crea una tabla hash nueva <code>transpuesto</code> y le pone una lista vacía a cada nodo.</li>
+        <li>Por cada flecha origen → destino del grafo, agrega <em>origen</em> a <code>transpuesto[destino]</code>. Es decir, <strong>da vuelta todas las flechas</strong>.</li>
+      </ol>
+      <p><b>En el ejemplo:</b> en el grafo, la única flecha que llega a (4,1) sale de (4,2). Entonces <code>transpuesto[(4,1)] = [(4,2)]</code>.</p>
+
+      <h3>10c · Segundo DFS sobre el transpuesto, en orden de terminación al revés</h3>
+      <ol class="pasos">
+        <li>Recorre <code>orden_fin</code> <strong>de atrás para adelante</strong>: arranca por el que terminó último.</li>
+        <li>Si el nodo ya tiene componente asignada, lo saltea. Si no, arranca una componente nueva con él.</li>
+        <li>Con una pila simple, junta todo lo que se alcanza desde ahí <strong>en el transpuesto</strong> que todavía no tenga componente. Todo eso es <strong>una</strong> componente fuertemente conexa.</li>
+      </ol>
+      <p><b>En el ejemplo:</b> arranca por (0,0) y en el transpuesto alcanza los 21 nodos. Hay <strong>una sola componente</strong>. <span class="ok">El almacén sirve.</span></p>
+
+      <h3>10d · Ordenar</h3>
+      <p>Ordena las componentes de la más grande a la más chica. La primera es la <strong>red principal</strong>.</p>
+
+      <div class="criollo"><b class="t">¿Por qué funciona? (la intuición)</b>El nodo que termina último en el primer DFS está siempre en una componente «de arriba de todo», una de la que se puede salir hacia las otras pero a la que no se entra desde ellas. Al dar vuelta las flechas, esa componente queda como un pozo: desde ella ya no se puede salir hacia las otras. Entonces el segundo DFS, arrancando ahí, junta <strong>solo</strong> su propia componente. Después sigue con el siguiente en el orden, y así va pelando las componentes una por una.</div>
+      <div class="nota"><b>Ejemplo de lo que detectaría:</b> si la columna x = 4 bajara y la x = 1 también bajara, nadie podría subir. Las celdas de arriba quedarían en otra componente, y el paso 11 lo avisaría.</div>
+    </section>
+
+    <!-- ===================================================== -->
+    <section id="p11">
+      <h2 class="sec"><span class="num">11</span>Validar</h2>
+      <p class="quien"><b>Quién:</b> <code>validar_grafo</code>. No corta nada: devuelve <span class="adv">advertencias</span>.</p>
+      <ol class="pasos">
+        <li>Llama a Kosaraju (paso 10) y se queda con la componente más grande como <strong>red principal</strong>.</li>
+        <li><b>Corrige los accesos principales:</b> para cada celda de rack, si alguno de sus accesos está en la red principal, ese pasa a ser el acceso principal. Así el picker nunca va a frenar en una isla.</li>
+        <li>Si hay más de una componente → advertencia: cuántas hay, cuántas celdas quedan fuera de la red principal y en qué zona del mapa (rango de x e y).</li>
+        <li>Para cada producto: si su celda de rack no tiene ningún acceso → advertencia «no tiene pasillo de acceso». Si tiene pero ninguno está en la red principal → advertencia.</li>
+        <li>Para cada zona de despacho: lo mismo («no tiene pasillos adyacentes» / «no tiene pasillo en la red principal»).</li>
+        <li>Para cada picker, con la posición <strong>tal como vino en el JSON</strong>: si no es un nodo → «arranca en una celda que no es pasillo». Si es nodo pero está fuera de la red principal → advertencia.</li>
+      </ol>
+      <p>Las advertencias de este paso se suman a las de los pasos 2 a 5 y quedan en <code>wh.advertencias</code>, para que la interfaz las muestre.</p>
+      <p><b>En el ejemplo:</b> no agrega ninguna advertencia. Las únicas son las 4 de los cruces de pasillos del paso 2.</p>
+    </section>
+
+    <!-- ===================================================== -->
+    <section id="p12">
+      <h2 class="sec"><span class="num">12</span>Pedidos, pickers y configuración</h2>
+      <h3>Configuración</h3>
+      <p>Lee <code>wave_max_pedidos</code> (si no viene, 3) y <code>wave_max_productos</code> (si no viene, 15). Son los límites que después usa el armado de waves.</p>
+      <h3>Pedidos</h3>
+      <ol class="pasos">
+        <li>Para cada pedido lee el estado. Si no viene o no es un estado conocido, queda en <strong>PENDIENTE</strong>.</li>
+        <li>Arma un <code>DetallePedido</code> (producto y cantidad) por cada ítem.</li>
+        <li>Crea el <code>Pedido</code> (id, prioridad —si no viene, 1—, ítems y estado) y lo guarda en <code>pedidos[id]</code>, para buscarlo en O(1).</li>
+      </ol>
+      <h3>Pickers</h3>
+      <ol class="pasos">
+        <li>Lee la posición inicial (si no viene, (0,0)) y la capacidad (si no viene, 100 kg).</li>
+        <li><b>Acomoda la posición</b> para que quede en un pasillo:
+          <ul>
+            <li>Si ya es un nodo → queda igual.</li>
+            <li>Si es una celda de rack → va a su acceso principal.</li>
+            <li>Si es una celda de zona → va al acceso de esa zona más cercano (distancia Manhattan: |dx| + |dy|).</li>
+            <li>Si no es nada de eso → queda como vino.</li>
+          </ul>
+        </li>
+        <li>Crea el <code>Picker</code> y lo agrega a la lista <code>pickers</code>.</li>
+      </ol>
+      <p><b>En el ejemplo:</b> PK_1 arranca en (0,0), que ya es nodo, así que queda ahí.</p>
+    </section>
+
+    <section id="p13">
+      <h2 class="sec"><span class="num">13</span>Devolver el almacén</h2>
+      <p>Devuelve el <code>Warehouse</code>. De ahí en adelante, el resto del sistema (waves, rutas, interfaz) solo hace preguntas rápidas:</p>
+      <div class="tabla"><table>
+        <tr><th>Pregunta</th><th>Se responde con</th><th>Costo</th></tr>
+        <tr><td>¿A dónde puedo ir desde (x, y)?</td><td><code>lista_adyacencia[(x, y)]</code></td><td>O(1) promedio</td></tr>
+        <tr><td>¿Esta celda es pasillo?</td><td><code>(x, y) in nodos</code></td><td>O(1) promedio</td></tr>
+        <tr><td>¿Qué hay en esta celda?</td><td><code>obstaculos.get((x, y))</code> y, si no hay nada, <code>nodos</code></td><td>O(1) promedio</td></tr>
+        <tr><td>¿Dónde frena el picker para el producto P?</td><td><code>catalogo_productos[P]</code> → su (x, y) → <code>acceso_rack_a_pasillo</code></td><td>O(1)</td></tr>
+        <tr><td>¿Dónde puede descargar en la zona Z?</td><td><code>accesos_zona_a_pasillo[Z]</code></td><td>O(1)</td></tr>
+      </table></div>
+    </section>
+
+    <!-- ===================================================== -->
+    <section id="hash">
+      <h2 class="sec"><span class="num">H</span>Sub-algoritmo: la tabla hash por dentro</h2>
+      <p>Cada vez que arriba dije «guarda en la tabla hash» o «busca en la tabla hash», pasa esto. Se usa en <code>obstaculos</code>, <code>nodos</code>, <code>lista_adyacencia</code> y el <code>transpuesto</code> de Kosaraju.</p>
+      <h3>Qué tiene adentro una tabla</h3>
+      <ul>
+        <li><b>m casillas</b> (un arreglo). m es siempre <strong>primo</strong> y arranca en 17.</li>
+        <li>En cada casilla, una <b>lista enlazada</b> de eslabones (<code>NodoCadena</code>). Cada eslabón tiene la clave, en qué posición está su valor y un puntero al siguiente eslabón.</li>
+        <li>Un arreglo <code>_entradas</code> con los pares [clave, valor] <strong>en orden de inserción</strong>.</li>
+        <li><b>n</b>: cuántas claves hay.</li>
+        <li>Dos números <b>a</b> y <b>b</b>, sorteados una sola vez al crear la tabla, con semilla fija 318: a entre 1 y p−1, b entre 0 y p−1.</li>
+      </ul>
+
+      <h3>Función hash: de clave a casilla, en dos pasos</h3>
+      <ol class="pasos">
+        <li><b>Clave → número entero k.</b> Para una coordenada: <code>k = x · 1 000 003 + y</code>. Como y siempre es menor que 1 000 003, dos coordenadas distintas nunca dan el mismo k: es como escribir x e y uno al lado del otro. (Para un texto se usa un polinomio en base 131 sobre sus letras; para otras tuplas, la misma idea que la coordenada.)</li>
+        <li><b>Número → casilla</b>, con <strong>hashing universal</strong>: <code>h(k) = ((a · k + b) mod p) mod m</code>, donde <code>p = 2⁶¹ − 1</code> es un primo enorme, más grande que cualquier k.</li>
+      </ol>
+      <div class="criollo"><b class="t">¿Por qué universal?</b>Con «k mod m» a secas, un almacén con coordenadas que siguen un patrón podría caer siempre en las mismas casillas. Al multiplicar por un a sorteado y sumar un b sorteado, para <strong>cualquier</strong> par de claves distintas la probabilidad de chocar es como mucho 1/m. No hay conjunto de claves «malo» de antemano. La semilla es fija para que el programa dé siempre lo mismo; elegí la 318 porque, probando con los escenarios reales, es la que mejor reparte.</div>
+      <p><b>Ejemplo real</b> (tabla de nodos ya con m = 37):</p>
+      <div class="tabla"><table>
+        <tr><th>Coordenada</th><th>k</th><th>(a·k + b) mod p</th><th>mod 37 = casilla</th></tr>
+        <tr><td>(0,0)</td><td>0</td><td>b = 1 046 595 552 126 575 752</td><td><b>20</b></td></tr>
+        <tr><td>(1,0)</td><td>1 000 003</td><td>1 179 485 595 254 047 856</td><td><b>12</b></td></tr>
+        <tr><td>(2,2)</td><td>2 000 008</td><td>…</td><td><b>1</b></td></tr>
+        <tr><td>(1,3)</td><td>1 000 006</td><td>…</td><td><b>35</b></td></tr>
+      </table></div>
+
+      <h3>BUSCAR(clave)</h3>
+      <ol class="pasos">
+        <li>Calcula la casilla i = h(clave).</li>
+        <li>Recorre la lista enlazada de la casilla i, comparando la clave de cada eslabón con la buscada.</li>
+        <li>Si la encuentra → devuelve el valor (está en <code>_entradas</code>, en la posición que dice el eslabón). Si llega al final de la lista → «no está».</li>
+      </ol>
+
+      <h3>GUARDAR(clave, valor)</h3>
+      <ol class="pasos">
+        <li>Hace BUSCAR. Si la clave ya estaba → <strong>actualiza</strong> el valor y termina.</li>
+        <li>Si no estaba: agrega [clave, valor] al final de <code>_entradas</code>.</li>
+        <li>Crea un eslabón y lo pone <strong>al principio</strong> de la lista de su casilla. Ponerlo al principio cuesta O(1): no hay que recorrer nada.</li>
+        <li>Suma 1 a n. Si ahora <strong>n &gt; 0,75 · m</strong> → hace REHASH.</li>
+      </ol>
+
+      <h3>Colisiones: encadenamiento</h3>
+      <p>Si dos claves distintas dan la misma casilla, chocan. La solución es que <strong>las dos viven en la lista de esa casilla</strong>, una detrás de la otra. Al buscar se recorre esa lista corta comparando claves.</p>
+      <p><b>En el ejemplo</b> hay dos colisiones en la tabla de nodos:</p>
+      <ul>
+        <li>Casilla 9: <code>(1,2) → (0,1) → fin</code></li>
+        <li>Casilla 17: <code>(5,0) → (0,2) → fin</code></li>
+      </ul>
+      <p>(0,1) se insertó antes que (1,2). Por eso (1,2) queda adelante: el último en llegar se pone primero. Buscar (0,1) cuesta mirar 2 eslabones en vez de 1. Con 21 claves en 37 casillas, ninguna lista tiene más de 2.</p>
+
+      <h3>REHASH: cuando la tabla se llena</h3>
+      <ol class="pasos">
+        <li>El nuevo tamaño es el <strong>primer primo ≥ 2m</strong>. Para encontrarlo se prueba 2m, 2m+1, … y para cada candidato se mira si tiene algún divisor impar hasta su raíz cuadrada.</li>
+        <li>Crea un arreglo nuevo de casillas vacías.</li>
+        <li>Vuelve a meter <strong>todas</strong> las claves, en orden de inserción, calculando h de nuevo. Cambió m, así que cada clave puede caer en otra casilla.</li>
+      </ol>
+      <p><b>En el ejemplo:</b> la tabla de nodos arranca con m = 17. 0,75 · 17 = 12,75. Al insertar el nodo número 13, la (3,0), queda n = 13 &gt; 12,75 → rehash a 37 (2 · 17 = 34; 34, 35 y 36 no son primos; 37 sí). Al final quedan n = 21, m = 37, α = 21/37 = 0,57. Con m = 17, (0,0) caía en la casilla 2; con m = 37 cae en la 20.</p>
+      <p>En el almacén grande de verdad la tabla crece 17 → 37 → 79 → 163 → 331 → … y termina con 1898 nodos en 2729 casillas (α = 0,70), con listas de 2 como máximo.</p>
+
+      <h3>BORRAR(clave)</h3>
+      <ol class="pasos">
+        <li>Va a la casilla, recorre la lista guardando cuál era el eslabón anterior y, cuando encuentra la clave, la «puentea»: el anterior pasa a apuntar al siguiente.</li>
+        <li>Marca esa entrada como borrada en <code>_entradas</code> y resta 1 a n.</li>
+        <li>Si se juntaron muchas entradas borradas, rehace la tabla con el mismo m para compactar.</li>
+      </ol>
+      <p>Al construir el almacén no se borra nada; existe para que la tabla sea completa.</p>
+
+      <h3>RECORRER («para cada nodo…»)</h3>
+      <p>Recorre <code>_entradas</code> de principio a fin, salteando las borradas. Por eso el orden es siempre el de inserción, como en un diccionario de Python. Kosaraju, el armado de aristas y la interfaz ven los nodos siempre en el mismo orden.</p>
+    </section>
+
+    <!-- ===================================================== -->
+    <section id="costos">
+      <h2 class="sec"><span class="num">$</span>Cuánto cuesta todo</h2>
+      <p>Sea C = ancho × largo (cantidad de celdas), V = nodos y E = flechas. Cada nodo tiene como mucho 4 flechas, así que <strong>E ≤ 4V</strong> y V ≤ C.</p>
+      <div class="tabla"><table>
+        <tr><th>Paso</th><th>Qué recorre</th><th>Costo</th></tr>
+        <tr><td>0 · Validar JSON</td><td>Las celdas de cada rectángulo, productos, pedidos, pickers</td><td>O(C + productos + ítems)</td></tr>
+        <tr><td>1 · Preparar</td><td>—</td><td>O(1)</td></tr>
+        <tr><td>2–5 · Pasillos y obstáculos</td><td>Cada celda de cada rectángulo, con O(1) por celda</td><td>O(C) promedio</td></tr>
+        <tr><td>6 · Productos</td><td>Cada producto, O(1) cada uno</td><td>O(productos)</td></tr>
+        <tr><td>7 · Nodos</td><td>Toda la grilla</td><td>O(C)</td></tr>
+        <tr><td>8 + 9 · Accesos y aristas</td><td>Cada nodo × 4 vecinos</td><td>O(V)</td></tr>
+        <tr><td>10 · Kosaraju</td><td>Dos DFS + transpuesto</td><td>O(V + E) = O(V)</td></tr>
+        <tr><td>11 · Validar</td><td>Accesos, productos, zonas, pickers</td><td>O(V + productos)</td></tr>
+        <tr><td>12 · Negocio</td><td>Pedidos e ítems, pickers</td><td>O(ítems + pickers)</td></tr>
+        <tr><td><b>Total</b></td><td></td><td><b>O(C + productos + ítems), lineal</b></td></tr>
+      </table></div>
+      <div class="tabla"><table>
+        <tr><th>Operación de la tabla hash</th><th>Promedio</th><th>Peor caso</th></tr>
+        <tr><td>Buscar / guardar / borrar</td><td>O(1 + α) = O(1), porque α ≤ 0,75</td><td>O(n), si todas cayeran en la misma casilla</td></tr>
+        <tr><td>Rehash</td><td>O(n) cuando pasa, pero O(1) <em>amortizado</em> por inserción (cada vez se duplica)</td><td>O(n)</td></tr>
+        <tr><td>Recorrer</td><td>O(n)</td><td>O(n)</td></tr>
+      </table></div>
+    </section>
+
+    <!-- ===================================================== -->
+    <section id="repaso">
+      <h2 class="sec"><span class="num">✓</span>Repaso para el oral</h2>
+      <div class="clave"><b>En una frase:</b> leo los rectángulos del JSON y marco qué celdas se pisan y cuáles no; cada celda pisable es un nodo; conecto cada nodo con sus vecinos si la mano lo permite; anoto dónde frena el picker para cada rack y zona; con Kosaraju verifico que desde cualquier pasillo se llega a cualquier otro; y todo el mapa se guarda en una tabla hash universal con encadenamiento.</div>
+      <div class="preguntas">
+        <details><summary>¿Qué es un nodo en su grafo?</summary><p>Una celda de pasillo, es decir, toda celda que no es rack, zona ni puerta. Las celdas que ningún pasillo declara también son nodos, con sentido AMBOS.</p></details>
+        <details><summary>¿Cuándo existe la flecha A → B?</summary><p>Cuando B es vecina de A (arriba, abajo, izquierda o derecha), B es nodo, el sentido de A permite salir para ese lado y entrar a B por ese lado no es contramano.</p></details>
+        <details><summary>¿Qué pasa en un cruce de pasillos?</summary><p>Si alguno de los dos es AMBOS, la celda queda AMBOS, para poder doblar. Si ninguno es AMBOS, queda el sentido del último declarado. Además sale una advertencia «pisa», que es solo informativa.</p></details>
+        <details><summary>¿Cómo sabe el picker dónde frenar para un producto?</summary><p>Producto → su celda de rack (con el catálogo, O(1)) → acceso principal de esa celda (con <code>acceso_rack_a_pasillo</code>, O(1)). El acceso se calcula al construir, por el costado largo del rack, y en la validación se asegura que esté en la red principal.</p></details>
+        <details><summary>¿Por qué Kosaraju y no un BFS?</summary><p>Un BFS desde un punto te dice a dónde llegás, pero no si podés volver. Kosaraju encuentra los grupos donde se puede ir y volver entre cualquier par: las componentes fuertemente conexas. Si hay una sola, no hay trampas ni islas.</p></details>
+        <details><summary>¿Por qué los DFS son iterativos?</summary><p>Porque en un almacén de 200 × 200 un camino puede tener decenas de miles de celdas, y la recursión de Python se corta mucho antes. Con una pila propia no hay límite.</p></details>
+        <details><summary>¿Qué es el grafo transpuesto?</summary><p>El mismo grafo con todas las flechas al revés. Kosaraju hace el segundo DFS sobre él.</p></details>
+        <details><summary>¿Cuál es la diferencia entre error y advertencia?</summary><p>Un error (JSON inválido, algo fuera del mapa) corta la construcción. Una advertencia (elementos que se pisan, islas, productos sin acceso) deja construir el almacén pero avisa.</p></details>
+        <details><summary>¿Qué función hash usan y cómo resuelven colisiones?</summary><p>Hashing universal h(k) = ((a·k + b) mod p) mod m, con k = x · 1 000 003 + y, p = 2⁶¹ − 1, a y b sorteados con semilla fija y m primo. Las colisiones se resuelven por encadenamiento: una lista enlazada por casilla. Cuando α = n/m pasa 0,75, se hace rehash al primo siguiente a 2m.</p></details>
+        <details><summary>¿Cuánto cuesta construir todo?</summary><p>Lineal en el tamaño del almacén: O(celdas + productos + ítems), porque cada paso recorre cada cosa una cantidad fija de veces y cada operación de la tabla hash es O(1) promedio.</p></details>
+      </div>
+    </section>
+  </main>
+</div>
+</body>
+</html>

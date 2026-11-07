@@ -620,7 +620,7 @@ accesos_zona_a_pasillo: id de zona → [celdas de pasillo pegadas a la zona]</pr
       <div class="preguntas">
         <details><summary>¿Qué es un nodo?</summary><p>Una celda de pasillo <code>(x, y)</code>. Ni los racks, ni las zonas, ni las puertas lo son.</p></details>
         <details><summary>¿Por qué los racks no son nodos?</summary><p>Porque el picker no los atraviesa (enunciado 3.6). Si fueran nodos, un camino podría pasar por adentro de un rack.</p></details>
-        <details><summary>¿Cómo se representa el grafo?</summary><p>Con lista de adyacencia en un diccionario indexado por coordenada. Es dirigido porque los pasillos tienen sentido.</p></details>
+        <details><summary>¿Cómo se representa el grafo?</summary><p>Con lista de adyacencia guardada en nuestra tabla hash, indexada por coordenada. Es dirigido porque los pasillos tienen sentido.</p></details>
         <details><summary>¿Cómo saben que el mapa no tiene trampas?</summary><p>Con Kosaraju: tiene que haber una sola componente fuertemente conexa.</p></details>
         <details><summary>¿Qué función hash usan?</summary><p>Hashing universal: h(k) = ((a·k + b) mod p) mod m, con p = 2⁶¹ − 1 primo, a y b sorteados una vez con semilla fija y m primo. La coordenada se pasa antes a un entero único: k = x · 1 000 003 + y.</p></details>
         <details><summary>¿Cómo resuelven las colisiones?</summary><p>Por encadenamiento: cada casilla tiene una lista enlazada. Si dos claves caen en la misma casilla, quedan en la misma lista y al buscar se la recorre comparando claves. Ejemplo real: (0,5) y (10,0) caen en la casilla 100.</p></details>
