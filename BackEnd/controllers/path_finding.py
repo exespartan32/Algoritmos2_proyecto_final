@@ -1,8 +1,57 @@
-import heapq
 import time
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 CoordXY = Tuple[int, int]
+
+
+class _MinHeapRuteo:
+    """Cola de prioridad mínima (Min-Heap) de implementación propia para Dijkstra.
+
+    Inserta y extrae el vértice con menor distancia acumulada en tiempo O(log V).
+    """
+
+    def __init__(self) -> None:
+        self._heap: List[Tuple[int, CoordXY]] = []
+
+    def insertar(self, distancia: int, nodo: CoordXY) -> None:
+        self._heap.append((distancia, nodo))
+        i = len(self._heap) - 1
+        while i > 0:
+            padre = (i - 1) >> 1
+            if self._heap[i] < self._heap[padre]:
+                self._heap[i], self._heap[padre] = self._heap[padre], self._heap[i]
+                i = padre
+            else:
+                break
+
+    def extraer_minimo(self) -> Tuple[int, CoordXY]:
+        if len(self._heap) == 1:
+            return self._heap.pop()
+        minimo = self._heap[0]
+        self._heap[0] = self._heap.pop()
+        self._min_heapify(0)
+        return minimo
+
+    def esta_vacio(self) -> bool:
+        return len(self._heap) == 0
+
+    def _min_heapify(self, i: int) -> None:
+        n = len(self._heap)
+        while True:
+            izq = (i << 1) + 1
+            der = (i << 1) + 2
+            menor = i
+
+            if izq < n and self._heap[izq] < self._heap[menor]:
+                menor = izq
+            if der < n and self._heap[der] < self._heap[menor]:
+                menor = der
+
+            if menor != i:
+                self._heap[i], self._heap[menor] = self._heap[menor], self._heap[i]
+                i = menor
+            else:
+                break
 
 
 class RutaResultado:
@@ -111,7 +160,7 @@ class Pathfinding:
         destino_retorno: Optional[CoordXY] = None,
         warehouse: Any = None,
     ) -> RutaResultado:
-        """Visita los productos en la secuencia exacta de los pedidos usando Dijkstra tramo a tramo."""
+        """Estrategia A: Visita los productos en la secuencia exacta de los pedidos usando Dijkstra tramo a tramo."""
         tiempo_inicio = time.perf_counter()
         nodos_explorados_totales: Set[CoordXY] = set()
         destinos_inalcanzables: List[CoordXY] = []
@@ -183,7 +232,7 @@ class Pathfinding:
         destino_retorno: Optional[CoordXY] = None,
         warehouse: Any = None,
     ) -> RutaResultado:
-        """En cada paso elige el próximo producto pendiente más cercano en el dígrafo."""
+        """Estrategia B: En cada paso selecciona el próximo producto pendiente más cercano mediante Dijkstra Multidestino."""
         tiempo_inicio = time.perf_counter()
         nodos_explorados_totales: Set[CoordXY] = set()
         destinos_inalcanzables: List[CoordXY] = []
@@ -214,7 +263,7 @@ class Pathfinding:
 
         while pendientes:
             ruta_tramo, destino_alcanzado, explorados_tramo = (
-                Pathfinding.calcular_ruta_greedy(
+                Pathfinding.calcular_ruta_dijkstra_multidestino(
                     posicion_actual, pendientes, grafo, orden_exploracion=orden
                 )
             )
@@ -283,67 +332,50 @@ class Pathfinding:
         picker_id: Optional[str] = None,
         orden_exploracion: Optional[List[CoordXY]] = None,
     ) -> Tuple[List[CoordXY], Set[CoordXY]]:
-        if origen == destino:
-            return [origen], {origen}
-
-        cola: List[Tuple[int, CoordXY]] = [(0, origen)]
-        distancias: Dict[CoordXY, int] = {origen: 0}
-        padres: Dict[CoordXY, Optional[CoordXY]] = {origen: None}
-        nodos_explorados: Set[CoordXY] = set()
-
-        while cola:
-            dist_actual, nodo_actual = heapq.heappop(cola)
-            if dist_actual > distancias.get(nodo_actual, float("inf")):
-                continue
-
-            nodos_explorados.add(nodo_actual)
-            if orden_exploracion is not None:
-                orden_exploracion.append(nodo_actual)
-            if nodo_actual == destino:
-                return Pathfinding._reconstruir_ruta(padres, destino), nodos_explorados
-
-            paso_eval = (
-                paso_tiempo_inicial + dist_actual + 1 if paso_tiempo_inicial > 0 else 0
-            )
-            vecinos = Pathfinding._obtener_vecinos(
-                grafo, nodo_actual, paso_tiempo=paso_eval, picker_id=picker_id
-            )
-
-            for vecino in vecinos:
-                nueva_distancia = dist_actual + 1
-                if nueva_distancia < distancias.get(vecino, float("inf")):
-                    distancias[vecino] = nueva_distancia
-                    padres[vecino] = nodo_actual
-                    heapq.heappush(cola, (nueva_distancia, vecino))
-
-        return [], nodos_explorados
+        """Calcula el camino mínimo punto a punto entre 'origen' y 'destino' usando Dijkstra."""
+        ruta, _, explorados = Pathfinding.calcular_ruta_dijkstra_multidestino(
+            origen=origen,
+            destinos_objetivo={destino},
+            grafo=grafo,
+            paso_tiempo_inicial=paso_tiempo_inicial,
+            picker_id=picker_id,
+            orden_exploracion=orden_exploracion,
+        )
+        return ruta, explorados
 
     @staticmethod
-    def calcular_ruta_greedy(
+    def calcular_ruta_dijkstra_multidestino(
         origen: CoordXY,
-        destinos_pendientes: Any,
+        destinos_objetivo: Any,
         grafo: Any,
         paso_tiempo_inicial: int = 0,
+        picker_id: Optional[str] = None,
         orden_exploracion: Optional[List[CoordXY]] = None,
     ) -> Tuple[List[CoordXY], Optional[CoordXY], Set[CoordXY]]:
-        if not destinos_pendientes:
+        """
+        Motor central de Dijkstra sobre el dígrafo de pasillos.
+        Expande los nodos en orden de distancia acumulada usando _MinHeapRuteo y
+        se detiene apenas extrae el primer nodo perteneciente a 'destinos_objetivo'.
+        """
+        if not destinos_objetivo:
             return [], None, set()
 
         set_destinos = (
-            destinos_pendientes
-            if isinstance(destinos_pendientes, set)
-            else set(destinos_pendientes)
+            destinos_objetivo
+            if isinstance(destinos_objetivo, set)
+            else set(destinos_objetivo)
         )
         if origen in set_destinos:
             return [origen], origen, {origen}
 
-        cola: List[Tuple[int, CoordXY]] = [(0, origen)]
+        cola = _MinHeapRuteo()
+        cola.insertar(0, origen)
         distancias: Dict[CoordXY, int] = {origen: 0}
         padres: Dict[CoordXY, Optional[CoordXY]] = {origen: None}
         nodos_explorados: Set[CoordXY] = set()
 
-        while cola:
-            dist_actual, nodo_actual = heapq.heappop(cola)
+        while not cola.esta_vacio():
+            dist_actual, nodo_actual = cola.extraer_minimo()
             if dist_actual > distancias.get(nodo_actual, float("inf")):
                 continue
 
@@ -361,7 +393,7 @@ class Pathfinding:
                 paso_tiempo_inicial + dist_actual + 1 if paso_tiempo_inicial > 0 else 0
             )
             vecinos = Pathfinding._obtener_vecinos(
-                grafo, nodo_actual, paso_tiempo=paso_eval
+                grafo, nodo_actual, paso_tiempo=paso_eval, picker_id=picker_id
             )
 
             for vecino in vecinos:
@@ -369,7 +401,7 @@ class Pathfinding:
                 if nueva_distancia < distancias.get(vecino, float("inf")):
                     distancias[vecino] = nueva_distancia
                     padres[vecino] = nodo_actual
-                    heapq.heappush(cola, (nueva_distancia, vecino))
+                    cola.insertar(nueva_distancia, vecino)
 
         return [], None, nodos_explorados
 
@@ -457,11 +489,12 @@ class Pathfinding:
         if not Pathfinding._es_celda_pasillo_en_grafo(origen_pasillo, grafo):
             return {}
 
-        cola: List[Tuple[int, CoordXY]] = [(0, origen_pasillo)]
+        cola = _MinHeapRuteo()
+        cola.insertar(0, origen_pasillo)
         distancias: Dict[CoordXY, float] = {origen_pasillo: 0.0}
 
-        while cola:
-            dist_actual, nodo_actual = heapq.heappop(cola)
+        while not cola.esta_vacio():
+            dist_actual, nodo_actual = cola.extraer_minimo()
             if dist_actual > distancias.get(nodo_actual, float("inf")):
                 continue
 
@@ -469,7 +502,7 @@ class Pathfinding:
                 nueva_dist = dist_actual + 1
                 if nueva_dist < distancias.get(vecino, float("inf")):
                     distancias[vecino] = float(nueva_dist)
-                    heapq.heappush(cola, (nueva_dist, vecino))
+                    cola.insertar(nueva_dist, vecino)
 
         return distancias
 
