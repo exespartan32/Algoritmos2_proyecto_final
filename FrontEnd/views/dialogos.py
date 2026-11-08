@@ -4,6 +4,7 @@ from pathlib import Path
 import pygame
 from BackEnd.controllers.wave_manager import ESTRATEGIAS_ARMADO
 from BackEnd.controllers.simulador import NOMBRE_ESTRATEGIA
+from BackEnd.controllers.evaluador_estrategias import EvaluadorEstrategias
 from FrontEnd.views.ui_elements import (
     ANCHO,
     ALTO,
@@ -13,6 +14,7 @@ from FrontEnd.views.ui_elements import (
     TINTA,
     VERDE,
     AMBAR,
+    ROJO,
 )
 
 
@@ -32,16 +34,22 @@ class DialogosVistas:
     ]
 
     FILAS_ARMADO = [
+        ("Pedidos preparados", "pedidos_preparados"),
         ("Waves armadas", "waves"),
         ("Pedidos por wave (promedio)", "pedidos_por_wave"),
         ("Pasillos distintos por wave", "pasillos_por_wave"),
         ("Prioridad media de la 1.ª wave", "prioridad_primera_wave"),
-        ("Distancia total recorrida", "distancia"),
-        ("Turnos hasta preparar todo", "turnos"),
+        ("Distancia total planificada", "distancia"),
+        ("Turnos de simulación", "turnos"),
         ("Tiempo de armado (ms)", "tiempo_armado_ms"),
         ("Candidatos evaluados", "candidatos_evaluados"),
     ]
-    MAYOR_ES_MEJOR = {"pedidos_por_wave", "prioridad_primera_wave"}
+    MAYOR_ES_MEJOR = {
+        "pedidos_preparados",
+        "pedidos_por_wave",
+        "prioridad_primera_wave",
+    }
+    METRICAS_INFORMATIVAS = {"waves", "candidatos_evaluados"}
 
     def dibujar_comparacion(self, x, y):
         comp = self.comparacion
@@ -230,8 +238,63 @@ class DialogosVistas:
             marcado=hay and libres > 0,
         )
         self.boton(
-            "Comparar estrategias", x + 280, y + 600, 240, ("comparar", True), hay
+            "Comparar estrategias de recorrido",
+            x + 280,
+            y + 600,
+            310,
+            ("comparar", True),
+            hay,
         )
+
+    def dialogo_resultado_waves(self, x, y, w):
+        self.texto(
+            self.mensaje,
+            x,
+            y,
+            23,
+            ROJO if self.avisos_waves else VERDE,
+            True,
+            max_ancho=w - 145,
+        )
+        if self.sim.waves:
+            self.boton(
+                "Ver cómo se armaron las waves",
+                x,
+                y + 54,
+                285,
+                "ver_armado",
+                marcado=True,
+            )
+            self.boton("Seleccionar waves", x + 300, y + 54, 185, "elegir_waves")
+            comparacion = self.sim.ultima_comparacion_armado
+            if comparacion:
+                _, motivo = EvaluadorEstrategias.clasificar_armado(comparacion)
+                nombre = ESTRATEGIAS_ARMADO[self.sim.estrategia_waves_efectiva]
+                self.parrafo(
+                    f"Armado automático: {nombre}. Motivo: {motivo}.", x, y + 106, w
+                )
+                self.boton(
+                    "Ver comparación de armado",
+                    x + 500,
+                    y + 54,
+                    260,
+                    "ver_comparacion_auto",
+                )
+        if self.avisos_waves:
+            self.texto(
+                f"Alertas de validación ({len(self.avisos_waves)})",
+                x,
+                y + 162,
+                19,
+                ROJO,
+                True,
+            )
+            inicio = self.pag_alertas * 6
+            for i, aviso in enumerate(self.avisos_waves[inicio : inicio + 6]):
+                self.parrafo(aviso, x, y + 205 + i * 55, w, 16, ROJO, limite=2)
+            self.paginador(
+                "pag_alertas", len(self.avisos_waves), 6, x + w - 150, y + 550
+            )
 
     def dialogo_armado(self, x, y, w):
         self.texto("Comparar estrategias de armado de waves", x, y, 26, negrita=True)
@@ -253,18 +316,13 @@ class DialogosVistas:
             "PASILLO": "Por pasillo",
             "PRIORIDAD": "Solo prioridad",
         }
-        mejor_global = min(
-            claves,
-            key=lambda k: (
-                comp[k]["distancia"],
-                comp[k]["turnos"],
-                comp[k]["pasillos_por_wave"],
-            ),
-        )
+        mejor_global, motivo = EvaluadorEstrategias.clasificar_armado(comp)
         yy = y + 115
         self.texto("Métrica", x, yy, 16, GRIS, True)
         for j, clave in enumerate(claves):
-            etiqueta_col = columnas[clave] + (" ★" if clave == mejor_global else "")
+            etiqueta_col = columnas[clave] + (
+                " (auto)" if clave == mejor_global else ""
+            )
             self.texto(
                 etiqueta_col,
                 x + 360 + j * 170,
@@ -276,11 +334,15 @@ class DialogosVistas:
         for i, (etiqueta, campo) in enumerate(self.FILAS_ARMADO):
             fila_y = yy + 30 + i * 28
             self.texto(etiqueta, x, fila_y, 16)
-            valores = [comp[c][campo] for c in claves]
+            valores = [round(comp[c][campo], 2) for c in claves]
             mejor = max(valores) if campo in self.MAYOR_ES_MEJOR else min(valores)
             for j, valor in enumerate(valores):
                 texto = f"{valor:.2f}" if isinstance(valor, float) else str(valor)
-                es_mejor = valor == mejor and valores.count(mejor) < len(valores)
+                es_mejor = (
+                    campo not in self.METRICAS_INFORMATIVAS
+                    and valor == mejor
+                    and valores.count(mejor) < len(valores)
+                )
                 self.texto(
                     texto + ("  (mejor)" if es_mejor else ""),
                     x + 360 + j * 170,
@@ -290,14 +352,26 @@ class DialogosVistas:
                     es_mejor,
                 )
 
-        # Botones para elegir automáticamente la mejor o forzar cualquiera de las 3
         y_botones = yy + 40 + len(self.FILAS_ARMADO) * 28
+        self.parrafo(
+            f"Automática: {columnas[mejor_global]} por {motivo}. "
+            "Primero se maximiza la cantidad preparada. En caso de empate se minimizan "
+            "distancia planificada, turnos y pasillos por wave, en ese orden. "
+            "El verde compara cada fila de forma independiente.",
+            x,
+            y_botones,
+            w,
+            16,
+            limite=4,
+        )
+        y_botones += 94
         self.boton(
             f"Auto-elegir mejor ({columnas[mejor_global]})",
             x,
             y_botones,
             330,
-            ("usar_estrategia_armado", "AUTO"),
+            ("usar_estrategia_armado", mejor_global, True),
+            not self.sim.waves_iniciadas,
             marcado=True,
         )
         for j, clave in enumerate(claves):
@@ -307,7 +381,7 @@ class DialogosVistas:
                 y_botones,
                 155,
                 ("usar_estrategia_armado", clave),
-                marcado=(clave == mejor_global),
+                not self.sim.waves_iniciadas,
             )
 
     def dialogo_comparar(self, x, y, w):

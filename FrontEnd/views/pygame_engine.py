@@ -5,6 +5,7 @@ import time
 import pygame
 
 from BackEnd.controllers.simulador import NOMBRE_ESTRATEGIA, Simulador
+from BackEnd.controllers.evaluador_estrategias import EvaluadorEstrategias
 from BackEnd.controllers.wave_manager import (
     ESTRATEGIAS_ARMADO,
     OPCIONES_ESTRATEGIA_ARMADO,
@@ -16,6 +17,7 @@ from FrontEnd.sprites.picker_sprite import angulo_para, color_picker
 from FrontEnd.views.mapa import VistaMapa
 from FrontEnd.views.paneles import PanelesVistas
 from FrontEnd.views.dialogos import DialogosVistas
+from FrontEnd.views.experimentos import ExperimentosVista
 from FrontEnd.views.ui_elements import (
     ALTO,
     ANCHO,
@@ -31,11 +33,13 @@ from FrontEnd.views.ui_elements import (
     UIElements,
 )
 
-VELOCIDADES = [(0.70, "x0.5"), (0.35, "x1"), (0.18, "x2"), (0.07, "x5"), (0.02, "x20")]
+VELOCIDADES = [
+    (0.35 / factor, f"x{factor:g}") for factor in (0.5, 1, 1.5, 2, 2.5, 3, 4, 5, 6)
+]
 DURACION_PASO_MANUAL = 0.30
 
 
-class App(UIElements, PanelesVistas, DialogosVistas):
+class App(UIElements, PanelesVistas, DialogosVistas, ExperimentosVista):
     OPCIONES_FORMULARIO = {
         "localizacion": LOCALIZACIONES,
         "estrategia_waves": OPCIONES_ESTRATEGIA_ARMADO,
@@ -61,6 +65,14 @@ class App(UIElements, PanelesVistas, DialogosVistas):
         self.velocidad = 1
         self.sim = None
         self.nombre = ""
+        self.ruta_escenario = None
+        self.avisos_waves = []
+        self.experimento_serie = "pedidos"
+        self.experimento_modo = "recorrido"
+        self.experimento_metrica = "distancia"
+        self.experimento_filas = []
+        self.experimento_mensaje = ""
+        self.experimento_pendiente = None
         self.biblioteca = Biblioteca(carpeta_biblioteca)
         self.pestana = "Pickers"
         self.pag_biblioteca = self.pag_tabla = self.pag_waves_dialogo = 0
@@ -84,6 +96,7 @@ class App(UIElements, PanelesVistas, DialogosVistas):
 
     def cargar(self, ruta):
         sim = Biblioteca.abrir(ruta)
+        self.ruta_escenario = Path(ruta)
         self._usar(sim, Path(ruta).stem)
         sesion = Biblioteca.es_sesion(ruta)
         self.mensaje = (
@@ -117,23 +130,15 @@ class App(UIElements, PanelesVistas, DialogosVistas):
                 self.productos_por_celda.get((p.x, p.y), 0) + 1
             )
 
-    def _a_usar_estrategia_armado(self, clave: str):
+    def _a_usar_estrategia_armado(self, clave: str, auto=False):
         c = self.sim.config
         self.sim.configurar(
             c["wave_max_pedidos"],
             c["wave_max_productos"],
             c["max_pickers_por_wave"],
-            clave,
+            "AUTO" if auto else clave,
         )
-        waves = self.sim.generar_waves()
-        self.seleccion = set()
-        self.comparacion = None
-        self.pestana, self.pag_tabla = "Waves", 0
-        efectiva = self.sim.estado.gestor_waves.estrategia_armado
-        self.mensaje = (
-            f"Waves generadas ({len(waves)}) usando: {ESTRATEGIAS_ARMADO[efectiva]}."
-        )
-        self.dialogo = "waves"
+        self._a_generar_waves(self.comparacion_armado if auto else None)
 
     def importar_con_dialogo(self):
         import tkinter as tk
@@ -399,18 +404,34 @@ class App(UIElements, PanelesVistas, DialogosVistas):
         self.cerrar_dialogo()
         self.mensaje = "Capacidad de waves actualizada. Generá las waves."
 
-    def _a_generar_waves(self):
-        waves = self.sim.generar_waves()
+    def _a_generar_waves(self, comparacion=None):
+        self.reproduciendo = False
+        self.armado = None
         self.seleccion = set()
         self.comparacion = None
         self.pestana, self.pag_tabla = "Waves", 0
-        descartados = len(self.sim.estado.gestor_waves.pedidos_descartados)
-        self.mensaje = f"{len(waves)} waves generadas correctamente."
-        if descartados:
-            self.mensaje += (
-                f" {descartados} pedidos no pudieron prepararse (ver pestaña Eventos)."
-            )
-        self.dialogo = "waves"
+        self.avisos_waves = []
+        try:
+            if comparacion is None:
+                waves = self.sim.generar_waves()
+            else:
+                ganadora, _ = EvaluadorEstrategias.clasificar_armado(comparacion)
+                waves = self.sim.generar_waves(estrategia_guardada=ganadora)
+                self.sim.ultima_comparacion_armado = comparacion
+        except (ValueError, RuntimeError) as exc:
+            gestor = self.sim.estado.gestor_waves
+            self.avisos_waves = list(gestor.errores_validacion) if gestor else []
+            if not self.avisos_waves:
+                self.avisos_waves = [str(exc)]
+            self.mensaje = "Alerta: no se pudieron crear las waves."
+        else:
+            gestor = self.sim.estado.gestor_waves
+            self.avisos_waves = list(gestor.errores_validacion)
+            self.mensaje = f"Waves creadas correctamente ({len(waves)})."
+            if self.avisos_waves:
+                self.mensaje += " Hay alertas de validación."
+        self.pag_alertas = 0
+        self.dialogo = "resultado_waves"
 
     def _a_elegir_waves(self):
         if not self.sim.waves:
@@ -457,6 +478,8 @@ class App(UIElements, PanelesVistas, DialogosVistas):
             ids = [
                 w["id"] for w in self.waves_pendientes() if w["id"] in self.seleccion
             ]
+            if not ids and not desde_dialogo:
+                ids = [w["id"] for w in self.waves_pendientes()]
             if not ids:
                 raise ValueError("Seleccioná waves pendientes para comparar.")
         self.comparacion = self.sim.comparar_estrategias(
@@ -501,12 +524,13 @@ class App(UIElements, PanelesVistas, DialogosVistas):
             raise ValueError("Todavía no se inició ninguna tanda.")
         self.mensaje = "Tanda reiniciada: stock restaurado."
 
-    def _a_velocidad(self):
-        self.velocidad = (self.velocidad + 1) % len(VELOCIDADES)
+    def _a_velocidad(self, delta):
+        self.velocidad = max(0, min(len(VELOCIDADES) - 1, self.velocidad + delta))
+        self.acumulado = 0.0
 
     def _a_guardar(self):
         self.reproduciendo = False
-        ruta = self.biblioteca.guardar_sesion(self.sim, self.nombre)
+        ruta = self.biblioteca.guardar_sesion(self.sim, self.ruta_escenario)
         self.mensaje = f"Sesión guardada como {ruta.name}."
 
     def _a_pestana(self, nombre):
@@ -528,6 +552,10 @@ class App(UIElements, PanelesVistas, DialogosVistas):
     def _a_comparar_armado(self):
         self.reproduciendo = False
         self.comparacion_armado = self.sim.comparar_armado()
+        self.dialogo = "armado"
+
+    def _a_ver_comparacion_auto(self):
+        self.comparacion_armado = self.sim.ultima_comparacion_armado
         self.dialogo = "armado"
 
     DURACION_ARMADO = {
@@ -695,25 +723,35 @@ class App(UIElements, PanelesVistas, DialogosVistas):
 
     def barra_simulacion(self):
         m = self.sim
-        self.texto(self.nombre, 260, 26, 17, GRIS, max_ancho=760)
+        self.texto(self.nombre, 220, 26, 17, GRIS, max_ancho=210)
         self.boton("Guardar sesión", 1210, 18, 150, "guardar")
         self.boton("Inicio", 1370, 18, 120, "inicio")
         hay_waves = bool(m.waves)
         iniciadas = m.waves_iniciadas
+        self.boton(
+            "Estrategia de recorrido seleccionada: " + NOMBRE_ESTRATEGIA[m.estrategia],
+            438,
+            18,
+            435,
+            "estrategia",
+        )
+        self.boton(
+            "Comparar estrategias de recorrido", 881, 18, 313, "comparar", hay_waves
+        )
         fila1 = [
             ("Nuevo pedido", 140, "nuevo_pedido", not iniciadas),
-            ("Capacidad de waves", 175, "config", not iniciadas),
+            ("Ver/modificar capacidad de waves", 263, "config", not iniciadas),
             ("Generar waves", 150, "generar_waves", not iniciadas),
             ("Seleccionar waves", 170, "elegir_waves", hay_waves),
-            ("Estrategia: " + NOMBRE_ESTRATEGIA[m.estrategia], 245, "estrategia", True),
-            ("Comparar estrategias", 195, "comparar", hay_waves),
+            ("Ver cómo se armaron las waves", 235, "ver_armado", hay_waves),
             (
                 "Exploración: " + ("sí" if self.ver_exploracion else "no"),
                 160,
                 "exploracion",
                 True,
             ),
-            ("Comparar armado", 172, "comparar_armado", True),
+            ("Comparar armado", 158, "comparar_armado", True),
+            ("Experimentos", 140, "experimentos", True),
         ]
         x = 20
         for etiqueta, w, accion, habilitado in fila1:
@@ -727,7 +765,6 @@ class App(UIElements, PanelesVistas, DialogosVistas):
             ("Paso adelante >", 155, "adelante", en_curso),
             ("< Paso atrás", 140, "atras", bool(m.historial)),
             ("Reiniciar", 115, "reiniciar", m.tanda_actual is not None),
-            ("Velocidad " + VELOCIDADES[self.velocidad][1], 140, "velocidad", True),
             (
                 "Ver paneles" if self.mapa_ampliado else "Ampliar mapa",
                 150,
@@ -739,6 +776,19 @@ class App(UIElements, PanelesVistas, DialogosVistas):
         for etiqueta, w, accion, habilitado in fila2:
             self.boton(etiqueta, x, 104, w, accion, habilitado)
             x += w + 8
+        self.caja(x, 104, 270, 34)
+        self.texto(
+            "Velocidad de ejecución " + VELOCIDADES[self.velocidad][1], x + 9, 112, 15
+        )
+        self.boton("−", x + 202, 104, 34, ("velocidad", -1), self.velocidad > 0)
+        self.boton(
+            "+",
+            x + 236,
+            104,
+            34,
+            ("velocidad", 1),
+            self.velocidad < len(VELOCIDADES) - 1,
+        )
         tanda = m.tanda_actual
         estado = (
             "reproduciendo"
@@ -771,6 +821,7 @@ class App(UIElements, PanelesVistas, DialogosVistas):
             self.panel_derecho()
 
     def dibujar(self):
+        self.revisar_experimento()
         self.lienzo.fill(FONDO)
         self.botones = []
         self.texto("Wave Picking", 20, 18, 28, negrita=True)

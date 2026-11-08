@@ -4,3 +4,5 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 BackEnd/data/estado_guardado.json
+biblioteca/sesion_*.json
+experimentos/salidas/

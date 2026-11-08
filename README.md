@@ -16,8 +16,9 @@ python -m venv .venv
 
 En Linux o macOS: `python3 -m venv .venv && .venv/bin/pip install -r requirements.txt`.
 
-`requirements.txt` solo tiene `pygame`. Para los gráficos de los experimentos
-hace falta además `matplotlib` (opcional).
+`requirements.txt` instala `pygame-ce` para la interfaz y `XlsxWriter` para
+exportar el gráfico y los datos a Excel. `matplotlib` es opcional para los PNG
+de la suite de consola.
 
 ## Ejecución
 
@@ -38,10 +39,10 @@ hace falta además `matplotlib` (opcional).
    peso y stock. Con un clic en el mapa se ve qué hay en cada celda.
 3. **Crear o cargar pedidos.** Los pedidos vienen en el escenario. Con
    *Nuevo pedido* se agregan otros (por ejemplo `P001x2, P004x1`).
-4. **Generar waves.** *Capacidad de waves* define el máximo de pedidos y de
+4. **Generar waves.** *Ver/modificar capacidad de waves* define el máximo de pedidos y de
    unidades, y la estrategia de armado (Cercanía, Por pasillo o Solo
-   prioridad). *Comparar armado* prueba las tres. *Generar waves* las arma.
-   *Ver cómo se armó* muestra la wave paso a paso: los productos del
+   prioridad). *Comparar armado* prueba las tres. *Generar waves* muestra el
+   resultado y las alertas. *Ver cómo se armaron las waves* muestra los productos del
    pedido raíz pintados, los candidatos con su ponderado, el pedido que
    gana y el camino que lo une con la wave, el motivo del cierre y la ruta
    que va a hacer el picker (con la exploración de Dijkstra). Se controla
@@ -57,7 +58,7 @@ hace falta además `matplotlib` (opcional).
    hacia donde va, con su nombre arriba y el borde de su color. Al recibir una wave
    se queda unos turnos "buscando ruta": se ve cómo Dijkstra explora el mapa
    hasta quedarse con el camino, mientras los demás pickers siguen trabajando.
-   Para verlo más lento, bajá la velocidad. Se frena 4 turnos a cargar, mirando al rack, y 3 a descargar. Deja una "estela" de 2 turnos
+   Ajustá *Velocidad de ejecución* con los botones − y +. Se frena 4 turnos a cargar, mirando al rack, y 3 a descargar. Deja una "estela" de 2 turnos
    donde nadie puede entrar, así no se camina pegado a otro. Para usar un
    dibujo propio, poné `FrontEnd/sprites/picker.png` (fondo transparente,
    mirando hacia arriba).
@@ -65,12 +66,19 @@ hace falta además `matplotlib` (opcional).
    *Paso atrás* (←) y *Reiniciar*. La barra espaciadora pausa y continúa.
 8. **Productos recogidos.** La pestaña *Pickers* muestra la carga, lo
    recogido y lo que falta. *Eventos* registra cada recogida y descarga.
-9. **Comparar estrategias.** *Estrategia* alterna entre *Orden de pedidos*
-   y *Cercanía*. *Comparar estrategias* corre las mismas waves con las dos.
+9. **Comparar estrategias.** *Estrategia de recorrido seleccionada* alterna entre
+   *Orden de pedidos* y *Cercanía*. *Comparar estrategias de recorrido* prueba
+   ambas sobre la tanda actual o las waves pendientes.
 10. **Métricas.** La pestaña *Métricas* muestra la distancia, los nodos
     visitados, las aristas, los nodos explorados y el tiempo de cada picker.
-11. **Persistencia.** *Guardar sesión* deja un archivo en la biblioteca. Al
-    abrirlo, la simulación sigue en el mismo turno.
+11. **Persistencia.** *Guardar sesión* actualiza un único JSON de sesión por
+    escenario en `biblioteca/`. Incluye un resumen de stock, pedidos, waves y
+    pickers. El simulador recupera el turno y el historial reproduciendo las
+    acciones guardadas sobre el escenario inicial.
+12. **Experimentos.** Elegí recorrido o armado, una variable y ejecutá una muestra
+    de tres casos de la suite. Cambiá la métrica del gráfico y exportá Excel y CSV
+    a `experimentos/salidas/`. La suite completa de consola guarda tablas y, con
+    `matplotlib`, imágenes en `docs/experimentos/`.
 
 ## Estructura
 

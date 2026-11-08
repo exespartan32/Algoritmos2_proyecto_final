@@ -18,7 +18,8 @@ import sys
 import time
 
 RAIZ = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(RAIZ))
+if not __package__:
+    sys.path.insert(0, str(RAIZ))
 
 from BackEnd.controllers.simulador import Simulador  # noqa: E402
 from BackEnd.utils.graph_builder import GraphBuilder  # noqa: E402
@@ -316,6 +317,32 @@ def medir_armado():
                 )
             )
         print(f"armado {clave:12s} {str(valor):15s} listo")
+    return filas
+
+
+def muestra_visual(serie, modo):
+    """Tres casos de una serie, usando los mismos parámetros que la suite de consola."""
+    _, clave, valores, extra = SERIES[serie]
+    filas = []
+    for valor in valores[:3]:
+        params = dict(BASE, **{clave: valor})
+        params.update(extra(valor))
+        if modo == "recorrido":
+            resultados = medir(params, repeticiones=3)
+        else:
+            sim = Simulador(ScenarioGenerator.generar_escenario_dict(**params))
+            resultados = [
+                dict(r, estrategia=k) for k, r in sim.comparar_armado().items()
+            ]
+        for resultado in resultados:
+            fila = {
+                "variable": clave,
+                "valor": valor,
+                "estrategia": resultado["estrategia"],
+            }
+            fila.update(params)
+            fila.update(resultado)
+            filas.append(fila)
     return filas
 
 

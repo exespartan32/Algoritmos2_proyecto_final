@@ -1,1 +1,2 @@
 pygame-ce>=2.5
+XlsxWriter>=3.2,<4
