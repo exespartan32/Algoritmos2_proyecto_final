@@ -1,10 +1,8 @@
 @echo off
 cd /d "%~dp0"
-if not exist ".venv\Scripts\python.exe" (
-    echo Falta el entorno Python. Segui la instalacion de README-INTERFAZ.md.
-    pause
-    exit /b 1
+if exist .venv\Scripts\python.exe (
+  .venv\Scripts\python.exe gui.py
+) else (
+  python gui.py
 )
-set PYTHONDONTWRITEBYTECODE=1
-".venv\Scripts\python.exe" gui.py
-if errorlevel 1 pause
+pause

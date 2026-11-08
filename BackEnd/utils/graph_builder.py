@@ -1,133 +1,370 @@
-from typing import Dict, Any, List, Tuple
-from BackEnd.enums.enums import TipoCelda, SentidoCirculacion
-from BackEnd.models.entity import (
-    Celda, CeldaPasillo, CeldaRack, Rack, ZonaDespacho, Puerta, Product
+from typing import Any, Dict, List, Optional, Tuple
+
+from BackEnd.data_structures.digrafo import Coord
+from BackEnd.enums.enums import (
+    EstadoPedido,
+    SentidoCirculacion as Sentido,
+    TipoCelda,
+)
+from BackEnd.models.entities import (
+    Celda,
+    CeldaRack,
+    DetallePedido,
+    Pedido,
+    Picker,
+    Producto,
+    Puerta,
+    Rack,
+    ZonaDespacho,
 )
 from BackEnd.models.warehouse import Warehouse
 
+DIRECCIONES_ORTOGONALES: List[Tuple[int, int]] = [(0, 1), (0, -1), (1, 0), (-1, 0)]
+
+
 class GraphBuilder:
+    """Construye el dígrafo de pasillos, valida la conectividad con Kosaraju y puebla el Warehouse."""
+
     @staticmethod
     def construir_warehouse_desde_dict(data: Dict[str, Any]) -> Warehouse:
         wh_data = data["warehouse"]
-        ancho_x = wh_data["dimensiones"]["ancho_x"]
-        largo_y = wh_data["dimensiones"]["largo_y"]
+        ancho_x = int(wh_data["dimensiones"]["ancho_x"])
+        largo_y = int(wh_data["dimensiones"]["largo_y"])
 
         wh = Warehouse(ancho_x, largo_y)
+        wh.warehouse_raw = wh_data
+        advertencias: List[str] = []
+        ocupado_por: Dict[Coord, str] = {}
+        pasillos_declarados: Dict[Coord, Tuple[Sentido, str]] = {}
 
-        # 1. Inicializar toda la matriz como PASILLO con sentido AMBOS por defecto
-        for x in range(ancho_x):
-            for y in range(largo_y):
-                wh.matriz[x][y] = CeldaPasillo(x, y, SentidoCirculacion.AMBOS)
+        def ocupar(x: int, y: int, elem_id: str) -> None:
+            if not wh.dentro(x, y):
+                raise ValueError(
+                    f"El elemento {elem_id} ocupa la celda ({x},{y}), fuera del almacén ({ancho_x}x{largo_y})."
+                )
+            anterior = ocupado_por.get((x, y))
+            if anterior is not None and anterior != elem_id:
+                advertencias.append(f"{elem_id} pisa a {anterior} en ({x},{y}).")
+            ocupado_por[(x, y)] = elem_id
 
-        # 2. Pintar Pasillos Declarados (con su sentido N, S, E, O, AMBOS)
+        def ocupar_obstaculo(x: int, y: int, celda: Celda, elem_id: str) -> None:
+            ocupar(x, y, elem_id)
+            wh.obstaculos[(x, y)] = celda
+
+        # 1. Pasillos declarados (en los cruces con AMBOS prevalece AMBOS para habilitar el giro)
+        validos = [s.value for s in Sentido]
         for pas in wh_data.get("pasillos", []):
-            px, py = pas["ubicacion"]["x"], pas["ubicacion"]["y"]
-            sentido_enum = SentidoCirculacion(pas["sentido"])
-            for x in range(px, px + pas["ancho"]):
-                for y in range(py, py + pas["alto"]):
-                    wh.matriz[x][y] = CeldaPasillo(x, y, sentido_enum, pas["id"])
+            try:
+                sentido_enum = Sentido(pas["sentido"])
+            except ValueError:
+                raise ValueError(
+                    f"Sentido inválido '{pas['sentido']}' en el pasillo {pas['id']}. "
+                    f"Valores válidos: {', '.join(validos)}."
+                ) from None
+            px, py = int(pas["ubicacion"]["x"]), int(pas["ubicacion"]["y"])
+            for x in range(px, px + int(pas["ancho"])):
+                for y in range(py, py + int(pas["alto"])):
+                    ocupar(x, y, pas["id"])
+                    previo = pasillos_declarados.get((x, y))
+                    if previo is not None and previo[0] == Sentido.AMBOS:
+                        continue
+                    pasillos_declarados[(x, y)] = (sentido_enum, pas["id"])
 
-        # 3. Pintar Puertas
+        # 2. Puertas
         for p in wh_data.get("puertas", []):
-            px, py = p["ubicacion"]["x"], p["ubicacion"]["y"]
-            puerta_obj = Puerta(p["id"], p["tipo"], px, py)
-            wh.puertas[p["id"]] = puerta_obj
-            wh.matriz[px][py] = Celda(px, py, TipoCelda.PUERTA, p["id"])
+            px, py = int(p["ubicacion"]["x"]), int(p["ubicacion"]["y"])
+            ocupar_obstaculo(px, py, Celda(px, py, TipoCelda.PUERTA, p["id"]), p["id"])
+            wh.puertas[p["id"]] = Puerta(p["id"], p["tipo"], px, py)
 
-        # 4. Pintar Zonas de Despacho
+        # 3. Zonas de despacho
         for zd in wh_data.get("zonas_despacho", []):
-            zx, zy = zd["ubicacion"]["x"], zd["ubicacion"]["y"]
-            zona_obj = ZonaDespacho(
-                zd["id"], zd["puerta_id"], zx, zy, zd["ancho"], zd["alto"], zd["peso_max_kg"]
+            zx, zy = int(zd["ubicacion"]["x"]), int(zd["ubicacion"]["y"])
+            for x in range(zx, zx + int(zd["ancho"])):
+                for y in range(zy, zy + int(zd["alto"])):
+                    ocupar_obstaculo(
+                        x, y, Celda(x, y, TipoCelda.ZONA_DESPACHO, zd["id"]), zd["id"]
+                    )
+            wh.zonas_despacho[zd["id"]] = ZonaDespacho(
+                zd["id"],
+                zd["puerta_id"],
+                zx,
+                zy,
+                int(zd["ancho"]),
+                int(zd["alto"]),
+                float(zd["peso_max_kg"]),
             )
-            wh.zonas_despacho[zd["id"]] = zona_obj
-            for x in range(zx, zx + zd["ancho"]):
-                for y in range(zy, zy + zd["alto"]):
-                    wh.matriz[x][y] = Celda(x, y, TipoCelda.ZONA_DESPACHO, zd["id"])
 
-        # 5. Pintar Racks (usando CeldaRack que tiene la pila en Z)
+        # 4. Racks
         for r in wh_data.get("racks", []):
-            rx, ry = r["ubicacion"]["x"], r["ubicacion"]["y"]
-            rack_obj = Rack(r["id"], rx, ry, r["ancho"], r["alto"])
-            wh.racks[r["id"]] = rack_obj
-            for x in range(rx, rx + r["ancho"]):
-                for y in range(ry, ry + r["alto"]):
-                    wh.matriz[x][y] = CeldaRack(x, y, r["id"])
+            rx, ry = int(r["ubicacion"]["x"]), int(r["ubicacion"]["y"])
+            ancho_r, alto_r = int(r["ancho"]), int(r["alto"])
+            if ancho_r != 2 and alto_r != 2:
+                advertencias.append(
+                    f"El rack {r['id']} mide {ancho_r}x{alto_r}: ningún lado vale 2."
+                )
+            for x in range(rx, rx + ancho_r):
+                for y in range(ry, ry + alto_r):
+                    ocupar_obstaculo(x, y, CeldaRack(x, y, r["id"]), r["id"])
+            wh.racks[r["id"]] = Rack(r["id"], rx, ry, ancho_r, alto_r)
 
-        # 6. Ubicar Productos en la pila Z de su CeldaRack correspondiente
+        # 5. Catálogo de productos
         for prod in data.get("productos", []):
             ub = prod["ubicacion"]
-            px, py, pz = ub["x"], ub["y"], ub["z"]
-            prod_obj = Product(
+            px, py, pz = int(ub["x"]), int(ub["y"]), int(ub.get("z", 1))
+            if not wh.dentro(px, py):
+                raise ValueError(
+                    f"El producto {prod['id']} está en ({px},{py}), fuera del almacén."
+                )
+            prod_obj = Producto(
                 id_producto=prod["id"],
                 nombre=prod["nombre"],
                 rack_id=prod["rack_id"],
                 ubicacion_x=px,
                 ubicacion_y=py,
-                altura_z=pz,
+                ubicacion_z=pz,
                 cantidad_disponible=prod["cantidad_disponible"],
-                peso_kg=prod["peso_kg"]
+                peso_kg=prod["peso_kg"],
             )
-            wh.catalogo_productos[prod_obj.id_producto] = prod_obj
-            celda_actual = wh.matriz[px][py]
-            if isinstance(celda_actual, CeldaRack):
-                celda_actual.apilar_producto(pz, prod_obj)
+            wh.catalogo_productos[prod_obj.id] = prod_obj
+            celda = wh.obstaculos.get((px, py))
+            if isinstance(celda, CeldaRack):
+                celda.apilar_producto(pz, prod_obj)
 
-        # 7. Construir el Digrafo a partir de la Matriz
-        GraphBuilder._construir_digrafo(wh)
+        # 6. Construcción del dígrafo y verificación de conectividad (Kosaraju)
+        GraphBuilder._construir_digrafo(wh, pasillos_declarados)
+
+        posiciones_pickers = [
+            (pk["id"], (pk["posicion_inicial"]["x"], pk["posicion_inicial"]["y"]))
+            for pk in data.get("pickers", [])
+        ]
+        advertencias.extend(GraphBuilder.validar_grafo(wh, posiciones_pickers))
+        wh.advertencias = advertencias
+
+        # 7. Configuración, pedidos y pickers
+        config = data.get("configuracion", {})
+        wh.wave_max_pedidos = int(config.get("wave_max_pedidos", 3))
+        wh.wave_max_productos = int(config.get("wave_max_productos", 15))
+
+        for ped_raw in data.get("pedidos", []):
+            estado_str = str(ped_raw.get("estado", "PENDIENTE")).upper()
+            estado_enum = (
+                EstadoPedido[estado_str]
+                if estado_str in EstadoPedido.__members__
+                else EstadoPedido.PENDIENTE
+            )
+            items = [
+                DetallePedido(
+                    producto_id=str(it["producto_id"]),
+                    cantidad=int(it["cantidad"]),
+                )
+                for it in ped_raw.get("items", [])
+            ]
+            ped_obj = Pedido(
+                id_pedido=str(ped_raw["id"]),
+                prioridad=int(ped_raw.get("prioridad", 1)),
+                items=items,
+                estado=estado_enum,
+            )
+            wh.pedidos[ped_obj.id_pedido] = ped_obj
+
+        for pk_raw in data.get("pickers", []):
+            pos_ini = pk_raw.get("posicion_inicial", {"x": 0, "y": 0})
+            coord_raw = (int(pos_ini["x"]), int(pos_ini["y"]))
+            coord_valida = wh.obtener_celda_acceso_pasillo(*coord_raw) or coord_raw
+            wh.pickers.append(
+                Picker(
+                    id_picker=str(pk_raw["id"]),
+                    capacidad_carga_kg=float(pk_raw.get("capacidad_carga_kg", 100.0)),
+                    posicion_actual=coord_valida,
+                )
+            )
+
         return wh
 
     @staticmethod
-    def _construir_digrafo(wh: Warehouse):
-        # Paso A: Crear un NodoGrafo por cada celda que sea PASILLO
+    def _construir_digrafo(
+        wh: Warehouse,
+        pasillos_declarados: Optional[Dict[Coord, Tuple[Sentido, str]]] = None,
+    ) -> None:
+        grafo = wh.grafo_pasillos
+        pasillos_declarados = pasillos_declarados or {}
+
         for x in range(wh.ancho_x):
             for y in range(wh.largo_y):
-                celda = wh.matriz[x][y]
-                if isinstance(celda, CeldaPasillo):
-                    wh.grafo_pasillos.agregar_nodo(x, y, celda.sentido)
+                if (x, y) in wh.obstaculos:
+                    continue
+                sentido, pasillo_id = pasillos_declarados.get(
+                    (x, y), (Sentido.AMBOS, None)
+                )
+                grafo.agregar_nodo(x, y, sentido, pasillo_id)
 
-        # Paso B: Conectar aristas dirigidas y detectar Racks / Zonas adyacentes
-        for (x, y), nodo in wh.grafo_pasillos.nodos.items():
-            movimientos_permitidos = GraphBuilder._direcciones_segun_sentido(nodo.sentido_permitido)
-
-            # 1) Mirar las 4 celdas ortogonales para detectar Racks y Zonas de Despacho al costado
-            for dx, dy in [(0, 1), (0, -1), (1, 0), (-1, 0)]:
+        for (x, y), nodo in grafo.nodos.items():
+            for dx, dy in DIRECCIONES_ORTOGONALES:
                 nx, ny = x + dx, y + dy
-                if 0 <= nx < wh.ancho_x and 0 <= ny < wh.largo_y:
-                    celda_vecina = wh.matriz[nx][ny]
-                    
-                    # Si al lado hay un RACK, lo asociamos (NO creamos arista hacia el rack)
-                    if isinstance(celda_vecina, CeldaRack):
-                        nodo.racks_adyacentes.append(celda_vecina)
-                        wh.acceso_rack_a_pasillo[(nx, ny)] = (x, y)
-                    
-                    # Si al lado hay una ZONA DE DESPACHO, guardamos su referencia
-                    elif celda_vecina.tipo == TipoCelda.ZONA_DESPACHO:
-                        if celda_vecina.elemento_id not in nodo.zonas_despacho_adyacentes:
-                            nodo.zonas_despacho_adyacentes.append(celda_vecina.elemento_id)
+                vecina = wh.obstaculos.get((nx, ny))
+                if vecina is None:
+                    continue
 
-            # 2) Crear aristas dirigidas solo hacia otros PASILLOS según el sentido permitido
-            for dx, dy in movimientos_permitidos:
-                nx, ny = x + dx, y + dy
-                if 0 <= nx < wh.ancho_x and 0 <= ny < wh.largo_y:
-                    if isinstance(wh.matriz[nx][ny], CeldaPasillo):
-                        wh.grafo_pasillos.agregar_arista_dirigida((x, y), (nx, ny))
+                if isinstance(vecina, CeldaRack):
+                    rack = wh.racks.get(vecina.elemento_id)
+                    if (x - nx, y - ny) in GraphBuilder._dirs_acceso(rack, nx, ny):
+                        nodo.racks_adyacentes.append(vecina)
+                        wh.accesos_rack_a_pasillo.setdefault((nx, ny), []).append(
+                            (x, y)
+                        )
+                        if (nx, ny) not in wh.acceso_rack_a_pasillo:
+                            wh.acceso_rack_a_pasillo[(nx, ny)] = (x, y)
+
+                elif vecina.tipo == TipoCelda.ZONA_DESPACHO:
+                    zona_id = vecina.elemento_id
+                    if zona_id not in nodo.zonas_despacho_adyacentes:
+                        nodo.zonas_despacho_adyacentes.append(zona_id)
+                    if (x, y) not in wh.accesos_zona_a_pasillo.setdefault(zona_id, []):
+                        wh.accesos_zona_a_pasillo[zona_id].append((x, y))
+
+            for dx, dy in GraphBuilder._direcciones_segun_sentido(
+                nodo.sentido_permitido
+            ):
+                destino = grafo.nodos.get((x + dx, y + dy))
+                if destino is not None and not GraphBuilder._es_contramano(
+                    dx, dy, destino.sentido_permitido
+                ):
+                    grafo.agregar_arista_dirigida((x, y), (destino.x, destino.y))
 
     @staticmethod
-    def _direcciones_segun_sentido(sentido: SentidoCirculacion) -> List[Tuple[int, int]]:
-        """
-        Regla 3.5 del PDF:
-        - En N o S puede avanzar en su sentido (+y o -y) y desplazarse lateralmente en x (+x, -x).
-        - En E u O puede avanzar en su sentido (+x o -x) y desplazarse lateralmente en y (+y, -y).
-        - En AMBOS puede ir en las 4 direcciones.
-        """
-        if sentido == SentidoCirculacion.N:
-            return [(0, 1), (-1, 0), (1, 0)]   # Norte (+y) y laterales (Oeste, Este)
-        elif sentido == SentidoCirculacion.S:
-            return [(0, -1), (-1, 0), (1, 0)]  # Sur (-y) y laterales (Oeste, Este)
-        elif sentido == SentidoCirculacion.E:
-            return [(1, 0), (0, 1), (0, -1)]   # Este (+x) y laterales (Norte, Sur)
-        elif sentido == SentidoCirculacion.O:
-            return [(-1, 0), (0, 1), (0, -1)]  # Oeste (-x) y laterales (Norte, Sur)
-        else:  # SentidoCirculacion.AMBOS
+    def _direcciones_segun_sentido(sentido: Sentido) -> List[Tuple[int, int]]:
+        if sentido == Sentido.N:
+            return [(0, 1), (-1, 0), (1, 0)]
+        if sentido == Sentido.S:
+            return [(0, -1), (-1, 0), (1, 0)]
+        if sentido == Sentido.E:
+            return [(1, 0), (0, 1), (0, -1)]
+        if sentido == Sentido.O:
+            return [(-1, 0), (0, 1), (0, -1)]
+        if sentido == Sentido.AMBOS:
             return [(0, 1), (0, -1), (1, 0), (-1, 0)]
+        return []
+
+    @staticmethod
+    def _es_contramano(dx: int, dy: int, sentido_destino: Sentido) -> bool:
+        if sentido_destino == Sentido.NINGUNO:
+            return True
+        return (
+            (dy == 1 and sentido_destino == Sentido.S)
+            or (dy == -1 and sentido_destino == Sentido.N)
+            or (dx == 1 and sentido_destino == Sentido.O)
+            or (dx == -1 and sentido_destino == Sentido.E)
+        )
+
+    @staticmethod
+    def _dirs_acceso(rack: Optional[Rack], x: int, y: int) -> List[Tuple[int, int]]:
+        if rack is not None and rack.ancho == 2 and rack.alto != 2:
+            return [(-1, 0)] if x == rack.x else [(1, 0)]
+        if rack is not None and rack.alto == 2 and rack.ancho != 2:
+            return [(0, -1)] if y == rack.y else [(0, 1)]
+        return list(DIRECCIONES_ORTOGONALES)
+
+    @staticmethod
+    def componentes_fuertemente_conexas(wh: Warehouse) -> List[List[Coord]]:
+        """Algoritmo de Kosaraju iterativo en O(V + E)."""
+        grafo = wh.grafo_pasillos
+        adyacencia = grafo.lista_adyacencia
+
+        visitado = set()
+        orden_fin: List[Coord] = []
+        for inicio in grafo.nodos:
+            if inicio in visitado:
+                continue
+            visitado.add(inicio)
+            pila = [(inicio, 0)]
+            while pila:
+                nodo, i = pila[-1]
+                vecinos = adyacencia[nodo]
+                if i < len(vecinos):
+                    pila[-1] = (nodo, i + 1)
+                    vecino = vecinos[i]
+                    if vecino not in visitado:
+                        visitado.add(vecino)
+                        pila.append((vecino, 0))
+                else:
+                    pila.pop()
+                    orden_fin.append(nodo)
+
+        transpuesto: Dict[Coord, List[Coord]] = {c: [] for c in grafo.nodos}
+        for origen, destinos in adyacencia.items():
+            for destino in destinos:
+                transpuesto[destino].append(origen)
+
+        asignado = set()
+        componentes: List[List[Coord]] = []
+        for raiz in reversed(orden_fin):
+            if raiz in asignado:
+                continue
+            asignado.add(raiz)
+            componente = []
+            pila = [raiz]
+            while pila:
+                nodo = pila.pop()
+                componente.append(nodo)
+                for vecino in transpuesto[nodo]:
+                    if vecino not in asignado:
+                        asignado.add(vecino)
+                        pila.append(vecino)
+            componentes.append(componente)
+
+        componentes.sort(key=len, reverse=True)
+        return componentes
+
+    @staticmethod
+    def validar_grafo(wh: Warehouse, posiciones_pickers=None) -> List[str]:
+        """Comprueba que todos los accesos y pickers estén en la componente conexa principal."""
+        advertencias: List[str] = []
+        componentes = GraphBuilder.componentes_fuertemente_conexas(wh)
+        principal = set(componentes[0]) if componentes else set()
+
+        for coord_rack, lista_acc in wh.accesos_rack_a_pasillo.items():
+            en_principal = [a for a in lista_acc if a in principal]
+            if en_principal:
+                wh.acceso_rack_a_pasillo[coord_rack] = en_principal[0]
+
+        if len(componentes) > 1:
+            fuera = [c for comp in componentes[1:] for c in comp]
+            xs = [c[0] for c in fuera]
+            ys = [c[1] for c in fuera]
+            advertencias.append(
+                f"Hay {len(componentes)} componentes fuertemente conexas: "
+                f"{len(fuera)} celdas de pasillo quedan aisladas de la red principal "
+                f"(x={min(xs)}..{max(xs)}, y={min(ys)}..{max(ys)})."
+            )
+
+        for prod in wh.catalogo_productos.values():
+            accesos = wh.accesos_rack_a_pasillo.get((prod.x, prod.y), [])
+            if not accesos:
+                advertencias.append(
+                    f"El producto {prod.id} en ({prod.x},{prod.y}) no tiene pasillo de acceso."
+                )
+            elif not any(a in principal for a in accesos):
+                advertencias.append(
+                    f"El producto {prod.id} no tiene acceso en la red principal."
+                )
+
+        for zona_id in wh.zonas_despacho:
+            accesos = wh.accesos_zona_a_pasillo.get(zona_id, [])
+            if not accesos:
+                advertencias.append(f"La zona {zona_id} no tiene pasillos adyacentes.")
+            elif not any(a in principal for a in accesos):
+                advertencias.append(
+                    f"La zona {zona_id} no tiene pasillo en la red principal."
+                )
+
+        for picker_id, pos in posiciones_pickers or []:
+            pos = tuple(pos)
+            if pos not in wh.grafo_pasillos.nodos:
+                advertencias.append(
+                    f"Picker {picker_id} arranca en {pos}, que no es pasillo."
+                )
+            elif pos not in principal:
+                advertencias.append(
+                    f"Picker {picker_id} arranca fuera de la red principal."
+                )
+        return advertencias

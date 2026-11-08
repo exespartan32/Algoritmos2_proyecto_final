@@ -1,27 +1,32 @@
-"""Entrada gráfica independiente del programa de consola del equipo."""
+"""Punto de entrada de la interfaz gráfica de Wave Picking."""
 
 import argparse
 from pathlib import Path
+import pygame
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Interfaz de Wave Picking")
-    parser.add_argument("--escenario", type=Path, help="Abrir un JSON directamente")
+    parser = argparse.ArgumentParser(description="Interfaz gráfica de Wave Picking")
     parser.add_argument(
-        "--biblioteca", type=Path, help="Carpeta de escenarios del usuario"
+        "--escenario", type=Path, help="Abrir un archivo JSON directamente"
     )
     parser.add_argument(
-        "--frames", type=int, help="Cerrar tras N cuadros (prueba de arranque)"
+        "--biblioteca", type=Path, help="Carpeta personalizada de escenarios"
+    )
+    parser.add_argument(
+        "--cuadros",
+        type=int,
+        help="Cerrar tras N cuadros (útil para pruebas de arranque)",
     )
     args = parser.parse_args()
-    import pygame
+
     from FrontEnd.views.pygame_engine import App
 
     try:
         app = App(args.biblioteca)
         if args.escenario:
-            app.load(args.escenario)
-        app.run(args.frames)
+            app.cargar(args.escenario)
+        app.run(args.cuadros)
     finally:
         pygame.quit()
 

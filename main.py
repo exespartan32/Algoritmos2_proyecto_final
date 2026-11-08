@@ -1,114 +1,291 @@
-import time
 import argparse
-from dataclasses import dataclass
-from typing import Optional, List
+import time
+from typing import Dict, List, Optional
 
-from BackEnd.models.catalog_manager import CatalogManager
+from BackEnd.controllers.path_finding import Pathfinding
+from BackEnd.controllers.turn_collision_manager import TurnAndCollisionManager
 from BackEnd.controllers.wave_manager import WaveManager
-from BackEnd.enums.enums import EstadoPedido, EstadoWave
-from BackEnd.utils.scenario_generator import ScenarioGenerator
-from BackEnd.controllers.bfs import BuscadorBFS
+from BackEnd.enums.enums import EstrategiaRuteo
+from BackEnd.models.entities import Wave
+from BackEnd.models.warehouse import Warehouse
+from BackEnd.utils.file_parser import FileParser
+
+ESCENARIO_A_CARGAR: str = "escenario_grande.json"
+ARCHIVO_SALIDA_JSON: str = "estado_guardado.json"
+
+SELECCIONAR_WAVES_INTERACTIVAMENTE: bool = True
+WAVES_A_EJECUTAR_SIMULTANEAMENTE: List[str] = [
+    "WAVE_01",
+    "WAVE_02",
+    "WAVE_03",
+    "WAVE_04",
+]
+
+MAX_PICKERS_POR_WAVE: int = 2
+WAVE_MAX_PEDIDOS: Optional[int] = None
+WAVE_MAX_PRODUCTOS: Optional[int] = None
 
 
-@dataclass
-class ConfiguracionSimulacion:
-    directorio_datos: Optional[str] = None
-    archivo_entrada: str = "escenario_basico.json"
-    archivo_salida: str = "estado_guardado.json"
-    metodo_mst: str = "KRUSKAL"
-    prefijo_id_wave: str = "WAVE"
-    prioridad_minima_pedidos: int = 1
-    wave_max_pedidos: Optional[int] = None
-    wave_max_productos: Optional[int] = None
-    capacidad_carga_picker_kg: Optional[float] = None
-    peso_max_zona_despacho_kg: Optional[float] = None
-    ids_pickers_activos: Optional[List[str]] = None
-    ids_zonas_activas: Optional[List[str]] = None
-    tamano_tabla_hash: int = 1009
-    primo_p_hash: int = 999983
-    semilla_hash: Optional[int] = 42
-    descontar_stock_al_crear_wave: bool = False
-    modo_ejecucion_waves: str = "SOLO_PRIMERA"
-    cantidad_waves_a_ejecutar: Optional[int] = None
-    mostrar_detalle_productos_stock: bool = True
+def mostrar_waves_disponibles_y_pickers(
+    gestor_waves: WaveManager, warehouse: Warehouse
+) -> List[Wave]:
+    waves_disponibles = gestor_waves.obtener_waves_disponibles()
+    pickers_libres = gestor_waves.obtener_pickers_libres(warehouse.pickers)
+
+    print("\n" + "=" * 95)
+    print(f" PASO 2: WAVES DISPONIBLES ({len(waves_disponibles)} en estado PENDIENTE)")
+    print("=" * 95)
+    for idx, w in enumerate(waves_disponibles, start=1):
+        ids_ped = [f"{p.id_pedido}(P:{p.prioridad})" for p in w.pedidos]
+        print(
+            f"  [{idx:2d}] {w.id_wave} | Estado: {w.estado.value:9s} | "
+            f"Pedidos ({len(w.pedidos)}/{w.wave_max_pedidos}): {ids_ped} | "
+            f"Unidades: {w.unidades_totales:2d}/{w.wave_max_productos} | "
+            f"Peso: {w.peso_total_kg:6.2f} kg | Zona: {w.id_zona_despacho}"
+        )
+
+    print("-" * 95)
+    print(f" PICKERS LIBRES ({len(pickers_libres)}/{len(warehouse.pickers)}):")
+    for pk in pickers_libres:
+        print(
+            f"  * {pk.id_picker} -> Posición: {pk.posicion_actual} | "
+            f"Capacidad máx: {pk.capacidad_carga_kg:.1f} kg | Wave activa: {pk.id_wave_actual}"
+        )
+    print("=" * 95)
+    return waves_disponibles
 
 
-PARAMETROS_EJECUCION = ConfiguracionSimulacion(
-    archivo_entrada="escenario_basico.json",
-    archivo_salida="estado_guardado.json",
-    metodo_mst="KRUSKAL",
-    prefijo_id_wave="WAVE",
-    prioridad_minima_pedidos=1,
-    modo_ejecucion_waves="SOLO_PRIMERA",
-    mostrar_detalle_productos_stock=True,
-)
+def solicitar_seleccion_waves_usuario(
+    waves_disponibles: List[Wave], seleccion_por_defecto: List[str]
+) -> List[str]:
+    if not waves_disponibles:
+        return []
+    if not SELECCIONAR_WAVES_INTERACTIVAMENTE:
+        return seleccion_por_defecto
+
+    print("\n" + "=" * 95)
+    print(" PASO 3: SELECCIÓN DE WAVES A EJECUTAR EN SIMULTÁNEO")
+    print("=" * 95)
+    try:
+        entrada = input(
+            f"  Ingrese números (ej: 1, 2, 3) o IDs (Enter para {seleccion_por_defecto}): "
+        ).strip()
+    except EOFError:
+        return seleccion_por_defecto
+
+    if not entrada:
+        return seleccion_por_defecto
+
+    partes = [
+        p.strip().upper() for p in entrada.replace(";", ",").split(",") if p.strip()
+    ]
+    ids_elegidos: List[str] = []
+
+    for token in partes:
+        if token.isdigit():
+            indice = int(token) - 1
+            if 0 <= indice < len(waves_disponibles):
+                ids_elegidos.append(waves_disponibles[indice].id_wave)
+        else:
+            if not token.startswith("WAVE_"):
+                posible_num = token.replace("WAVE", "").strip("_")
+                if posible_num.isdigit():
+                    token = f"WAVE_{int(posible_num):02d}"
+            ids_elegidos.append(token)
+
+    return ids_elegidos if ids_elegidos else seleccion_por_defecto
 
 
-def ejecutar_simulacion(config: ConfiguracionSimulacion) -> None:
-    t_inicio_total = time.perf_counter()
+def ejecutar_orquestador(
+    archivo_entrada: str,
+    waves_preseleccionadas: List[str],
+) -> None:
+    t0 = time.perf_counter()
+    ruta_cargada = FileParser.resolver_ruta(archivo_entrada)
+    warehouse = FileParser.cargar_warehouse_desde_json(ruta_cargada)
+    t_carga_ms = (time.perf_counter() - t0) * 1000.0
 
-    # Opcional: Generar un escenario automático previo si se desea probar la Sección 16
-    print("=== 0. GENERANDO ESCENARIO AUTOMÁTICO DE PRUEBA (SECCIÓN 16) ===")
-    wh_auto, valido = ScenarioGenerator.generar_y_validar_warehouse(
-        ruta_guardado_json="BackEnd/data/escenario_generado.json",
-        cantidad_estantes=5,
-        cantidad_pasillos=8,
-        cantidad_productos=20,
-        modo_localizacion="ALEATORIO",
-        cantidad_pedidos=8,
-        max_productos_por_pedido=3,
-        wave_max_pedidos=3
+    stock_antes_waves: Dict[str, int] = {
+        p.id_producto: p.cantidad_disponible
+        for p in warehouse.obtener_todos_los_productos()
+    }
+
+    max_pedidos = (
+        WAVE_MAX_PEDIDOS if WAVE_MAX_PEDIDOS is not None else warehouse.wave_max_pedidos
     )
-    print(f"¿Escenario automático válido y conexo?: {valido} (Dimensiones: {wh_auto.ancho_x}x{wh_auto.largo_y})")
-
-    # Inicializar CatalogManager
-    catalogo = CatalogManager(
-        tamano_tabla=config.tamano_tabla_hash,
-        primo_p=config.primo_p_hash,
-        semilla_hash=config.semilla_hash,
-        directorio_datos=config.directorio_datos,
+    max_productos = (
+        WAVE_MAX_PRODUCTOS
+        if WAVE_MAX_PRODUCTOS is not None
+        else warehouse.wave_max_productos
     )
-    ruta_entrada = catalogo.cargar_escenario_json(config.archivo_entrada)
 
-    print("=" * 75)
-    print("1. CONFIGURACIÓN ACTIVA Y CARGA EN TABLAS HASH O(1)")
-    print("=" * 75)
-    print(f"  * Archivo de Entrada          : {ruta_entrada}")
-    print(f"  * Archivo de Salida           : {config.archivo_salida}")
-    print(f"  * Método Gestor de Waves (MST): {config.metodo_mst.upper()}")
+    t_pre = time.perf_counter()
+    coords_productos = {
+        p.coordenadas_xy for p in warehouse.obtener_todos_los_productos()
+    }
+    matriz_distancias = Pathfinding.construir_matriz_distancias_productos(
+        coordenadas_productos_xy=coords_productos,
+        grafo=warehouse.grafo_pasillos,
+        warehouse=warehouse,
+    )
+    t_pre_ms = (time.perf_counter() - t_pre) * 1000.0
 
-    # Ejecutar Gestor de Waves
+    t_wave = time.perf_counter()
     gestor_waves = WaveManager(
-        metodo_mst=config.metodo_mst,
-        prefijo_id_wave=config.prefijo_id_wave,
-        wave_max_pedidos=config.wave_max_pedidos,
-        wave_max_productos=config.wave_max_productos,
+        wave_max_pedidos=max_pedidos,
+        wave_max_productos=max_productos,
+        max_pickers_por_wave=MAX_PICKERS_POR_WAVE,
+        proveedor_distancias=matriz_distancias,
     )
 
-    waves = gestor_waves.generar_waves(
-        catalogo=catalogo,
-        descontar_stock_inmediato=config.descontar_stock_al_crear_wave,
-        prioridad_minima=config.prioridad_minima_pedidos,
+    waves_armadas = gestor_waves.generar_waves(
+        warehouse=warehouse,
+        proveedor_distancias=matriz_distancias,
+    )
+    t_wave_ms = (time.perf_counter() - t_wave) * 1000.0
+
+    alterados_en_armado = sum(
+        1
+        for p in warehouse.obtener_todos_los_productos()
+        if p.cantidad_disponible != stock_antes_waves[p.id_producto]
     )
 
-    print("\n" + "=" * 75)
-    print(f"2. RESULTADO DEL ARMADO DE WAVES ({len(waves)} olas)")
-    print("=" * 75)
-    for w in waves:
-        pedidos_info = [f"{p.id_pedido}(P:{p.prioridad})" for p in w.pedidos]
-        print(f"  -> {w.id_wave} | Picker: {w.id_id_picker_asignado if hasattr(w, 'id_id_picker_asignado') else w.id_picker_asignado} | Pedidos: {pedidos_info}")
+    print("=" * 95)
+    print(" PASO 1: CONSTRUCCIÓN DEL DÍGRAFO Y ARMADO DE WAVES")
+    print("=" * 95)
+    print(f"  * Escenario cargado           : {ruta_cargada} ({t_carga_ms:.2f} ms)")
+    print(
+        f"  * Nodos de pasillo            : {len(warehouse.grafo_pasillos.nodos)} celdas | "
+        f"Zonas de despacho: {list(warehouse.zonas_despacho.keys())}"
+    )
+    print(
+        f"  * Catálogo e inventario       : {len(warehouse.catalogo_productos)} productos | "
+        f"{len(warehouse.pedidos)} pedidos"
+    )
+    print(
+        f"  * Matriz de distancias        : {len(matriz_distancias)} pares en {t_pre_ms:.2f} ms"
+    )
+    print(
+        f"  * Waves generadas (PENDIENTE) : {len(waves_armadas)} waves en {t_wave_ms:.3f} ms"
+    )
+    print(
+        f"  * Stock descontado al armar   : {alterados_en_armado} productos (se descuenta al descargar)"
+    )
 
-    # Persistencia final
-    ruta_salida = catalogo.guardar_estado_simulacion_json(nombre_archivo_salida=config.archivo_salida)
-    t_total_ms = (time.perf_counter() - t_inicio_total) * 1000.0
+    waves_disponibles = mostrar_waves_disponibles_y_pickers(gestor_waves, warehouse)
+    ids_seleccionados = solicitar_seleccion_waves_usuario(
+        waves_disponibles, waves_preseleccionadas
+    )
+    print(f"\n  -> Waves seleccionadas para iniciar: {ids_seleccionados}")
 
-    print("\n" + "=" * 75)
-    print("4. PERSISTENCIA Y DECODIFICACIÓN DE TABLA HASH A JSON")
-    print("=" * 75)
-    print(f"  * Estado guardado en : {ruta_salida}")
-    print(f"  * Tiempo total       : {t_total_ms:.3f} ms")
-    print("=" * 75)
+    resultado = gestor_waves.asignar_y_ejecutar_waves_seleccionadas(
+        ids_waves_seleccionadas=ids_seleccionados,
+        warehouse=warehouse,
+        estrategia_ruteo=EstrategiaRuteo.CERCANIA_DIJKSTRA_MULTIDESTINO,
+    )
+
+    print("\n" + "=" * 95)
+    print(" PASO 4: ASIGNACIÓN DE WAVES A PICKERS Y CÁLCULO DE RUTAS")
+    print("=" * 95)
+    mapa_pickers = {p.id_picker: p for p in warehouse.pickers}
+
+    for asig in resultado["asignaciones"]:
+        wid = asig["id_wave"]
+        w_obj = gestor_waves.waves_por_id[wid]
+        print(
+            f"\n  [EN_EJECUCION] {wid} -> Zona: {w_obj.id_zona_despacho} | "
+            f"Peso total: {w_obj.peso_total_kg:.2f} kg | Pickers: {asig['ids_pickers']}"
+        )
+        for pid in asig["ids_pickers"]:
+            pk = mapa_pickers[pid]
+            dist_ini = asig["distancias_picker_a_wave"][pid]
+            ruta_pk = asig["rutas_por_picker"][pid]
+            print(
+                f"    -> Picker {pid} (a {dist_ini:.0f} pasos) realiza {wid} | "
+                f"Pedidos: {asig['pedidos_por_picker'][pid]} | "
+                f"Carga: {asig['peso_por_picker'][pid]:.2f}/{pk.capacidad_carga_kg:.1f} kg | "
+                f"Ruta planificada: {max(0, len(ruta_pk) - 1)} pasos"
+            )
+
+    if resultado["waves_sin_picker_disponible"]:
+        print(
+            f"\n  [!] Waves en espera de que se libere un picker: "
+            f"{resultado['waves_sin_picker_disponible']}"
+        )
+
+    print("\n" + "=" * 95)
+    print(" PASO 5: SIMULACIÓN POR TURNOS Y CONTROL DE TRÁFICO")
+    print("=" * 95)
+
+    gestor_colisiones = TurnAndCollisionManager(max_turnos_bloqueo_recalculo=2)
+    paso_tiempo = 0
+    max_pasos_seguridad = 500
+
+    while paso_tiempo < max_pasos_seguridad:
+        en_movimiento = gestor_colisiones.avanzar_un_turno_simulacion(
+            pickers=warehouse.pickers,
+            paso_actual=paso_tiempo,
+            grafo=warehouse.grafo_pasillos,
+            gestor_waves=gestor_waves,
+            catalogo=warehouse,
+        )
+        if en_movimiento == 0:
+            break
+        paso_tiempo += 1
+
+    print(f"  * Turnos simulados            : {paso_tiempo}")
+    print(
+        f"  * Esperas por tráfico         : {gestor_colisiones.total_esperas_aplicadas}"
+    )
+    print(
+        f"  * Desvíos recalculados        : {gestor_colisiones.total_desvios_recalculados}"
+    )
+    if gestor_colisiones.eventos_colision:
+        print("  * Primeros eventos de tráfico :")
+        for ev in gestor_colisiones.eventos_colision[:5]:
+            print(f"      - {ev}")
+
+    waves_finalizadas = [
+        w.id_wave for w in gestor_waves.waves_creadas if w.estado.value == "FINALIZADA"
+    ]
+    waves_pendientes = [w.id_wave for w in gestor_waves.obtener_waves_disponibles()]
+    print(f"  * Waves finalizadas           : {waves_finalizadas}")
+    print(f"  * Waves aún pendientes        : {waves_pendientes}")
+
+    ruta_salida = FileParser.guardar_estado_warehouse_json(
+        warehouse, ARCHIVO_SALIDA_JSON
+    )
+    print(f"  * Estado exportado en JSON    : {ruta_salida}")
+    print("=" * 95)
 
 
 if __name__ == "__main__":
-    ejecutar_simulacion(PARAMETROS_EJECUCION)
+    parser = argparse.ArgumentParser(
+        description="Simulación de Wave Picking por consola"
+    )
+    parser.add_argument(
+        "-i",
+        "--input",
+        type=str,
+        default=ESCENARIO_A_CARGAR,
+        help="Escenario JSON a cargar (ej.: escenario_basico.json o escenario_grande.json)",
+    )
+    parser.add_argument(
+        "-w",
+        "--waves",
+        type=str,
+        default=None,
+        help="IDs de waves a ejecutar separados por coma (ej.: WAVE_01,WAVE_02)",
+    )
+    args = parser.parse_args()
+
+    if args.waves:
+        SELECCIONAR_WAVES_INTERACTIVAMENTE = False
+        WAVES_A_EJECUTAR_SIMULTANEAMENTE = [
+            w.strip() for w in args.waves.split(",") if w.strip()
+        ]
+
+    ejecutar_orquestador(
+        archivo_entrada=args.input,
+        waves_preseleccionadas=WAVES_A_EJECUTAR_SIMULTANEAMENTE,
+    )

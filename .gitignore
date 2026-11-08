@@ -1,6 +1,6 @@
 __pycache__/
 *.py[cod]
 .venv/
-biblioteca/
-test-output/
+.pytest_cache/
 .ruff_cache/
+BackEnd/data/estado_guardado.json

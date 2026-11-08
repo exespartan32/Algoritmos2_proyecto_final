@@ -1,38 +1,96 @@
-"""Traduce teclado, mouse y archivos arrastrados en acciones de la interfaz."""
+"""Traducción de eventos de entrada (mouse, teclado y archivos arrastrados)."""
 
 import pygame
 
+OPCIONES_CLIC = {"localizacion", "estrategia_waves"}
 
-def handle_event(self, event):
-    if event.type == pygame.QUIT:
-        self.running = False
-    elif event.type == pygame.DROPFILE:
+
+def _campo_actual(app):
+    f = app.formulario
+    return f["campos"][f["foco"]] if f else None
+
+
+def manejar_evento(app, evento):
+    if evento.type == pygame.QUIT:
+        app.corriendo = False
+    elif evento.type == pygame.DROPFILE:
         try:
-            self.import_file(event.file)
+            app.importar(evento.file)
         except Exception as exc:
-            self.message = "JSON inválido: " + str(exc)
-    elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-        for rect, action, enabled in reversed(self.buttons):
-            if enabled and rect.collidepoint(event.pos):
-                self.action(action)
+            app.mensaje = "JSON inválido: " + str(exc)
+    elif evento.type == pygame.MOUSEBUTTONDOWN and evento.button == 1:
+        pos = app.a_lienzo(evento.pos)
+        app.ultimo_clic = pos
+        for rect, accion, habilitado in reversed(app.botones):
+            if rect.collidepoint(pos):
+                if accion == ("mapa",):
+                    app.arrastre = {"inicio": pos, "ultimo": pos, "movio": False}
+                elif habilitado:
+                    app.accion(accion)
                 break
-    elif event.type == pygame.TEXTINPUT and self.dialog == "generator":
-        self.fields[self.focus] = (
-            self.fields[self.focus] + "".join(c for c in event.text if c.isdigit())
-        )[:3]
-    elif event.type == pygame.KEYDOWN:
-        if event.key == pygame.K_ESCAPE:
-            self.dialog = None
-            pygame.key.stop_text_input()
-        elif self.dialog == "generator":
-            if event.key == pygame.K_BACKSPACE:
-                self.fields[self.focus] = self.fields[self.focus][:-1]
-            elif event.key == pygame.K_TAB:
-                self.focus = (self.focus + 1) % 3
-        elif not self.dialog and self.page == "sim":
-            if event.key == pygame.K_RIGHT:
-                self.action("forward")
-            elif event.key == pygame.K_LEFT:
-                self.action("back")
-            elif event.key == pygame.K_SPACE:
-                self.action("pause" if self.playing else "continue")
+    elif evento.type == pygame.MOUSEMOTION and app.arrastre:
+        pos = app.a_lienzo(evento.pos)
+        inicio, ultimo = app.arrastre["inicio"], app.arrastre["ultimo"]
+        if abs(pos[0] - inicio[0]) + abs(pos[1] - inicio[1]) > 4:
+            app.arrastre["movio"] = True
+        if app.arrastre["movio"]:
+            app.mapa.mover(pos[0] - ultimo[0], pos[1] - ultimo[1])
+            app.arrastre["ultimo"] = pos
+    elif evento.type == pygame.MOUSEBUTTONUP and evento.button == 1:
+        if app.arrastre and not app.arrastre["movio"]:
+            app.ultimo_clic = app.arrastre["inicio"]
+            app.accion(("mapa",))
+        app.arrastre = None
+    elif evento.type == pygame.MOUSEWHEEL and app.pagina == "sim" and not app.dialogo:
+        pos = app.a_lienzo(pygame.mouse.get_pos())
+        if app.sim is not None and app.mapa.area.collidepoint(pos):
+            app.mapa.zoom_en(pos, 1.2**evento.y)
+        else:
+            app.accion(("pagina", "pag_tabla", -evento.y, 10**6, 1))
+    elif evento.type == pygame.TEXTINPUT and app.formulario:
+        campo = _campo_actual(app)
+        if campo[0] not in OPCIONES_CLIC:
+            permitido = "items" == campo[0]
+            texto = (
+                evento.text
+                if permitido
+                else "".join(c for c in evento.text if c.isdigit())
+            )
+            campo[2] = (campo[2] + texto)[: 80 if permitido else 4]
+    elif evento.type == pygame.KEYDOWN:
+        if evento.key == pygame.K_ESCAPE:
+            if app.armado and not app.dialogo:
+                app.accion("salir_armado")
+            app.cerrar_dialogo()
+        elif (
+            app.armado
+            and not app.dialogo
+            and evento.key in (pygame.K_RIGHT, pygame.K_LEFT, pygame.K_SPACE)
+        ):
+            if evento.key == pygame.K_SPACE:
+                app.accion("armado_auto")
+            else:
+                app.accion(("armado_paso", 1 if evento.key == pygame.K_RIGHT else -1))
+        elif app.formulario:
+            campo = _campo_actual(app)
+            if evento.key == pygame.K_BACKSPACE and campo[0] not in OPCIONES_CLIC:
+                campo[2] = campo[2][:-1]
+            elif evento.key in (pygame.K_TAB, pygame.K_DOWN):
+                app.formulario["foco"] = (app.formulario["foco"] + 1) % len(
+                    app.formulario["campos"]
+                )
+            elif evento.key == pygame.K_UP:
+                app.formulario["foco"] = (app.formulario["foco"] - 1) % len(
+                    app.formulario["campos"]
+                )
+            elif evento.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
+                app.accion("enviar")
+        elif not app.dialogo and app.pagina == "sim":
+            if evento.key == pygame.K_RIGHT:
+                app.accion("adelante")
+            elif evento.key == pygame.K_LEFT:
+                app.accion("atras")
+            elif evento.key == pygame.K_SPACE:
+                app.accion("pausar" if app.reproduciendo else "iniciar")
+            elif evento.key == pygame.K_r:
+                app.accion("reiniciar")

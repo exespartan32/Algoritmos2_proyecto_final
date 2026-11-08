@@ -1,545 +1,836 @@
-"""Ventana Pygame: biblioteca y panel. Se inicia desde gui.py."""
+"""Ventana principal de Pygame: biblioteca de escenarios y pantalla interactiva de simulación."""
 
 from pathlib import Path
-from datetime import datetime
-import json
-import uuid
+import time
 import pygame
-from FrontEnd.services.session import Session
-from FrontEnd.services.scenarios import generate
-from FrontEnd.views.ui_elements import (
-    UIElements,
-    WHITE,
-    BG,
-    INK,
-    GRAY,
-    BLUE,
-    LIGHT,
-    BORDER,
+
+from BackEnd.controllers.simulador import NOMBRE_ESTRATEGIA, Simulador
+from BackEnd.controllers.wave_manager import (
+    ESTRATEGIAS_ARMADO,
+    OPCIONES_ESTRATEGIA_ARMADO,
 )
-from FrontEnd.events.input_handler import handle_event
-from FrontEnd.sprites.node_sprite import draw_cell
-from FrontEnd.sprites.picker_sprite import draw_picker
+from BackEnd.utils.scenario_generator import LOCALIZACIONES
+from FrontEnd.events.input_handler import manejar_evento
+from FrontEnd.services.biblioteca import Biblioteca
+from FrontEnd.sprites.picker_sprite import angulo_para, color_picker
+from FrontEnd.views.mapa import VistaMapa
+from FrontEnd.views.paneles import PanelesVistas
+from FrontEnd.views.dialogos import DialogosVistas
+from FrontEnd.views.ui_elements import (
+    ALTO,
+    ANCHO,
+    AMBAR,
+    AZUL,
+    AZUL_CLARO,
+    BLANCO,
+    FONDO,
+    GRIS,
+    ROJO,
+    TINTA,
+    VERDE,
+    UIElements,
+)
 
-ROOT = Path(__file__).resolve().parents[2]
+VELOCIDADES = [(0.70, "x0.5"), (0.35, "x1"), (0.18, "x2"), (0.07, "x5"), (0.02, "x20")]
+DURACION_PASO_MANUAL = 0.30
 
 
-class App(UIElements):
-    def __init__(self, library=None):
+class App(UIElements, PanelesVistas, DialogosVistas):
+    OPCIONES_FORMULARIO = {
+        "localizacion": LOCALIZACIONES,
+        "estrategia_waves": OPCIONES_ESTRATEGIA_ARMADO,
+    }
+
+    def __init__(self, carpeta_biblioteca=None):
         pygame.init()
         pygame.display.set_caption("Wave Picking - Algoritmos II")
-        self.screen = pygame.display.set_mode(
-            (1520, 960), pygame.SCALED | pygame.RESIZABLE
-        )
-        self.fonts = {}
-        self.buttons = []
-        self.running = True
-        self.page = "home"
-        self.dialog = None
-        self.message = "Elegí un escenario o creá uno nuevo."
-        self.playing = False
-        self.elapsed = 0
-        self.model = None
-        self.name = ""
-        self.stock_page = 0
-        self.order_page = 0
-        self.wave_page = 0
-        self.lib_page = 0
-        self.cart = 0
-        self.library = Path(library or ROOT / "biblioteca")
-        self.library.mkdir(exist_ok=True, parents=True)
-        # Se incluyen ejemplos una sola vez. Eliminar no los restaura al reiniciar.
-        marker = self.library / ".inicializada"
-        if not marker.exists():
-            for path in (ROOT / "BackEnd" / "data").glob("escenario_*.json"):
-                (self.library / path.name).write_bytes(path.read_bytes())
-            marker.touch()
-        self.fields = ["10", "50", "20"]
-        self.focus = 0
+        info = pygame.display.Info()
+        ancho = min(ANCHO, max(1024, int(getattr(info, "current_w", ANCHO) * 0.9)))
+        alto = min(ALTO, max(640, int(getattr(info, "current_h", ALTO) * 0.85)))
+        self.ventana = pygame.display.set_mode((ancho, alto), pygame.RESIZABLE)
+        self.lienzo = pygame.Surface((ANCHO, ALTO))
+        self.escala, self.desplazamiento = 1.0, (0, 0)
+        self.fuentes = {}
+        self.botones = []
+        self.corriendo = True
+        self.pagina = "inicio"
+        self.dialogo = None
+        self.mensaje = "Elegí un escenario de la biblioteca o creá uno nuevo."
+        self.reproduciendo = False
+        self.acumulado = 0.0
+        self.velocidad = 1
+        self.sim = None
+        self.nombre = ""
+        self.biblioteca = Biblioteca(carpeta_biblioteca)
+        self.pestana = "Pickers"
+        self.pag_biblioteca = self.pag_tabla = self.pag_waves_dialogo = 0
+        self.seleccion = set()
+        self.picker_foco = None
+        self.wave_foco = None
+        self.ver_exploracion = True
+        self.comparacion = None
+        self.formulario = None
+        self.ultimo_clic = (0, 0)
+        self.mapa_ampliado = False
+        self.armado = None
+        self.animacion = {}
+        self.angulos = {}
+        self.inicio_animacion = 0.0
+        self.duracion_animacion = 0.0
+        self.arrastre = None
+        self.comparacion_armado = None
+        self.productos_por_celda = {}
+        self.mapa = VistaMapa(self, 20, 186, 740, 690)
 
-    def import_file(self, path):
-        data = json.loads(Path(path).read_text(encoding="utf-8-sig"))
-        # Construcción de la grilla para comprobar también el contrato de lectura.
-        Session(data)
-        name = Path(path).stem[:45] + "_" + uuid.uuid4().hex[:6] + ".json"
-        (self.library / name).write_text(
-            json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8"
+    def cargar(self, ruta):
+        sim = Biblioteca.abrir(ruta)
+        self._usar(sim, Path(ruta).stem)
+        sesion = Biblioteca.es_sesion(ruta)
+        self.mensaje = (
+            f"Sesión retomada en el turno {sim.estado.paso}. Podés continuar la simulación."
+            if sesion
+            else "Escenario cargado. Revisá los productos y pedidos, y generá las waves."
         )
-        self.dialog = None
-        self.message = "Escenario validado y guardado en la biblioteca."
+        if sim.advertencias:
+            self.mensaje += " Advertencias: " + "; ".join(sim.advertencias[:2])
 
-    def open_dialog_file(self):
+    def _usar(self, sim: Simulador, nombre: str):
+        self.sim = sim
+        self.nombre = nombre
+        self.pagina = "sim"
+        self.reproduciendo = False
+        self.seleccion = set()
+        self.picker_foco = (
+            sim.warehouse.pickers[0].id_picker if sim.warehouse.pickers else None
+        )
+        self.wave_foco = None
+        self.comparacion = None
+        self.pag_tabla = 0
+        self.animacion, self.angulos = {}, {}
+        self.armado = None
+        self.comparacion_armado = None
+        self.mapa.centrar()
+        self.pestana = "Productos" if not sim.waves else "Pickers"
+        self.productos_por_celda = {}
+        for p in sim.warehouse.catalogo_productos.values():
+            self.productos_por_celda[(p.x, p.y)] = (
+                self.productos_por_celda.get((p.x, p.y), 0) + 1
+            )
+
+    def _a_usar_estrategia_armado(self, clave: str):
+        c = self.sim.config
+        self.sim.configurar(
+            c["wave_max_pedidos"],
+            c["wave_max_productos"],
+            c["max_pickers_por_wave"],
+            clave,
+        )
+        waves = self.sim.generar_waves()
+        self.seleccion = set()
+        self.comparacion = None
+        self.pestana, self.pag_tabla = "Waves", 0
+        efectiva = self.sim.estado.gestor_waves.estrategia_armado
+        self.mensaje = (
+            f"Waves generadas ({len(waves)}) usando: {ESTRATEGIAS_ARMADO[efectiva]}."
+        )
+        self.dialogo = "waves"
+
+    def importar_con_dialogo(self):
         import tkinter as tk
         from tkinter.filedialog import askopenfilename
 
-        root = tk.Tk()
-        root.withdraw()
+        raiz = tk.Tk()
+        raiz.withdraw()
         try:
-            path = askopenfilename(
+            ruta = askopenfilename(
                 title="Importar escenario JSON", filetypes=[("JSON", "*.json")]
             )
+            raiz.update()
         finally:
-            root.destroy()
-        if path:
-            self.import_file(path)
+            raiz.destroy()
+        if ruta:
+            self.importar(ruta)
 
-    def load(self, path):
-        model = Session(json.loads(Path(path).read_text(encoding="utf-8-sig")))
-        self.model = model
-        self.page = "sim"
-        self.name = Path(path).stem
-        self.playing = False
-        self.stock_page = self.order_page = self.wave_page = self.cart = 0
-        self.message = "Escenario cargado. Generá waves o continuá el estado guardado."
-
-    def action(self, action):
-        try:
-            name, *args = action if isinstance(action, tuple) else (action,)
-            m = self.model
-            if name == "create":
-                self.dialog = "create"
-            elif name == "generator":
-                self.dialog = "generator"
-                self.fields = ["10", "50", "20"]
-                self.focus = 0
-                pygame.key.start_text_input()
-            elif name == "field":
-                self.focus = args[0]
-            elif name == "import":
-                self.open_dialog_file()
-            elif name == "generate":
-                data = generate(*(int(v) for v in self.fields))
-                dest = self.library / f"generado_{uuid.uuid4().hex[:6]}.json"
-                dest.write_text(
-                    json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8"
-                )
-                self.dialog = None
-                pygame.key.stop_text_input()
-                self.message = "Escenario generado y guardado. Ya podés cargarlo."
-            elif name == "load":
-                self.load(args[0])
-            elif name == "delete":
-                self.dialog = ("delete", args[0])
-            elif name == "confirm_delete":
-                target = Path(self.dialog[1]).resolve()
-                if target.parent != self.library.resolve() or target.suffix != ".json":
-                    raise ValueError("Ruta ajena a la biblioteca.")
-                target.unlink()
-                self.dialog = None
-                self.message = "Escenario eliminado de la biblioteca."
-            elif name == "close":
-                self.dialog = None
-                pygame.key.stop_text_input()
-            elif name == "home":
-                self.page = "home"
-                self.playing = False
-            elif name == "resume_screen":
-                self.page = "sim"
-            elif name == "waves":
-                m.generate_waves()
-                self.message = (
-                    f"{len(m.waves)} waves generadas. Seleccioná una wave."
-                    + (" Avisos: " + "; ".join(m.alerts) if m.alerts else "")
-                )
-            elif name == "select":
-                self.dialog = "waves"
-                self.playing = False
-            elif name == "wave":
-                m.select(args[0])
-                self.cart = list(m.pickers).index(m.wave["picker"])
-                self.dialog = None
-                self.playing = False
-                self.message = (
-                    "Ruta calculada con Dijkstra. Se ejecuta una wave a la vez."
-                )
-            elif name == "strategy":
-                if m.step or m.finished:
-                    raise ValueError("Reiniciá la wave antes de cambiar de estrategia.")
-                m.set_strategy("Cercanía" if m.strategy == "Orden" else "Orden")
-                self.message = "Estrategia: " + m.strategy
-            elif name == "compare":
-                self.dialog = "compare"
-                self.playing = False
-            elif name in ("start", "continue"):
-                if not m.route:
-                    raise ValueError("Primero generá waves y elegí una.")
-                if m.finished:
-                    raise ValueError("La wave terminó. Reiniciala o seleccioná otra.")
-                self.playing = True
-                self.elapsed = 0
-            elif name == "pause":
-                self.playing = False
-            elif name == "forward":
-                self.playing = False
-                m.advance()
-            elif name == "back":
-                self.playing = False
-                m.back()
-            elif name == "reset":
-                self.playing = False
-                m.reset()
-                self.message = "Wave reiniciada. Stock y carga restaurados."
-            elif name == "save":
-                self.playing = False
-                dest = (
-                    self.library
-                    / f"estado_{datetime.now():%Y%m%d_%H%M%S}_{uuid.uuid4().hex[:4]}.json"
-                )
-                m.save(dest)
-                self.message = "Estado guardado en la biblioteca, incluido el historial para retroceder."
-            elif name == "page":
-                attr, delta, total, size = args
-                setattr(
-                    self,
-                    attr,
-                    max(0, min((total - 1) // size, getattr(self, attr) + delta)),
-                )
-            elif name == "cart":
-                self.cart = (self.cart + 1) % len(m.pickers)
-        except Exception as exc:
-            self.message = "No se pudo completar la acción: " + str(exc)
-            self.playing = False
-
-    def home(self):
-        self.text("Inicio · Gestor de escenarios", 30, 95, 27, bold=True)
-        self.box(30, 150, 410, 390)
-        self.text("Crear escenario", 50, 173, 23, bold=True)
-        self.wrap(
-            "Importá un JSON existente o completá los parámetros del generador.",
-            50,
-            217,
-            365,
-            19,
-        )
-        self.button("Crear Escenario", 50, 296, 365, "create", selected=True)
-        self.text("Desde archivo", 50, 364, 20, bold=True)
-        self.wrap("Validar y guardar en la biblioteca.", 50, 397, 360)
-        self.text("Generador automático", 50, 444, 20, bold=True)
-        self.wrap("Elegir cantidad de racks, productos y pedidos.", 50, 477, 360)
-        self.text("Cargar escenario", 480, 158, 23, bold=True)
-        paths = sorted(self.library.glob("*.json"))
-        self.lib_page = min(self.lib_page, max(0, (len(paths) - 1) // 9))
-        self.text("Escenarios guardados", 480, 203, 18, GRAY)
-        for i, path in enumerate(paths[self.lib_page * 9 : self.lib_page * 9 + 9]):
-            y = 240 + i * 64
-            self.box(480, y, 1000, 54)
-            self.text(path.stem[:60], 496, y + 17, 18)
-            self.button("Cargar / Abrir", 1175, y + 9, 150, ("load", path))
-            self.button("Eliminar", 1338, y + 9, 125, ("delete", path))
-        self.pager("lib_page", len(paths), 9, 1125, 835)
-        if self.model:
-            self.button("Volver a la simulación", 50, 583, 365, "resume_screen")
-        self.wrap(
-            "También podés arrastrar un archivo JSON sobre esta ventana.",
-            50,
-            670,
-            365,
-            18,
+    def importar(self, ruta):
+        destino = self.biblioteca.importar(ruta)
+        self.dialogo = None
+        self.mensaje = (
+            f"Escenario validado y agregado a la biblioteca como {destino.name}."
         )
 
-    def pager(self, attr, total, size, x, y):
-        page = getattr(self, attr)
-        self.button("<", x, y, 36, ("page", attr, -1, total, size), page > 0)
-        self.text(f"{page+1} / {max(1,(total+size-1)//size)}", x + 48, y + 9, 16, GRAY)
-        self.button(
-            ">",
-            x + 112,
-            y,
-            36,
-            ("page", attr, 1, total, size),
-            (page + 1) * size < total,
-        )
+    def picker_enfocado(self, pickers=None):
+        pickers = pickers if pickers is not None else self.sim.resumen_pickers()
+        for p in pickers:
+            if p["id"] == self.picker_foco:
+                return p
+        return pickers[0] if pickers else None
 
-    def map(self):
-        m = self.model
-        x0, y0, w, h = 30, 228, 710, 600
-        size = min(w / m.width, h / m.height)
-        left = x0 + (w - size * m.width) / 2
-        top = y0 + (h - size * m.height) / 2
+    def mover(self, funcion, duracion=None):
+        antes = {p.id_picker: p.posicion_actual for p in self.sim.warehouse.pickers}
+        resultado = funcion()
+        despues = {p.id_picker: p.posicion_actual for p in self.sim.warehouse.pickers}
+        self.animacion = {
+            pid: (antes.get(pid, pos), pos) for pid, pos in despues.items()
+        }
+        for pid, (desde, hasta) in self.animacion.items():
+            dx, dy = hasta[0] - desde[0], hasta[1] - desde[1]
+            if abs(dx) + abs(dy) == 1:
+                self.angulos[pid] = angulo_para(dx, dy, self.angulos.get(pid, 0))
+        self.inicio_animacion = time.perf_counter()
+        if duracion is None:
+            duracion = (
+                VELOCIDADES[self.velocidad][0]
+                if self.reproduciendo
+                else DURACION_PASO_MANUAL
+            )
+        self.duracion_animacion = duracion
+        return resultado
 
-        def rect(coord):
-            return pygame.Rect(
-                round(left + coord[0] * size),
-                round(top + (m.height - 1 - coord[1]) * size),
-                max(1, round(size)),
-                max(1, round(size)),
+    def busquedas_activas(self):
+        if self.sim is None:
+            return {}
+        if self.duracion_animacion > 0:
+            t = min(
+                1.0,
+                (time.perf_counter() - self.inicio_animacion) / self.duracion_animacion,
             )
-
-        explored = set(m.results.get(m.strategy, {}).get("explorados", []))
-        for coord, (kind, sense, _) in m.grid.items():
-            draw_cell(
-                self.screen, rect(coord), kind, sense, self.font, coord in explored
-            )
-        route = m.route
-        if len(route) > 1:
-            pygame.draw.lines(
-                self.screen,
-                BLUE,
-                False,
-                [rect(p).center for p in route],
-                max(2, int(size * 0.1)),
-            )
-        for index, (pid, pos) in enumerate(m.positions.items()):
-            draw_picker(
-                self.screen,
-                rect(pos),
-                index,
-                pid == (m.wave or {}).get("picker"),
-                self.font,
-            )
-        self.text(
-            f"Origen (0,0) abajo a la izquierda · {m.width} × {m.height}",
-            30,
-            846,
-            16,
-            GRAY,
-        )
-        self.text(
-            "# Rack   D Despacho   P Puerta   Círculos: pickers   Celeste: explorados",
-            30,
-            873,
-            16,
-            GRAY,
-        )
-
-    def simulation(self):
-        m = self.model
-        self.text(self.name[:70], 30, 72, 18, GRAY)
-        self.button("Inicio", 1390, 20, 100, "home")
-        self.button("Generar Waves", 30, 104, 165, "waves", not bool(m.waves))
-        self.button("Seleccionar Wave", 205, 104, 185, "select", bool(m.waves))
-        self.button(
-            "Estrategia: " + m.strategy, 400, 104, 210, "strategy", bool(m.results)
-        )
-        self.button("Comparar Estrategias", 620, 104, 220, "compare", bool(m.results))
-        self.button("Guardar Escenario", 850, 104, 200, "save")
-        valid = bool(m.route)
-        for label, x, w, action, enabled in [
-            (
-                "Iniciar",
-                30,
-                110,
-                "start",
-                valid and not m.finished and not self.playing,
-            ),
-            ("Pausar", 150, 110, "pause", self.playing),
-            (
-                "Continuar",
-                270,
-                120,
-                "continue",
-                valid and not self.playing and not m.finished,
-            ),
-            ("Paso Adelante >", 400, 165, "forward", valid and not m.finished),
-            ("Paso Atrás <", 575, 145, "back", bool(m.history)),
-            ("Reiniciar", 730, 130, "reset", bool(m.baseline)),
-        ]:
-            self.button(label, x, 151, w, action, enabled)
-        result = m.results.get(m.strategy)
-        self.text(
-            f'Wave: {m.wave["id"] if m.wave else "sin seleccionar"}    Paso: {m.step}    Estado: {"en reproducción" if self.playing else "pausado" if not m.finished else "finalizado"}',
-            30,
-            202,
-            17,
-        )
-        if result:
-            self.text(
-                f'Dijkstra: {result["distancia"]} pasos · {result["nodos"]} nodos explorados · {result["tiempo"]:.2f} ms',
-                780,
-                191,
-                17,
-                BLUE,
-            )
-        self.map()
-        # Stock: todas las columnas solicitadas y paginación.
-        self.box(780, 228, 710, 300)
-        self.text("Productos disponibles · Stock en racks", 794, 239, 20, bold=True)
-        headers = [
-            ("ID", 794),
-            ("Nombre", 865),
-            ("(x,y)", 1086),
-            ("z", 1171),
-            ("kg/u", 1215),
-            ("Stock", 1290),
-        ]
-        for label, x in headers:
-            self.text(label, x, 274, 16, GRAY, True)
-        prods = list(m.products.values())
-        for i, p in enumerate(prods[self.stock_page * 7 : self.stock_page * 7 + 7]):
-            y = 302 + i * 25
-            u = p["ubicacion"]
-            for value, x in [
-                (p["id"], 794),
-                (p["nombre"][:24], 865),
-                (f'({u["x"]},{u["y"]})', 1086),
-                (u["z"], 1171),
-                (p["peso_kg"], 1215),
-                (m.stock[p["id"]], 1290),
-            ]:
-                self.text(value, x, y, 16)
-        self.pager("stock_page", len(prods), 7, 1328, 482)
-        # Carritos: un selector para consultar cada picker.
-        self.box(780, 542, 710, 160)
-        pids = list(m.pickers)
-        pid = pids[self.cart]
-        pk = m.pickers[pid]
-        load = sum(m.products[k]["peso_kg"] * v for k, v in m.cargo[pid].items())
-        self.text(f"Productos recogidos · {pid}", 794, 554, 20, bold=True)
-        self.button("Cambiar picker", 1308, 551, 165, "cart", len(pids) > 1)
-        self.text(
-            f'Carga: {load:.2f} / {pk["capacidad_carga_kg"]:g} kg', 794, 588, 18, BLUE
-        )
-        cargo = (
-            ", ".join(f"{p}: {q} u." for p, q in m.cargo[pid].items())
-            or "Carrito vacío. Al volver a despacho, se descarga."
-        )
-        self.wrap(cargo, 794, 620, 670, 17, limit=3)
-        # Pedidos y waves permanecen visibles juntos.
-        self.box(780, 716, 710, 181)
-        self.text("Pedidos y waves", 794, 727, 20, bold=True)
-        orders = list(m.orders.values())
-        for i, o in enumerate(orders[self.order_page * 4 : self.order_page * 4 + 4]):
-            y = 763 + i * 26
-            wave = next((w for w in m.waves if o["id"] in w["pedidos"]), None)
-            self.text(o["id"], 794, y, 16)
-            self.text(m.status[o["id"]], 926, y, 16)
-            self.text(
-                f'{wave["id"]} / {wave["estado"]}' if wave else "Sin wave", 1115, y, 16
-            )
-        self.pager("order_page", len(orders), 4, 1328, 853)
-
-    def modal(self):
-        overlay = pygame.Surface((1520, 960), pygame.SRCALPHA)
-        overlay.fill((0, 0, 0, 80))
-        self.screen.blit(overlay, (0, 0))
-        self.buttons = []
-        self.box(360, 210, 800, 540)
-        kind = self.dialog[0] if isinstance(self.dialog, tuple) else self.dialog
-        self.button("Cerrar", 1020, 229, 115, "close")
-        if kind == "create":
-            self.text("Crear escenario", 390, 246, 28, bold=True)
-            self.text("¿Cómo querés crearlo?", 390, 316, 21)
-            self.button("Desde archivo JSON", 390, 385, 340, "import")
-            self.button("Generador automático", 750, 385, 375, "generator")
-            self.wrap(
-                "El archivo se valida y se copia a la biblioteca. El generador usa ScenarioGenerator del equipo con pasillos y racks.",
-                390,
-                466,
-                730,
-                20,
-            )
-        elif kind == "generator":
-            self.text("Generador automático", 390, 246, 28, bold=True)
-            for i, label in enumerate(
-                [
-                    "Cantidad de racks (1–30)",
-                    "Cantidad de productos (1–300)",
-                    "Cantidad de pedidos (1–100)",
-                ]
-            ):
-                y = 330 + i * 76
-                self.text(label, 390, y + 11, 20)
-                self.box(850, y, 250, 44, LIGHT if i == self.focus else WHITE)
-                self.text(self.fields[i], 865, y + 10, 23)
-                self.buttons.append((pygame.Rect(850, y, 250, 44), ("field", i), True))
-            self.button("Generar y guardar", 390, 615, 320, "generate", selected=True)
-        elif kind == "delete":
-            self.text("Eliminar escenario", 390, 246, 28, bold=True)
-            self.wrap(
-                "Se eliminará de la biblioteca: " + Path(self.dialog[1]).name,
-                390,
-                340,
-                720,
-                22,
-            )
-            self.button("Eliminar", 390, 500, 210, "confirm_delete")
-            self.button("Cancelar", 620, 500, 210, "close")
-        elif kind == "compare":
-            self.text(
-                "Comparar estrategias · " + self.model.wave["id"],
-                390,
-                246,
-                26,
-                bold=True,
-            )
-            self.text(
-                "Dijkstra: orden de pedidos o destino más cercano.", 390, 302, 19, GRAY
-            )
-            for text, x in [("Métrica", 390), ("Orden", 740), ("Cercanía", 940)]:
-                self.text(text, x, 365, 22, bold=True)
-            for i, (label, key) in enumerate(
-                [
-                    ("Distancia / pasos", "distancia"),
-                    ("Nodos explorados", "nodos"),
-                    ("Tiempo (ms)", "tiempo"),
-                ]
-            ):
-                y = 416 + i * 58
-                self.text(label, 390, y, 21)
-                for strategy, x in [("Orden", 740), ("Cercanía", 940)]:
-                    self.text(self.model.results[strategy][key], x, y, 21)
-            self.wrap(
-                "Nodos únicos explorados entre tramos. Tiempo medido en esta ejecución. Aristas = pasos de la ruta.",
-                390,
-                628,
-                720,
-                18,
-                GRAY,
-            )
-        elif kind == "waves":
-            self.text("Seleccionar wave", 390, 246, 28, bold=True)
-            waves = self.model.waves
-            for i, w in enumerate(waves[self.wave_page * 6 : self.wave_page * 6 + 6]):
-                y = 322 + i * 52
-                self.text(
-                    f'{w["id"]} · {len(w["pedidos"])} pedidos · {w["peso"]} kg · {w["picker"]}',
-                    390,
-                    y + 7,
-                    19,
-                )
-                self.button(
-                    "Seleccionar",
-                    960,
-                    y,
-                    170,
-                    ("wave", self.wave_page * 6 + i),
-                    w["estado"] != "FINALIZADA",
-                )
-            self.pager("wave_page", len(waves), 6, 930, 670)
-
-    def draw(self):
-        self.screen.fill(BG)
-        self.buttons = []
-        self.text("Wave Picking", 30, 22, 30, bold=True)
-        self.text("Simulación por wave · Algoritmos II", 260, 31, 18, GRAY)
-        if self.page == "home":
-            self.home()
         else:
-            self.simulation()
-        if self.dialog:
-            self.modal()
-        self.wrap(self.message, 30, 912, 1450, 16, BLUE, limit=2)
+            t = 1.0
+        activas = {}
+        for p in self.sim.warehouse.pickers:
+            plan = self.sim.estado.planes.get(p.id_picker)
+            if p.turnos_busqueda <= 0 or plan is None:
+                continue
+            total = max(1, plan.get("turnos_busqueda", 1))
+            hechos = total - p.turnos_busqueda
+            activas[p.id_picker] = (plan, min(1.0, (hechos + t) / total))
+        return activas
+
+    def posicion_animada(self, pid, posicion):
+        posicion = tuple(posicion)
+        angulo = self.angulos.get(pid, 0)
+        desde, hasta = self.animacion.get(pid, (posicion, posicion))
+        if (
+            hasta != posicion
+            or self.duracion_animacion <= 0
+            or abs(hasta[0] - desde[0]) + abs(hasta[1] - desde[1]) != 1
+        ):
+            return posicion, angulo
+        t = min(
+            1.0, (time.perf_counter() - self.inicio_animacion) / self.duracion_animacion
+        )
+        return (
+            desde[0] + (hasta[0] - desde[0]) * t,
+            desde[1] + (hasta[1] - desde[1]) * t,
+        ), angulo
+
+    def pendientes_por_celda(self, picker):
+        return list(self.sim.estado.por_recoger.get(picker["id"], {}).items())
+
+    def celdas_resaltadas(self):
+        wh = self.sim.warehouse
+        celdas = set()
+        for items_por_celda in self.sim.estado.por_recoger.values():
+            for items in items_por_celda.values():
+                for prod_id, _, _ in items:
+                    celdas.add(wh.buscar_producto_O1(prod_id).coordenadas_xy)
+        if self.wave_foco:
+            for w in self.sim.resumen_waves():
+                if w["id"] == self.wave_foco:
+                    celdas.update(w["ubicaciones"])
+        for wid in self.seleccion:
+            for w in self.sim.resumen_waves():
+                if w["id"] == wid:
+                    celdas.update(w["ubicaciones"])
+        return celdas
+
+    def waves_pendientes(self):
+        return [w for w in self.sim.resumen_waves() if w["estado"] == "PENDIENTE"]
+
+    def abrir_formulario(self, tipo, campos):
+        self.formulario = {"tipo": tipo, "campos": [list(c) for c in campos], "foco": 0}
+        self.dialogo = tipo
+        pygame.key.start_text_input()
+
+    def valores_formulario(self):
+        return {clave: valor for clave, _, valor in self.formulario["campos"]}
+
+    def cerrar_dialogo(self):
+        self.dialogo = None
+        self.formulario = None
+        pygame.key.stop_text_input()
+
+    # ------------------------------------------------------------------
+    # Acciones e interacciones
+    # ------------------------------------------------------------------
+    def accion(self, accion):
+        try:
+            nombre, *args = accion if isinstance(accion, tuple) else (accion,)
+            getattr(self, "_a_" + nombre)(*args)
+        except Exception as exc:
+            self.mensaje = "Acción interrumpida: " + str(exc)
+            self.reproduciendo = False
+
+    def _a_crear(self):
+        self.dialogo = "crear"
+
+    def _a_generador(self):
+        campos_gen = [
+            ("cantidad_estantes", "Cantidad de estantes (racks)", "12"),
+            ("cantidad_pasillos", "Cantidad de pasillos verticales", "5"),
+            ("cantidad_productos", "Cantidad de productos", "60"),
+            ("localizacion", "Localización de los productos", "DISTRIBUIDA"),
+            ("cantidad_pedidos", "Cantidad de pedidos", "20"),
+            ("max_productos_por_pedido", "Máx. productos por pedido", "4"),
+            ("wave_max_pedidos", "Capacidad wave: pedidos", "4"),
+            ("wave_max_productos", "Capacidad wave: unidades", "20"),
+            ("cantidad_pickers", "Cantidad de pickers", "3"),
+        ]
+        self.abrir_formulario("generador", campos_gen)
+
+    def _a_importar(self):
+        self.importar_con_dialogo()
+
+    def _a_generar_escenario(self):
+        v = self.valores_formulario()
+        destino = self.biblioteca.generar(**v)
+        self.cerrar_dialogo()
+        self.mensaje = (
+            f"Escenario generado y guardado como {destino.name}. Ya podés abrirlo."
+        )
+
+    def _a_abrir(self, ruta):
+        self.cargar(ruta)
+
+    def _a_eliminar(self, ruta):
+        self.dialogo = ("eliminar", ruta)
+
+    def _a_confirmar_eliminar(self):
+        self.biblioteca.eliminar(self.dialogo[1])
+        self.dialogo = None
+        self.mensaje = "Archivo eliminado de la biblioteca."
+
+    def _a_cerrar(self):
+        self.cerrar_dialogo()
+
+    def _a_inicio(self):
+        self.pagina = "inicio"
+        self.reproduciendo = False
+
+    def _a_volver(self):
+        self.pagina = "sim"
+
+    def _a_pagina(self, atributo, delta, total, por_pagina):
+        paginas = max(1, (total + por_pagina - 1) // por_pagina)
+        setattr(
+            self, atributo, max(0, min(paginas - 1, getattr(self, atributo) + delta))
+        )
+
+    def _a_campo(self, indice):
+        campo = self.formulario["campos"][indice]
+        if campo[0] in self.OPCIONES_FORMULARIO:
+            opciones = list(self.OPCIONES_FORMULARIO[campo[0]])
+            campo[2] = opciones[(opciones.index(campo[2]) + 1) % len(opciones)]
+        self.formulario["foco"] = indice
+
+    def _a_enviar(self):
+        tipo = self.formulario["tipo"]
+        if tipo == "generador":
+            self._a_generar_escenario()
+        elif tipo == "pedido":
+            self._a_crear_pedido()
+        elif tipo == "config":
+            self._a_guardar_config()
+
+    def _a_nuevo_pedido(self):
+        ejemplo = ", ".join(f"{p['id']}x1" for p in self.sim.productos()[:2])
+        self.abrir_formulario(
+            "pedido",
+            [
+                ("items", "Productos (ej.: " + ejemplo + ")", ""),
+                ("prioridad", "Prioridad (1 a 5)", "3"),
+            ],
+        )
+
+    def _a_crear_pedido(self):
+        v = self.valores_formulario()
+        items = Simulador.interpretar_items(v["items"])
+        nuevo = self.sim.agregar_pedido(int(v["prioridad"] or 0), items)
+        self.cerrar_dialogo()
+        self.pestana, self.pag_tabla = "Pedidos", 0
+        self.mensaje = f"Pedido {nuevo} creado. Generá las waves para incluirlo."
+
+    def _a_config(self):
+        c = self.sim.config
+        self.abrir_formulario(
+            "config",
+            [
+                (
+                    "wave_max_pedidos",
+                    "Máximo de pedidos por wave",
+                    str(c["wave_max_pedidos"]),
+                ),
+                (
+                    "wave_max_productos",
+                    "Máximo de unidades por wave",
+                    str(c["wave_max_productos"]),
+                ),
+                (
+                    "max_pickers_por_wave",
+                    "Máximo de pickers por wave",
+                    str(c["max_pickers_por_wave"]),
+                ),
+                (
+                    "estrategia_waves",
+                    "Estrategia de armado de waves",
+                    c["estrategia_waves"],
+                ),
+            ],
+        )
+
+    def _a_guardar_config(self):
+        v = self.valores_formulario()
+        self.sim.configurar(
+            int(v["wave_max_pedidos"] or 0),
+            int(v["wave_max_productos"] or 0),
+            int(v["max_pickers_por_wave"] or 0),
+            v["estrategia_waves"],
+        )
+        self.cerrar_dialogo()
+        self.mensaje = "Capacidad de waves actualizada. Generá las waves."
+
+    def _a_generar_waves(self):
+        waves = self.sim.generar_waves()
+        self.seleccion = set()
+        self.comparacion = None
+        self.pestana, self.pag_tabla = "Waves", 0
+        descartados = len(self.sim.estado.gestor_waves.pedidos_descartados)
+        self.mensaje = f"{len(waves)} waves generadas correctamente."
+        if descartados:
+            self.mensaje += (
+                f" {descartados} pedidos no pudieron prepararse (ver pestaña Eventos)."
+            )
+        self.dialogo = "waves"
+
+    def _a_elegir_waves(self):
+        if not self.sim.waves:
+            raise ValueError("Primero generá las waves.")
+        self.dialogo = "waves"
+        self.reproduciendo = False
+
+    def _a_marcar(self, wid):
+        self.seleccion ^= {wid}
+
+    def _a_marcar_todas(self, todas):
+        self.seleccion = {w["id"] for w in self.waves_pendientes()} if todas else set()
+
+    def _a_iniciar_seleccion(self):
+        ids = [w["id"] for w in self.waves_pendientes() if w["id"] in self.seleccion]
+        if not ids:
+            raise ValueError("Marcá al menos una wave pendiente.")
+        tanda = self.sim.iniciar_waves(
+            ids, self.sim.estrategia, self.sim.pickers_por_wave
+        )
+        self.seleccion = set()
+        self.dialogo = None
+        self.comparacion = None
+        self.picker_foco = (
+            tanda["planes"][0]["picker"] if tanda["planes"] else self.picker_foco
+        )
+        self.pestana = "Pickers"
+        self.mensaje = f"Tanda {tanda['numero']} asignada a los pickers más cercanos."
+
+    def _a_estrategia(self):
+        nueva = "ORDEN" if self.sim.estrategia == "CERCANIA" else "CERCANIA"
+        replanificada = self.sim.cambiar_estrategia(nueva)
+        self.comparacion = None
+        self.mensaje = (
+            "Estrategia: "
+            + NOMBRE_ESTRATEGIA[nueva]
+            + (". Tanda actual re-planificada." if replanificada else ".")
+        )
+
+    def _a_comparar(self, desde_dialogo=False):
+        self.reproduciendo = False
+        ids = None
+        if desde_dialogo or not self.sim.tanda_actual:
+            ids = [
+                w["id"] for w in self.waves_pendientes() if w["id"] in self.seleccion
+            ]
+            if not ids:
+                raise ValueError("Seleccioná waves pendientes para comparar.")
+        self.comparacion = self.sim.comparar_estrategias(
+            ids, self.sim.pickers_por_wave if ids else None
+        )
+        self.dialogo = "comparar"
+
+    def _a_iniciar(self):
+        if not self.sim.en_curso:
+            if self.seleccion:
+                self._a_iniciar_seleccion()
+            elif self.sim.waves:
+                self._a_elegir_waves()
+                return
+            else:
+                self._a_generar_waves()
+                return
+        self.reproduciendo = True
+        self.acumulado = 0.0
+
+    def _a_continuar(self):
+        if not self.sim.en_curso:
+            raise ValueError("No hay pickers trabajando.")
+        self.reproduciendo = True
+
+    def _a_pausar(self):
+        self.reproduciendo = False
+
+    def _a_adelante(self):
+        self.reproduciendo = False
+        if not self.mover(self.sim.avanzar):
+            raise ValueError("No hay pickers trabajando.")
+
+    def _a_atras(self):
+        self.reproduciendo = False
+        if not self.mover(self.sim.retroceder):
+            raise ValueError("No hay pasos previos para deshacer.")
+
+    def _a_reiniciar(self):
+        self.reproduciendo = False
+        if not self.mover(self.sim.reiniciar, 0):
+            raise ValueError("Todavía no se inició ninguna tanda.")
+        self.mensaje = "Tanda reiniciada: stock restaurado."
+
+    def _a_velocidad(self):
+        self.velocidad = (self.velocidad + 1) % len(VELOCIDADES)
+
+    def _a_guardar(self):
+        self.reproduciendo = False
+        ruta = self.biblioteca.guardar_sesion(self.sim, self.nombre)
+        self.mensaje = f"Sesión guardada como {ruta.name}."
+
+    def _a_pestana(self, nombre):
+        self.pestana = nombre
+        self.pag_tabla = 0
+
+    def _a_foco_picker(self, pid):
+        self.picker_foco = pid
+
+    def _a_foco_wave(self, wid):
+        self.wave_foco = None if self.wave_foco == wid else wid
+
+    def _a_zoom(self, factor):
+        self.mapa.zoom_en(self.mapa.area.center, factor)
+
+    def _a_centrar_mapa(self):
+        self.mapa.centrar()
+
+    def _a_comparar_armado(self):
+        self.reproduciendo = False
+        self.comparacion_armado = self.sim.comparar_armado()
+        self.dialogo = "armado"
+
+    DURACION_ARMADO = {
+        "raiz": 3.0,
+        "evaluar": 4.0,
+        "elegir": 3.5,
+        "fin": 2.5,
+        "ruta": 9.0,
+    }
+    COLORES_PEDIDO = [
+        (196, 90, 30),
+        (37, 99, 166),
+        (31, 128, 98),
+        (124, 65, 145),
+        (176, 52, 46),
+        (20, 120, 150),
+        (150, 110, 20),
+        (150, 60, 100),
+    ]
+
+    def colores_pedidos(self, datos):
+        orden = [p["pedido"] for p in datos["pasos"] if p["tipo"] in ("raiz", "elegir")]
+        return {
+            pid: self.COLORES_PEDIDO[i % len(self.COLORES_PEDIDO)]
+            for i, pid in enumerate(orden)
+        }
+
+    def progreso_armado(self):
+        if not self.armado:
+            return 1.0
+        tipo = self.armado["datos"]["pasos"][self.armado["paso"]]["tipo"]
+        duracion = self.DURACION_ARMADO.get(tipo, 3.0)
+        return min(1.0, (time.perf_counter() - self.armado["inicio"]) / duracion)
+
+    def _mover_armado(self, delta):
+        pasos = self.armado["datos"]["pasos"]
+        self.armado["paso"] = max(0, min(len(pasos) - 1, self.armado["paso"] + delta))
+        self.armado["inicio"] = time.perf_counter()
+
+    def _a_ver_armado(self, id_wave=None):
+        waves = [w["id"] for w in self.sim.resumen_waves()]
+        if not waves:
+            raise ValueError("Primero generá las waves.")
+        id_wave = id_wave if id_wave in waves else waves[0]
+        self.reproduciendo = False
+        self.dialogo = None
+        self.armado = {
+            "datos": self.sim.explicar_armado(id_wave),
+            "paso": 0,
+            "inicio": time.perf_counter(),
+            "auto": True,
+        }
+        self.wave_foco = id_wave
+        self.mapa_ampliado = False
+        self.mapa.area = pygame.Rect(20, 186, 740, 690)
+        datos = self.armado["datos"]
+        celdas = [c for p in datos["pasos"] for c in p.get("celdas", [])]
+        if datos["ruta"]:
+            celdas += datos["ruta"]["camino"]
+        self.mapa.encuadrar(celdas)
+        self.mensaje = f"Visualizando cómo se armó {id_wave} paso a paso."
+
+    def _a_armado_paso(self, delta):
+        self.armado["auto"] = False
+        self._mover_armado(delta)
+
+    def _a_armado_wave(self, delta):
+        waves = [w["id"] for w in self.sim.resumen_waves()]
+        i = waves.index(self.armado["datos"]["wave"])
+        self._a_ver_armado(waves[(i + delta) % len(waves)])
+
+    def _a_armado_auto(self):
+        self.armado["auto"] = not self.armado["auto"]
+        if self.armado["auto"] and self.progreso_armado() >= 1.0:
+            if self.armado["paso"] + 1 >= len(self.armado["datos"]["pasos"]):
+                self.armado["paso"] = -1
+            self._mover_armado(1)
+
+    def _a_salir_armado(self):
+        self.armado = None
+        self.mensaje = "Fin de la explicación del armado."
+
+    def _a_ampliar(self):
+        self.mapa_ampliado = not self.mapa_ampliado
+
+    def _a_exploracion(self):
+        self.ver_exploracion = not self.ver_exploracion
+
+    def _a_mapa(self):
+        celda = self.mapa.celda_en(self.ultimo_clic)
+        if celda is None:
+            return
+        tipo, sentido, elemento = self.sim.celdas[celda]
+        for p in self.sim.resumen_pickers():
+            if tuple(p["pos"]) == celda:
+                self.picker_foco = p["id"]
+        texto = f"Celda {celda}: {tipo.replace('_', ' ').lower()}"
+        if tipo == "PASILLO":
+            texto += f", sentido {sentido}" + (
+                " (intersección)" if celda in self.sim.intersecciones else ""
+            )
+        elif elemento:
+            texto += f" {elemento}"
+        productos = [p for p in self.sim.productos() if (p["x"], p["y"]) == celda]
+        if productos:
+            texto += " · " + ", ".join(
+                f"z={p['z']}: {p['id']} {p['nombre']} (stock {p['stock']})"
+                for p in productos
+            )
+        self.mensaje = texto
+
+    def a_lienzo(self, pos):
+        return (
+            int((pos[0] - self.desplazamiento[0]) / self.escala),
+            int((pos[1] - self.desplazamiento[1]) / self.escala),
+        )
+
+    # ------------------------------------------------------------------
+    # Pantallas y bucle principal
+    # ------------------------------------------------------------------
+    def pantalla_inicio(self):
+        self.texto("Inicio · Escenarios", 30, 76, 26, negrita=True)
+        self.caja(30, 130, 420, 450)
+        self.texto("Crear escenario", 52, 152, 22, negrita=True)
+        self.parrafo(
+            "Generá un almacén automáticamente o importá un JSON.", 52, 192, 375, 17
+        )
+        self.boton("Crear escenario", 52, 262, 375, "crear", marcado=True)
+        self.texto("Generador automático", 52, 330, 19, negrita=True)
+        self.parrafo(
+            "Determinista: mismos parámetros producen siempre el mismo almacén.",
+            52,
+            360,
+            375,
+            16,
+            limite=4,
+        )
+        self.texto("Desde archivo", 52, 455, 19, negrita=True)
+        self.parrafo(
+            "También podés arrastrar un JSON sobre la ventana.", 52, 485, 375, 16
+        )
+        if self.sim:
+            self.boton("Volver a la simulación", 52, 600, 375, "volver")
+
+        self.texto("Biblioteca", 490, 140, 22, negrita=True)
+        self.texto("Escenarios y sesiones guardadas", 490, 172, 16, GRIS)
+        archivos = self.biblioteca.archivos()
+        por_pagina = 10
+        self.pag_biblioteca = min(
+            self.pag_biblioteca, max(0, (len(archivos) - 1) // por_pagina)
+        )
+        for i, ruta in enumerate(
+            archivos[self.pag_biblioteca * por_pagina :][:por_pagina]
+        ):
+            y = 205 + i * 62
+            self.caja(490, y, 1000, 54)
+            etiqueta = "SESIÓN" if ruta.name.startswith("sesion_") else "ESCENARIO"
+            self.texto(
+                etiqueta, 506, y + 18, 13, AZUL if etiqueta == "SESIÓN" else GRIS, True
+            )
+            self.texto(ruta.stem, 600, y + 16, 17, max_ancho=560)
+            self.boton("Abrir", 1210, y + 10, 130, ("abrir", ruta))
+            self.boton("Eliminar", 1352, y + 10, 120, ("eliminar", ruta))
+        self.paginador("pag_biblioteca", len(archivos), por_pagina, 1330, 832)
+
+    def barra_simulacion(self):
+        m = self.sim
+        self.texto(self.nombre, 260, 26, 17, GRIS, max_ancho=760)
+        self.boton("Guardar sesión", 1210, 18, 150, "guardar")
+        self.boton("Inicio", 1370, 18, 120, "inicio")
+        hay_waves = bool(m.waves)
+        iniciadas = m.waves_iniciadas
+        fila1 = [
+            ("Nuevo pedido", 140, "nuevo_pedido", not iniciadas),
+            ("Capacidad de waves", 175, "config", not iniciadas),
+            ("Generar waves", 150, "generar_waves", not iniciadas),
+            ("Seleccionar waves", 170, "elegir_waves", hay_waves),
+            ("Estrategia: " + NOMBRE_ESTRATEGIA[m.estrategia], 245, "estrategia", True),
+            ("Comparar estrategias", 195, "comparar", hay_waves),
+            (
+                "Exploración: " + ("sí" if self.ver_exploracion else "no"),
+                160,
+                "exploracion",
+                True,
+            ),
+            ("Comparar armado", 172, "comparar_armado", True),
+        ]
+        x = 20
+        for etiqueta, w, accion, habilitado in fila1:
+            self.boton(etiqueta, x, 62, w, accion, habilitado)
+            x += w + 8
+        en_curso = m.en_curso
+        fila2 = [
+            ("Iniciar", 105, "iniciar", hay_waves and not self.reproduciendo),
+            ("Pausar", 105, "pausar", self.reproduciendo),
+            ("Continuar", 115, "continuar", en_curso and not self.reproduciendo),
+            ("Paso adelante >", 155, "adelante", en_curso),
+            ("< Paso atrás", 140, "atras", bool(m.historial)),
+            ("Reiniciar", 115, "reiniciar", m.tanda_actual is not None),
+            ("Velocidad " + VELOCIDADES[self.velocidad][1], 140, "velocidad", True),
+            (
+                "Ver paneles" if self.mapa_ampliado else "Ampliar mapa",
+                150,
+                "ampliar",
+                True,
+            ),
+        ]
+        x = 20
+        for etiqueta, w, accion, habilitado in fila2:
+            self.boton(etiqueta, x, 104, w, accion, habilitado)
+            x += w + 8
+        tanda = m.tanda_actual
+        estado = (
+            "reproduciendo"
+            if self.reproduciendo
+            else "pausado" if en_curso else "sin pickers activos"
+        )
+        linea = f"Turno {m.estado.paso} · {estado}"
+        if tanda:
+            hechas = sum(
+                1
+                for w in m.resumen_waves()
+                if w["id"] in tanda["waves"] and w["estado"] == "FINALIZADA"
+            )
+            linea += (
+                f" · Tanda {tanda['numero']} ({NOMBRE_ESTRATEGIA[tanda['estrategia']]}): "
+                f"{len(tanda['waves'])} waves asignadas, {hechas} terminadas"
+            )
+        self.texto(
+            linea, 20, 152, 17, AZUL if self.reproduciendo else TINTA, max_ancho=1470
+        )
+
+    def pantalla_simulacion(self):
+        self.barra_simulacion()
+        ancho = 1482 if self.mapa_ampliado else 744
+        self.mapa.area = pygame.Rect(20, 186, ancho - 4, 690)
+        self.caja(18, 184, ancho, 694)
+        self.mapa.dibujar()
+        self.mapa.leyenda(20, 884)
+        if not self.mapa_ampliado:
+            self.panel_derecho()
+
+    def dibujar(self):
+        self.lienzo.fill(FONDO)
+        self.botones = []
+        self.texto("Wave Picking", 20, 18, 28, negrita=True)
+        if self.pagina == "inicio" or self.sim is None:
+            self.pantalla_inicio()
+        else:
+            self.pantalla_simulacion()
+        if self.dialogo:
+            self.dialogo_actual()
+        self.caja(0, ALTO - 34, ANCHO, 34, BLANCO, None)
+        self.texto(self.mensaje, 20, ALTO - 27, 16, AZUL, max_ancho=ANCHO - 40)
+        self.presentar()
+
+    def presentar(self):
+        ancho, alto = self.ventana.get_size()
+        self.escala = min(ancho / ANCHO, alto / ALTO)
+        w, h = max(1, int(ANCHO * self.escala)), max(1, int(ALTO * self.escala))
+        self.desplazamiento = ((ancho - w) // 2, (alto - h) // 2)
+        try:
+            imagen = pygame.transform.smoothscale(self.lienzo, (w, h))
+        except (ValueError, pygame.error):
+            imagen = pygame.transform.scale(self.lienzo, (w, h))
+        self.ventana.fill(FONDO)
+        self.ventana.blit(imagen, self.desplazamiento)
         pygame.display.flip()
 
-    def event(self, event):
-        handle_event(self, event)
+    def paso_automatico(self, dt):
+        if self.armado and not self.dialogo:
+            if self.armado["auto"] and self.progreso_armado() >= 1.0:
+                if self.armado["paso"] + 1 < len(self.armado["datos"]["pasos"]):
+                    self._mover_armado(1)
+                else:
+                    self.armado["auto"] = False
+            return
+        if not (self.reproduciendo and self.sim and not self.dialogo):
+            return
+        self.acumulado += dt
+        intervalo = VELOCIDADES[self.velocidad][0]
+        pasos = 0
+        while self.acumulado >= intervalo and pasos < 10:
+            self.acumulado -= intervalo
+            pasos += 1
+            try:
+                avanzo = self.mover(self.sim.avanzar, intervalo)
+                if not avanzo:
+                    self.reproduciendo = False
+                    self.mensaje = "Simulación finalizada."
+                    break
+            except Exception as exc:
+                self.mensaje = "Error en la simulación: " + str(exc)
+                self.reproduciendo = False
+                break
 
-    def run(self, frames=None):
-        clock = pygame.time.Clock()
-        count = 0
-        while self.running and (frames is None or count < frames):
-            dt = clock.tick(30) / 1000
-            for event in pygame.event.get():
-                self.event(event)
-            if self.playing and not self.dialog:
-                self.elapsed += dt
-                if self.elapsed >= 0.18:
-                    self.elapsed = 0
-                    try:
-                        self.model.advance()
-                        self.playing = not self.model.finished
-                    except Exception as exc:
-                        self.message = str(exc)
-                        self.playing = False
-            self.draw()
-            count += 1
+    def run(self, cuadros=None):
+        reloj = pygame.time.Clock()
+        n = 0
+        while self.corriendo and (cuadros is None or n < cuadros):
+            dt = reloj.tick(30) / 1000
+            for evento in pygame.event.get():
+                manejar_evento(self, evento)
+            self.paso_automatico(dt)
+            self.dibujar()
+            n += 1

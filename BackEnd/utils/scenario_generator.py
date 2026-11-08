@@ -1,241 +1,343 @@
+"""Generador determinista de escenarios para simulación y pruebas de escalabilidad."""
+
 import json
 import math
-import random
-from typing import Dict, Any, List, Tuple
+from typing import Any, Dict, List, Tuple
+
 from BackEnd.models.warehouse import Warehouse
 from BackEnd.utils.graph_builder import GraphBuilder
-from BackEnd.controllers.bfs import BuscadorBFS
+from BackEnd.utils.validator_escenario import validar_escenario
+
+LOCALIZACIONES = {
+    "DISTRIBUIDA": "Repartidos en todo el almacén",
+    "CERCA_DESPACHO": "Los primeros, más cerca del despacho",
+    "POR_RACK": "Llenando un rack por vez",
+}
+
+NOMBRES_PRODUCTOS = [
+    "Monitor 27",
+    "Monitor 24",
+    "Teclado Mecánico",
+    "Mouse Inalámbrico",
+    "Notebook 14",
+    "Auriculares BT",
+    "Impresora Láser",
+    "Cable HDMI",
+    "Webcam HD",
+    "Micrófono USB",
+    "Disco SSD 1TB",
+    "Memoria RAM 16GB",
+    "Fuente 650W",
+    "Gabinete ATX",
+    "Placa de Video",
+    "Silla de Oficina",
+    "Router WiFi",
+    "Parlantes",
+    "Tablet 10",
+    "Cargador USB-C",
+]
+
+ALTO_RACK = 6
+ANCHO_RACK = 2
+ANCHO_PASILLO = 2
+ALTO_TRANSVERSAL = 2
+Y_TRANSVERSAL_INFERIOR = 3
+
+LIMITES = {
+    "cantidad_estantes": (1, 400),
+    "cantidad_pasillos": (2, 40),
+    "cantidad_productos": (1, 3000),
+    "cantidad_pedidos": (1, 1000),
+    "max_productos_por_pedido": (1, 20),
+    "wave_max_pedidos": (1, 50),
+    "wave_max_productos": (1, 500),
+    "cantidad_pickers": (1, 10),
+}
 
 
 class ScenarioGenerator:
-    """
-    Sección 16: Generador automático de escenarios de Warehouse válidos.
-    """
-    NOMBRES_PRODUCTOS = [
-        "Monitor 27", "Monitor 24", "Teclado Mecánico", "Mouse Gamer",
-        "Notebook 14", "Auriculares BT", "Impresora Láser", "Cable HDMI",
-        "Webcam HD", "Micrófono USB", "Disco SSD 1TB", "Memoria RAM 16GB",
-        "Fuente 650W", "Gabinete ATX", "Placa de Video", "Silla Oficina"
-    ]
+    @staticmethod
+    def validar_parametros(**params) -> Dict[str, Any]:
+        salida = {}
+        for clave, (minimo, maximo) in LIMITES.items():
+            valor = int(params[clave])
+            if not minimo <= valor <= maximo:
+                raise ValueError(f"{clave} debe estar entre {minimo} y {maximo}.")
+            salida[clave] = valor
+        localizacion = str(params.get("localizacion", "DISTRIBUIDA")).upper()
+        if localizacion not in LOCALIZACIONES:
+            raise ValueError("Localización válida: " + ", ".join(LOCALIZACIONES))
+        salida["localizacion"] = localizacion
+        if salida["wave_max_productos"] < salida["max_productos_por_pedido"]:
+            raise ValueError(
+                "La capacidad de productos de la wave debe ser al menos la cantidad máxima de productos por pedido."
+            )
+        return salida
 
     @staticmethod
     def generar_escenario_dict(
-        cantidad_estantes: int = 6,
-        cantidad_pasillos: int = 9,
-        cantidad_productos: int = 30,
-        modo_localizacion: str = "ALEATORIO",
-        cantidad_pedidos: int = 10,
+        cantidad_estantes: int = 12,
+        cantidad_pasillos: int = 5,
+        cantidad_productos: int = 60,
+        localizacion: str = "DISTRIBUIDA",
+        cantidad_pedidos: int = 20,
         max_productos_por_pedido: int = 4,
-        wave_max_pedidos: int = 3,
-        wave_max_productos: int = 15,
-        alto_rack: int = 6
+        wave_max_pedidos: int = 4,
+        wave_max_productos: int = 20,
+        cantidad_pickers: int = 3,
     ) -> Dict[str, Any]:
-        cantidad_estantes = max(1, cantidad_estantes)
-        cols = min(cantidad_estantes, max(2, int(math.ceil(math.sqrt(cantidad_estantes * 1.5)))))
-        filas = int(math.ceil(cantidad_estantes / cols))
+        p = ScenarioGenerator.validar_parametros(
+            cantidad_estantes=cantidad_estantes,
+            cantidad_pasillos=cantidad_pasillos,
+            cantidad_productos=cantidad_productos,
+            localizacion=localizacion,
+            cantidad_pedidos=cantidad_pedidos,
+            max_productos_por_pedido=max_productos_por_pedido,
+            wave_max_pedidos=wave_max_pedidos,
+            wave_max_productos=wave_max_productos,
+            cantidad_pickers=cantidad_pickers,
+        )
+        columnas = p["cantidad_pasillos"] - 1
+        filas = math.ceil(p["cantidad_estantes"] / columnas)
+        paso_x = ANCHO_PASILLO + ANCHO_RACK
+        ancho_x = columnas * paso_x + ANCHO_PASILLO
+        y_primera_fila = Y_TRANSVERSAL_INFERIOR + ALTO_TRANSVERSAL
+        largo_y = y_primera_fila + filas * (ALTO_RACK + ALTO_TRANSVERSAL)
+        if ancho_x > 200 or largo_y > 200:
+            raise ValueError(
+                "El almacén resultante supera 200 x 200 celdas. Usá menos estantes o pasillos."
+            )
 
-        ancho_rack = 2
-        ancho_pasillo_v = 3
-        alto_pasillo_h = 2
+        # Puertas y zonas de despacho en el borde inferior
+        cantidad_zonas = 1 if ancho_x < 16 else 2
+        puertas, zonas = [], []
+        for i in range(cantidad_zonas):
+            x_puerta = round((i + 0.5) * ancho_x / cantidad_zonas)
+            x_puerta = min(max(x_puerta, 2), ancho_x - 3)
+            ancho_zona = min(5, ancho_x - 2)
+            x_zona = min(max(x_puerta - ancho_zona // 2, 0), ancho_x - ancho_zona)
+            letra = chr(ord("A") + i)
+            puertas.append(
+                {
+                    "id": f"PUERTA_{letra}",
+                    "tipo": "OUTBOUND",
+                    "ubicacion": {"x": x_puerta, "y": 0},
+                }
+            )
+            zonas.append(
+                {
+                    "id": f"ZONA_{letra}",
+                    "puerta_id": f"PUERTA_{letra}",
+                    "ubicacion": {"x": x_zona, "y": 1},
+                    "ancho": ancho_zona,
+                    "alto": 2,
+                    "peso_max_kg": 0.0,
+                }
+            )
 
-        ancho_x = cols * (ancho_pasillo_v + ancho_rack) + ancho_pasillo_v
-        y_base_pasillo_inf = 3
-        largo_y = y_base_pasillo_inf + alto_pasillo_h + filas * (alto_rack + alto_pasillo_h)
-
-        x_puerta_out = max(2, ancho_x // 4)
-        puertas = [
+        # Pasillos transversales (doble mano) y verticales (mano única alternada)
+        pasillos = [
             {
-                "id": "PUERTA_OUT_1",
-                "tipo": "OUTBOUND",
-                "ubicacion": {"x": x_puerta_out, "y": 0}
-            }
-        ]
-        zonas_despacho = [
-            {
-                "id": "ZONA_A",
-                "puerta_id": "PUERTA_OUT_1",
-                "ubicacion": {"x": max(1, x_puerta_out - 2), "y": 1},
-                "ancho": 5,
-                "alto": 2,
-                "peso_max_kg": 800.0
-            }
-        ]
-
-        if ancho_x >= 16:
-            x_puerta_in = min(ancho_x - 4, (ancho_x * 3) // 4)
-            puertas.append({
-                "id": "PUERTA_IN_1",
-                "tipo": "INBOUND",
-                "ubicacion": {"x": x_puerta_in, "y": 0}
-            })
-            zonas_despacho.append({
-                "id": "ZONA_B",
-                "puerta_id": "PUERTA_IN_1",
-                "ubicacion": {"x": x_puerta_in - 2, "y": 1},
-                "ancho": 5,
-                "alto": 2,
-                "peso_max_kg": 800.0
-            })
-
-        racks = []
-        pasillos = []
-        celdas_racks_disponibles: List[Tuple[str, int, int]] = []
-
-        pasillos.append({
-            "id": "PAS_H_0",
-            "ubicacion": {"x": 0, "y": y_base_pasillo_inf},
-            "ancho": ancho_x,
-            "alto": alto_pasillo_h,
-            "sentido": "AMBOS"
-        })
-
-        racks_creados = 0
-        for f in range(filas):
-            y_fila_rack = y_base_pasillo_inf + alto_pasillo_h + f * (alto_rack + alto_pasillo_h)
-
-            for c in range(cols + 1):
-                x_pas_v = c * (ancho_pasillo_v + ancho_rack)
-                sentido_v = "N" if (c + f) % 2 == 0 else "S"
-                if len(pasillos) < cantidad_pasillos or c in (0, cols):
-                    pasillos.append({
-                        "id": f"PAS_V_{f}_{c}",
-                        "ubicacion": {"x": x_pas_v, "y": y_fila_rack},
-                        "ancho": ancho_pasillo_v,
-                        "alto": alto_rack,
-                        "sentido": sentido_v
-                    })
-
-            for c in range(cols):
-                if racks_creados >= cantidad_estantes:
-                    break
-                racks_creados += 1
-                rack_id = f"R{racks_creados:02d}"
-                x_rack = ancho_pasillo_v + c * (ancho_pasillo_v + ancho_rack)
-
-                racks.append({
-                    "id": rack_id,
-                    "ubicacion": {"x": x_rack, "y": y_fila_rack},
-                    "ancho": ancho_rack,
-                    "alto": alto_rack
-                })
-
-                for rx in range(x_rack, x_rack + ancho_rack):
-                    for ry in range(y_fila_rack, y_fila_rack + alto_rack):
-                        celdas_racks_disponibles.append((rack_id, rx, ry))
-
-            y_pas_h_sup = y_fila_rack + alto_rack
-            pasillos.append({
-                "id": f"PAS_H_{f + 1}",
-                "ubicacion": {"x": 0, "y": y_pas_h_sup},
+                "id": "PAS_T0",
+                "ubicacion": {"x": 0, "y": Y_TRANSVERSAL_INFERIOR},
                 "ancho": ancho_x,
-                "alto": alto_pasillo_h,
-                "sentido": "AMBOS"
-            })
-
-        if modo_localizacion == "CERCA_DESPACHO":
-            celdas_racks_disponibles.sort(key=lambda item: (item[2], item[1]))
-            pool_celdas = celdas_racks_disponibles[:max(1, len(celdas_racks_disponibles) // 2)]
-        elif modo_localizacion == "DISPERSO":
-            random.shuffle(celdas_racks_disponibles)
-            pool_celdas = celdas_racks_disponibles
-        else:
-            pool_celdas = celdas_racks_disponibles
-
-        altura_actual_por_celda: Dict[Tuple[int, int], int] = {}
-        productos = []
-
-        for i in range(1, cantidad_productos + 1):
-            if modo_localizacion == "DISPERSO" and i <= len(pool_celdas):
-                rack_id, px, py = pool_celdas[i - 1]
-            else:
-                rack_id, px, py = random.choice(pool_celdas)
-
-            z_actual = altura_actual_por_celda.get((px, py), 0) + 1
-            altura_actual_por_celda[(px, py)] = z_actual
-
-            productos.append({
-                "id": f"P{i:03d}",
-                "nombre": random.choice(ScenarioGenerator.NOMBRES_PRODUCTOS),
-                "rack_id": rack_id,
-                "ubicacion": {"x": px, "y": py, "z": z_actual},
-                "cantidad_disponible": random.randint(15, 60),
-                "peso_kg": round(random.uniform(0.2, 8.0), 2)
-            })
-
-        pickers = [
-            {
-                "id": "PK_01",
-                "posicion_inicial": {"x": 1, "y": y_base_pasillo_inf},
-                "capacidad_carga_kg": 150.0
+                "alto": ALTO_TRANSVERSAL,
+                "sentido": "AMBOS",
             }
         ]
-        if ancho_x >= 12:
-            pickers.append({
-                "id": "PK_02",
-                "posicion_inicial": {"x": ancho_x - 2, "y": y_base_pasillo_inf},
-                "capacidad_carga_kg": 120.0
-            })
+        racks: List[Dict[str, Any]] = []
+        for f in range(filas):
+            y_fila = y_primera_fila + f * (ALTO_RACK + ALTO_TRANSVERSAL)
+            for c in range(columnas + 1):
+                pasillos.append(
+                    {
+                        "id": f"PAS_V{c:02d}_F{f}",
+                        "ubicacion": {"x": c * paso_x, "y": y_fila},
+                        "ancho": ANCHO_PASILLO,
+                        "alto": ALTO_RACK,
+                        "sentido": "N" if (c + f) % 2 == 0 else "S",
+                    }
+                )
+            for c in range(columnas):
+                if len(racks) == p["cantidad_estantes"]:
+                    break
+                racks.append(
+                    {
+                        "id": f"R{len(racks) + 1:02d}",
+                        "ubicacion": {"x": c * paso_x + ANCHO_PASILLO, "y": y_fila},
+                        "ancho": ANCHO_RACK,
+                        "alto": ALTO_RACK,
+                    }
+                )
+            pasillos.append(
+                {
+                    "id": f"PAS_T{f + 1}",
+                    "ubicacion": {"x": 0, "y": y_fila + ALTO_RACK},
+                    "ancho": ancho_x,
+                    "alto": ALTO_TRANSVERSAL,
+                    "sentido": "AMBOS",
+                }
+            )
 
+        # Distribución de productos en racks
+        celdas = ScenarioGenerator._celdas_ordenadas(racks, zonas, p["localizacion"])
+        productos = []
+        nivel_por_celda: Dict[Tuple[int, int], int] = {}
+        n = p["cantidad_productos"]
+        for i in range(n):
+            if p["localizacion"] == "DISTRIBUIDA":
+                rack_id, x, y = celdas[
+                    (i * len(celdas)) // n if n <= len(celdas) else i % len(celdas)
+                ]
+            else:
+                rack_id, x, y = celdas[i % len(celdas)]
+            z = nivel_por_celda.get((x, y), 0) + 1
+            nivel_por_celda[(x, y)] = z
+            productos.append(
+                {
+                    "id": f"P{i + 1:03d}",
+                    "nombre": NOMBRES_PRODUCTOS[i % len(NOMBRES_PRODUCTOS)],
+                    "rack_id": rack_id,
+                    "ubicacion": {"x": x, "y": y, "z": z},
+                    "cantidad_disponible": 0,
+                    "peso_kg": round(0.3 + ((i * 37) % 60) / 10, 2),
+                }
+            )
+
+        # Generación determinista de pedidos y stock suficiente
         pedidos = []
-        ids_productos = [p["id"] for p in productos]
-        for j in range(1, cantidad_pedidos + 1):
-            cant_items = random.randint(1, min(max_productos_por_pedido, len(ids_productos)))
-            prods_elegidos = random.sample(ids_productos, cant_items)
-            items_pedido = [
-                {"producto_id": pid, "cantidad": random.randint(1, 3)}
-                for pid in prods_elegidos
-            ]
-            pedidos.append({
-                "id": f"PED_{j:02d}",
-                "prioridad": random.randint(1, 5),
-                "estado": "PENDIENTE",
-                "items": items_pedido
-            })
+        demanda = [0] * n
+        salto = ScenarioGenerator._coprimo(n)
+        for j in range(p["cantidad_pedidos"]):
+            maximo = min(p["max_productos_por_pedido"], n)
+            cantidad_items = 1 + (j * 7 + j // maximo) % maximo
+            inicio = (j * 17) % n
+            items = []
+            unidades = 0
+            for t in range(cantidad_items):
+                indice = (inicio + t * salto) % n
+                cantidad = 1 + (j + t) % 3
+                if unidades + cantidad > p["wave_max_productos"]:
+                    break
+                unidades += cantidad
+                demanda[indice] += cantidad
+                items.append(
+                    {"producto_id": productos[indice]["id"], "cantidad": cantidad}
+                )
+            pedidos.append(
+                {
+                    "id": f"PED_{j + 1:02d}",
+                    "prioridad": 1 + (j * 2 + j // 5) % 5,
+                    "estado": "PENDIENTE",
+                    "items": items,
+                }
+            )
+        for i, prod in enumerate(productos):
+            prod["cantidad_disponible"] = demanda[i] + 5 + (i * 7) % 20
 
-        return {
+        pesos = {prod["id"]: prod["peso_kg"] for prod in productos}
+        peso_pedidos = [
+            sum(pesos[it["producto_id"]] * it["cantidad"] for it in ped["items"])
+            for ped in pedidos
+        ]
+        peso_total = sum(peso_pedidos)
+        for zona in zonas:
+            zona["peso_max_kg"] = round(max(500.0, peso_total), 1)
+
+        # Posiciones iniciales de pickers sobre el pasillo transversal inferior
+        capacidad = float(max(150, math.ceil(max(peso_pedidos, default=0) * 1.5)))
+        pickers = []
+        usados = set()
+        for k in range(p["cantidad_pickers"]):
+            x = min(ancho_x - 1, int((k + 0.5) * ancho_x / p["cantidad_pickers"]))
+            y = Y_TRANSVERSAL_INFERIOR + (k % 2)
+            while (x, y) in usados:
+                x = (x + 1) % ancho_x
+            usados.add((x, y))
+            pickers.append(
+                {
+                    "id": f"PK_{k + 1:02d}",
+                    "posicion_inicial": {"x": x, "y": y},
+                    "capacidad_carga_kg": capacidad,
+                }
+            )
+
+        datos = {
             "warehouse": {
                 "dimensiones": {"ancho_x": ancho_x, "largo_y": largo_y},
                 "puertas": puertas,
-                "zonas_despacho": zonas_despacho,
+                "zonas_despacho": zonas,
                 "racks": racks,
-                "pasillos": pasillos
+                "pasillos": pasillos,
             },
             "pickers": pickers,
             "productos": productos,
             "pedidos": pedidos,
             "configuracion": {
-                "wave_max_pedidos": wave_max_pedidos,
-                "wave_max_productos": wave_max_productos
-            }
+                "wave_max_pedidos": p["wave_max_pedidos"],
+                "wave_max_productos": p["wave_max_productos"],
+            },
+            "_generador": dict(p),
         }
+        ScenarioGenerator.verificar(datos)
+        return datos
 
     @staticmethod
-    def generar_y_validar_warehouse(
-        ruta_guardado_json: str = None,
-        **kwargs
-    ) -> Tuple[Warehouse, bool]:
-        datos = ScenarioGenerator.generar_escenario_dict(**kwargs)
+    def _celdas_ordenadas(racks, zonas, localizacion) -> List[Tuple[str, int, int]]:
+        celdas = [
+            (r["id"], x, y)
+            for r in racks
+            for x in range(r["ubicacion"]["x"], r["ubicacion"]["x"] + r["ancho"])
+            for y in range(r["ubicacion"]["y"], r["ubicacion"]["y"] + r["alto"])
+        ]
+        if localizacion == "CERCA_DESPACHO":
+            centros = [
+                (
+                    z["ubicacion"]["x"] + z["ancho"] / 2,
+                    z["ubicacion"]["y"] + z["alto"] / 2,
+                )
+                for z in zonas
+            ]
+            celdas.sort(
+                key=lambda c: (
+                    min(abs(c[1] - cx) + abs(c[2] - cy) for cx, cy in centros),
+                    c[2],
+                    c[1],
+                )
+            )
+        elif localizacion == "DISTRIBUIDA":
+            por_rack: Dict[str, List[Tuple[str, int, int]]] = {}
+            for celda in celdas:
+                por_rack.setdefault(celda[0], []).append(celda)
+            listas = list(por_rack.values())
+            celdas = [
+                lst[i]
+                for i in range(max(map(len, listas)))
+                for lst in listas
+                if i < len(lst)
+            ]
+        return celdas
+
+    @staticmethod
+    def _coprimo(n: int) -> int:
+        salto = max(1, n // 3 + 1)
+        while math.gcd(salto, n) != 1:
+            salto += 1
+        return salto
+
+    @staticmethod
+    def verificar(datos: Dict[str, Any]) -> Warehouse:
+        validar_escenario(datos)
         wh = GraphBuilder.construir_warehouse_desde_dict(datos)
+        if wh.advertencias:
+            raise ValueError(
+                "El escenario generado no es válido: " + "; ".join(wh.advertencias)
+            )
+        return wh
 
-        punto_despacho = (
-            datos["pickers"][0]["posicion_inicial"]["x"],
-            datos["pickers"][0]["posicion_inicial"]["y"]
-        )
-
-        es_valido = True
-        for prod_id in wh.catalogo_productos:
-            nodo_acceso = wh.obtener_nodo_acceso_producto(prod_id)
-            if not nodo_acceso:
-                es_valido = False
-                break
-            ida = BuscadorBFS.buscar_camino(wh.grafo_pasillos, punto_despacho, nodo_acceso)
-            vuelta = BuscadorBFS.buscar_camino(wh.grafo_pasillos, nodo_acceso, punto_despacho)
-            if ida is None or vuelta is None:
-                es_valido = False
-                break
-
-        if ruta_guardado_json and es_valido:
-            with open(ruta_guardado_json, "w", encoding="utf-8") as f:
-                json.dump(datos, f, indent=2, ensure_ascii=False)
-
-        return wh, es_valido
+    @staticmethod
+    def generar_y_guardar(ruta_json: str, **params) -> Dict[str, Any]:
+        datos = ScenarioGenerator.generar_escenario_dict(**params)
+        with open(ruta_json, "w", encoding="utf-8") as f:
+            json.dump(datos, f, indent=2, ensure_ascii=False)
+        return datos
