@@ -695,7 +695,22 @@ class App(UIElements, PanelesVistas, DialogosVistas):
 
     def barra_simulacion(self):
         m = self.sim
-        self.texto(self.nombre, 260, 26, 17, GRIS, max_ancho=760)
+        self.texto(self.nombre, 220, 26, 17, GRIS, max_ancho=200)
+        self.boton(
+            "Estrategia de recorrido seleccionada: " + NOMBRE_ESTRATEGIA[m.estrategia],
+            430,
+            18,
+            414,
+            "estrategia",
+        )
+        configurada = m.config["estrategia_waves"]
+        gestor = m.estado.gestor_waves if m.waves else None
+        efectiva = gestor.estrategia_armado if gestor else configurada
+        armado = OPCIONES_ESTRATEGIA_ARMADO.get(efectiva, efectiva).split(" (", 1)[0]
+        if configurada == "AUTO":
+            armado = f"{armado} (automática)" if gestor else "Automática (pendiente)"
+        self.caja(852, 18, 342, 34, AZUL_CLARO)
+        self.texto(f"Armado de waves: {armado}", 864, 26, 16, max_ancho=318)
         self.boton("Guardar sesión", 1210, 18, 150, "guardar")
         self.boton("Inicio", 1370, 18, 120, "inicio")
         hay_waves = bool(m.waves)
@@ -705,7 +720,6 @@ class App(UIElements, PanelesVistas, DialogosVistas):
             ("Capacidad de waves", 175, "config", not iniciadas),
             ("Generar waves", 150, "generar_waves", not iniciadas),
             ("Seleccionar waves", 170, "elegir_waves", hay_waves),
-            ("Estrategia: " + NOMBRE_ESTRATEGIA[m.estrategia], 245, "estrategia", True),
             ("Comparar estrategias", 195, "comparar", hay_waves),
             (
                 "Exploración: " + ("sí" if self.ver_exploracion else "no"),
