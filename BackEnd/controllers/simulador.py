@@ -479,7 +479,25 @@ class Simulador:
             for pid in asig["ids_pickers"]:
                 picker = pickers[pid]
                 tarea_ruta = asig["rutas_por_picker"][pid]
-                res_precalculado = resultados_ruta.get(pid)
+                
+                # 1. Definir los destinos según la estrategia
+                destinos_finales = [
+                    Pathfinding.obtener_celda_acceso_pasillo(c, wh.grafo_pasillos, wh)
+                    for c in wave.destinos_xy_por_picker.get(pid, [])
+                ]
+                
+                if estrategia == "ORDEN":
+                    destinos_finales = []
+                    for id_ped in wave.pedidos_por_picker.get(pid, []):
+                        pedido = wh.buscar_pedido_O1(id_ped)
+                        for item in pedido.items:
+                            prod = wh.buscar_producto_O1(item.producto_id)
+                            celda = Pathfinding.obtener_celda_acceso_pasillo(
+                                prod.coordenadas_xy, wh.grafo_pasillos, wh
+                            )
+                            if celda not in destinos_finales:
+                                destinos_finales.append(celda)
+
                 tarea = TareaWavePicker(
                     id_wave=wave.id_wave,
                     id_zona_despacho=wave.id_zona_despacho,
@@ -487,23 +505,26 @@ class Simulador:
                         tarea_ruta[-1] if tarea_ruta else posiciones[pid]
                     ),
                     pedidos_asignados=wave.pedidos_por_picker.get(pid, []),
-                    destinos_recoleccion_pasillo=[
-                        Pathfinding.obtener_celda_acceso_pasillo(
-                            c, wh.grafo_pasillos, wh
-                        )
-                        for c in wave.destinos_xy_por_picker.get(pid, [])
-                    ],
+                    destinos_recoleccion_pasillo=destinos_finales,
                     peso_lote_kg=wave.peso_por_picker.get(pid, 0.0),
                     ruta_calculada=tarea_ruta,
-                    resultado_ruta=res_precalculado,
+                    resultado_ruta=None
                 )
+                
+                # 3. Recalcular la ruta
                 plan = self._construir_plan(
-                    wh, wave, picker, tarea, estrategia, res=res_precalculado
+                    wh, wave, picker, tarea, estrategia, res=None
                 )
-                plan["ruta"] = list(tarea_ruta)
+                
+                # 4. Asignar la ruta definitiva
+                ruta_definitiva = list(plan["ruta"])
+                plan["ruta"] = ruta_definitiva
+                picker.ruta_asignada = list(ruta_definitiva)
+                
                 plan["pedidos"] = list(tarea.pedidos_asignados)
                 plan["distancia_inicial"] = asig["distancias_picker_a_wave"].get(pid, 0)
 
+                # 5. RESTAURACIÓN: Lógica de turnos de búsqueda para la expansión visual
                 celdas = len(set(plan["orden_exploracion"]))
                 turnos = max(
                     TURNOS_BUSQUEDA_MIN,

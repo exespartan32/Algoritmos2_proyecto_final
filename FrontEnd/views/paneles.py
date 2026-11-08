@@ -135,7 +135,7 @@ class PanelesVistas:
                 (p["id"], TINTA),
                 (p["prioridad"], TINTA),
                 (p["estado"], colores.get(p["estado"], TINTA)),
-                (", ".join(f"{a}×{b}" for a, b in p["items"]), TINTA),
+                (", ".join(f"{a}x{b}" for a, b in p["items"]), TINTA),
                 (p["wave"] or "-", TINTA),
             ]
             for p in pedidos
@@ -240,7 +240,7 @@ class PanelesVistas:
                 GRIS,
             )
             recogidos = (
-                ", ".join(f"{k}×{v}" for k, v in p["recogidos"].items())
+                ", ".join(f"{k}x{v}" for k, v in p["recogidos"].items())
                 or "nada todavía"
             )
             self.texto(
@@ -252,7 +252,7 @@ class PanelesVistas:
                 max_ancho=660,
             )
             if alto > 100:
-                pendientes = ", ".join(f"{k}×{v}" for k, v in p["pendientes"]) or "-"
+                pendientes = ", ".join(f"{k}x{v}" for k, v in p["pendientes"]) or "-"
                 self.texto(
                     "Falta recoger: " + pendientes,
                     x + 30,
