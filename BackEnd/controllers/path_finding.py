@@ -7,14 +7,15 @@ CoordXY = Tuple[int, int]
 class _MinHeapRuteo:
     """Cola de prioridad mínima (Min-Heap) de implementación propia para Dijkstra.
 
-    Inserta y extrae el vértice con menor distancia acumulada en tiempo O(log V).
+    Ordena por (distancia, giros_acumulados, coordenada) en O(log V), logrando
+    caminos mínimos con tramos rectos que reducen colisiones en pasillos anchos.
     """
 
     def __init__(self) -> None:
-        self._heap: List[Tuple[int, CoordXY]] = []
+        self._heap: List[Tuple[int, int, CoordXY]] = []
 
-    def insertar(self, distancia: int, nodo: CoordXY) -> None:
-        self._heap.append((distancia, nodo))
+    def insertar(self, distancia: int, nodo: CoordXY, giros: int = 0) -> None:
+        self._heap.append((distancia, giros, nodo))
         i = len(self._heap) - 1
         while i > 0:
             padre = (i - 1) >> 1
@@ -24,7 +25,7 @@ class _MinHeapRuteo:
             else:
                 break
 
-    def extraer_minimo(self) -> Tuple[int, CoordXY]:
+    def extraer_minimo(self) -> Tuple[int, int, CoordXY]:
         if len(self._heap) == 1:
             return self._heap.pop()
         minimo = self._heap[0]
@@ -351,11 +352,12 @@ class Pathfinding:
         paso_tiempo_inicial: int = 0,
         picker_id: Optional[str] = None,
         orden_exploracion: Optional[List[CoordXY]] = None,
+        bloqueos_cercanos: Optional[Set[CoordXY]] = None,
     ) -> Tuple[List[CoordXY], Optional[CoordXY], Set[CoordXY]]:
         """
         Motor central de Dijkstra sobre el dígrafo de pasillos.
-        Expande los nodos en orden de distancia acumulada usando _MinHeapRuteo y
-        se detiene apenas extrae el primer nodo perteneciente a 'destinos_objetivo'.
+        Expande por distancia mínima y desempata por menor cantidad de giros,
+        deteniéndose apenas extrae el primer nodo perteneciente a 'destinos_objetivo'.
         """
         if not destinos_objetivo:
             return [], None, set()
@@ -369,19 +371,23 @@ class Pathfinding:
             return [origen], origen, {origen}
 
         cola = _MinHeapRuteo()
-        cola.insertar(0, origen)
-        distancias: Dict[CoordXY, int] = {origen: 0}
+        cola.insertar(0, origen, giros=0)
+        mejor_costo: Dict[CoordXY, Tuple[int, int]] = {origen: (0, 0)}
         padres: Dict[CoordXY, Optional[CoordXY]] = {origen: None}
         nodos_explorados: Set[CoordXY] = set()
 
         while not cola.esta_vacio():
-            dist_actual, nodo_actual = cola.extraer_minimo()
-            if dist_actual > distancias.get(nodo_actual, float("inf")):
+            dist_actual, giros_actual, nodo_actual = cola.extraer_minimo()
+            if (dist_actual, giros_actual) > mejor_costo.get(
+                nodo_actual, (int(1e9), int(1e9))
+            ):
                 continue
 
-            nodos_explorados.add(nodo_actual)
-            if orden_exploracion is not None:
-                orden_exploracion.append(nodo_actual)
+            if nodo_actual not in nodos_explorados:
+                nodos_explorados.add(nodo_actual)
+                if orden_exploracion is not None:
+                    orden_exploracion.append(nodo_actual)
+
             if nodo_actual in set_destinos:
                 return (
                     Pathfinding._reconstruir_ruta(padres, nodo_actual),
@@ -396,14 +402,51 @@ class Pathfinding:
                 grafo, nodo_actual, paso_tiempo=paso_eval, picker_id=picker_id
             )
 
+            padre_actual = padres.get(nodo_actual)
+            dir_previa = (
+                (
+                    nodo_actual[0] - padre_actual[0],
+                    nodo_actual[1] - padre_actual[1],
+                )
+                if padre_actual is not None
+                else None
+            )
+
             for vecino in vecinos:
+                # Si hay bloqueos por colisión inmediata, solo se prohíben en un radio corto (dist <= 2)
+                if (
+                    bloqueos_cercanos
+                    and dist_actual < 2
+                    and vecino in bloqueos_cercanos
+                ):
+                    continue
+
                 nueva_distancia = dist_actual + 1
-                if nueva_distancia < distancias.get(vecino, float("inf")):
-                    distancias[vecino] = nueva_distancia
+                dir_nueva = (vecino[0] - nodo_actual[0], vecino[1] - nodo_actual[1])
+                penalizacion_giro = (
+                    0 if (dir_previa is None or dir_previa == dir_nueva) else 1
+                )
+                nuevos_giros = giros_actual + penalizacion_giro
+                nuevo_par = (nueva_distancia, nuevos_giros)
+
+                if nuevo_par < mejor_costo.get(vecino, (int(1e9), int(1e9))):
+                    mejor_costo[vecino] = nuevo_par
                     padres[vecino] = nodo_actual
-                    cola.insertar(nueva_distancia, vecino)
+                    cola.insertar(nueva_distancia, vecino, giros=nuevos_giros)
 
         return [], None, nodos_explorados
+
+    @staticmethod
+    def _empalmar_resto_ruta(picker: Any, objetivo_inmediato: CoordXY) -> List[CoordXY]:
+        """Devuelve el tramo restante posterior a 'objetivo_inmediato' sin duplicar ciclos."""
+        pendientes = set(getattr(picker, "objetivos_pendientes", None) or [])
+        if not pendientes:
+            # Si ya no quedan productos pendientes, el objetivo inmediato es el despacho final
+            return []
+        if objetivo_inmediato in picker.ruta_asignada:
+            idx = picker.ruta_asignada.index(objetivo_inmediato)
+            return list(picker.ruta_asignada[idx + 1 :])
+        return []
 
     def recalcular_evitando_obstaculo(
         self,
@@ -412,37 +455,26 @@ class Pathfinding:
         paso_actual: int,
         celdas_bloqueadas: Optional[Set[CoordXY]] = None,
     ) -> List[CoordXY]:
-        """Busca un desvío hacia el próximo objetivo evitando las celdas ocupadas.
-
-        Si no existe un camino alternativo en este turno, el picker espera un turno
-        en su celda actual sin perder el resto de su recorrido.
-        """
+        """Busca un desvío hacia el próximo objetivo evitando las celdas ocupadas en los próximos pasos."""
         if not picker.ruta_asignada:
             return []
 
         objetivo_inmediato = Pathfinding.proximo_objetivo_en_ruta(picker)
+        bloqueos = set(celdas_bloqueadas or set())
+        if picker.ruta_asignada:
+            bloqueos.add(picker.ruta_asignada[0])
 
-        bloqueos_previos = set(getattr(grafo, "nodos_evasion_actual", set()))
-        if hasattr(grafo, "nodos_evasion_actual") and celdas_bloqueadas:
-            grafo.nodos_evasion_actual = set(celdas_bloqueadas)
-
-        try:
-            nueva_ruta, _ = self.calcular_ruta_dijkstra(
-                origen=picker.posicion_actual,
-                destino=objetivo_inmediato,
-                grafo=grafo,
-                paso_tiempo_inicial=paso_actual,
-                picker_id=picker.id_picker,
-            )
-        finally:
-            if hasattr(grafo, "nodos_evasion_actual"):
-                grafo.nodos_evasion_actual = bloqueos_previos
+        nueva_ruta, _, _ = self.calcular_ruta_dijkstra_multidestino(
+            origen=picker.posicion_actual,
+            destinos_objetivo={objetivo_inmediato},
+            grafo=grafo,
+            paso_tiempo_inicial=paso_actual,
+            picker_id=picker.id_picker,
+            bloqueos_cercanos=bloqueos,
+        )
 
         if nueva_ruta and len(nueva_ruta) > 1:
-            resto_ruta: List[CoordXY] = []
-            if objetivo_inmediato in picker.ruta_asignada:
-                idx = picker.ruta_asignada.index(objetivo_inmediato)
-                resto_ruta = picker.ruta_asignada[idx + 1 :]
+            resto_ruta = self._empalmar_resto_ruta(picker, objetivo_inmediato)
             return nueva_ruta[1:] + resto_ruta
 
         return [picker.posicion_actual] + list(picker.ruta_asignada)
@@ -460,15 +492,27 @@ class Pathfinding:
     def desviar_por(
         picker: Any, celda_escape: CoordXY, grafo: Any
     ) -> Optional[List[CoordXY]]:
-        """Genera una ruta que da un paso hacia celda_escape y retoma hacia el próximo objetivo."""
+        """Da un paso hacia celda_escape y retoma hacia el próximo objetivo sin rebotar al obstáculo."""
         if not picker.ruta_asignada:
             return None
         objetivo = Pathfinding.proximo_objetivo_en_ruta(picker)
-        tramo, _ = Pathfinding.calcular_ruta_dijkstra(celda_escape, objetivo, grafo)
+        celda_conflicto = picker.ruta_asignada[0]
+
+        tramo, _, _ = Pathfinding.calcular_ruta_dijkstra_multidestino(
+            origen=celda_escape,
+            destinos_objetivo={objetivo},
+            grafo=grafo,
+            picker_id=getattr(picker, "id_picker", None),
+            bloqueos_cercanos={celda_conflicto},
+        )
         if not tramo:
-            return None
-        idx = picker.ruta_asignada.index(objetivo)
-        return [celda_escape] + tramo[1:] + picker.ruta_asignada[idx + 1 :]
+            # Si bloqueando la celda en conflicto no hay paso, intenta ruta normal desde celda_escape
+            tramo, _ = Pathfinding.calcular_ruta_dijkstra(celda_escape, objetivo, grafo)
+            if not tramo:
+                return None
+
+        resto_ruta = Pathfinding._empalmar_resto_ruta(picker, objetivo)
+        return [celda_escape] + tramo[1:] + resto_ruta
 
     @staticmethod
     def _reconstruir_ruta(
@@ -494,7 +538,7 @@ class Pathfinding:
         distancias: Dict[CoordXY, float] = {origen_pasillo: 0.0}
 
         while not cola.esta_vacio():
-            dist_actual, nodo_actual = cola.extraer_minimo()
+            dist_actual, _, nodo_actual = cola.extraer_minimo()
             if dist_actual > distancias.get(nodo_actual, float("inf")):
                 continue
 

@@ -253,10 +253,16 @@ class TurnAndCollisionManager:
         ]
         ids_en_marcha = {id(p) for p in pickers_activos}
 
-        # Orden de prioridad: primero el que lleva más turnos esperando, luego el que está más cerca de terminar.
+        # Quienes están cargando en el rack o buscando ruta no pueden moverse de su celda,
+        # por lo que tienen prioridad física en su posición actual para que los demás los rodeen.
         pickers_ordenados = sorted(
             pickers_activos,
-            key=lambda p: (-p.turnos_bloqueado, len(p.ruta_asignada), p.id_picker),
+            key=lambda p: (
+                -(1 if (p.turnos_pausa > 0 or p.turnos_busqueda > 0) else 0),
+                -p.turnos_bloqueado,
+                len(p.ruta_asignada),
+                p.id_picker,
+            ),
         )
 
         ocupadas_actuales = {p.posicion_actual for p in pickers_activos} | set(
