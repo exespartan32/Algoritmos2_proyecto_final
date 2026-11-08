@@ -133,11 +133,28 @@ class WaveAssigner:
             return resultado
 
         dist_picker_wave: Dict[Tuple[str, str], float] = {}
+        grafo = warehouse.grafo_pasillos
+        
         for pk in pickers_libres:
+            orig_pasillo = Pathfinding.obtener_celda_acceso_pasillo(
+                pk.posicion_actual, grafo, warehouse
+            )
+            mapa_dist = Pathfinding.calcular_mapa_distancias_desde(orig_pasillo, grafo)
+            
             for w in waves_elegidas:
-                dist_picker_wave[(pk.id_picker, w.id_wave)] = (
-                    self.calcular_distancia_picker_a_wave(pk, w, warehouse)
-                )
+                dist_min = float("inf")
+                if w.ubicaciones_xy:
+                    for coord_rack in w.ubicaciones_xy:
+                        celda_acceso = Pathfinding.obtener_celda_acceso_pasillo(
+                            coord_rack, grafo, warehouse
+                        )
+                        d = mapa_dist.get(celda_acceso, float("inf"))
+                        if d < dist_min:
+                            dist_min = d
+                else:
+                    dist_min = 0.0
+                    
+                dist_picker_wave[(pk.id_picker, w.id_wave)] = dist_min
 
         for w in waves_elegidas:
             if not pickers_libres:

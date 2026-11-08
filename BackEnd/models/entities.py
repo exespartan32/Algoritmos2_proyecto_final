@@ -349,34 +349,42 @@ class Wave:
         if not pickers_equipo or not self.pedidos:
             return
 
-        def _centroide_x(ped: Pedido) -> float:
+        def _centroide_xy(ped: Pedido) -> Tuple[float, float]:
             ubics = (
                 ped.obtener_ubicaciones_xyz(warehouse_o_tabla)
                 if warehouse_o_tabla
                 else set()
             )
             if not ubics:
-                return 0.0
-            return sum(x for x, _, _ in ubics) / len(ubics)
+                return 0.0, 0.0
+            return sum(x for x, _, _ in ubics) / len(ubics), sum(y for _, y, _ in ubics) / len(ubics)
 
-        pedidos_ordenados_geo = sorted(self.pedidos, key=_centroide_x)
+        # Mapa de posiciones iniciales de los pickers (asumiendo que están en su 'posicion_actual')
+        posiciones_pickers = {p.id_picker: p.posicion_actual for p in pickers_equipo}
 
-        for ped in pedidos_ordenados_geo:
+        for ped in self.pedidos:
             peso_ped = (
                 ped.obtener_peso_total(warehouse_o_tabla)
                 if warehouse_o_tabla is not None
                 else 0.0
             )
+            cx, cy = _centroide_xy(ped)
+
+            # Filtramos los pickers que aún tienen capacidad para este pedido
             pickers_validos = [
                 pid
                 for pid in self.ids_pickers_asignados
                 if (self.peso_por_picker[pid] + peso_ped) <= cap_individual[pid]
             ]
+
             if pickers_validos:
+                # OPTIMIZACIÓN: Elegir al picker válido más cercano al centroide del pedido
                 mejor_pid = min(
-                    pickers_validos, key=lambda pid: self.peso_por_picker[pid]
+                    pickers_validos, 
+                    key=lambda pid: abs(posiciones_pickers[pid][0] - cx) + abs(posiciones_pickers[pid][1] - cy)
                 )
             else:
+                # Si nadie tiene capacidad (no debería pasar), dárselo al que tenga menos peso
                 mejor_pid = min(
                     self.ids_pickers_asignados,
                     key=lambda pid: self.peso_por_picker[pid],

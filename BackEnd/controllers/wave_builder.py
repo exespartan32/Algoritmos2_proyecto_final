@@ -204,14 +204,19 @@ class WaveBuilder:
         pickers_disponibles: List[Picker],
         warehouse: Warehouse,
         max_pickers_por_wave: int,
+        pesos_precalculados: Optional[List[float]] = None,
     ) -> Tuple[bool, List[Picker]]:
         if not pickers_disponibles:
             return True, []
 
-        pesos_pedidos = sorted(
-            [p.obtener_peso_total(warehouse) for p in pedidos_wave],
-            reverse=True,
-        )
+        if pesos_precalculados is not None:
+            pesos_pedidos = sorted(pesos_precalculados, reverse=True)
+        else:
+            pesos_pedidos = sorted(
+                [p.obtener_peso_total(warehouse) for p in pedidos_wave],
+                reverse=True,
+            )
+
         pickers_ordenados = sorted(
             pickers_disponibles, key=lambda pk: pk.capacidad_carga_kg, reverse=True
         )
@@ -489,6 +494,8 @@ class WaveBuilder:
                 evaluados_validos = 0
                 ranking: List[Tuple[Tuple[float, int, str], Pedido]] = []
 
+                pesos_wave_base = [p.obtener_peso_total(warehouse) for p in nueva_wave.pedidos]
+
                 for cand in candidatos_factibles:
                     if not self.tiene_stock_suficiente_sin_modificar(
                         cand, warehouse, stock_comprometido_virtual
@@ -500,11 +507,13 @@ class WaveBuilder:
                         continue
 
                     if warehouse.pickers:
+                        pesos_evaluacion = pesos_wave_base + [peso_cand]
                         es_repartible, _ = self.es_repartible_en_equipo_pickers(
-                            nueva_wave.pedidos + [cand],
+                            [],
                             warehouse.pickers,
                             warehouse,
                             self.max_pickers_por_wave,
+                            pesos_precalculados=pesos_evaluacion
                         )
                         if not es_repartible:
                             continue
