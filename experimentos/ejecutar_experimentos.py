@@ -3,6 +3,7 @@
 Genera escenarios con el generador determinista variando un parámetro por vez
 y mide cada etapa. Escribe:
 
+- docs/experimentos/resultados.xlsx  (libro Excel con tablas formateadas y gráficos nativos)
 - docs/experimentos/resultados.csv   (una fila por escenario y estrategia)
 - docs/experimentos/resultados.md    (tablas en Markdown para el informe)
 - docs/experimentos/*.png            (gráficos, si está instalado matplotlib)
@@ -146,7 +147,7 @@ def graficar(filas):
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
     except ImportError:
-        print("matplotlib no está instalado: se omiten los gráficos.")
+        print("matplotlib no está instalado: se omiten los gráficos PNG.")
         return []
 
     hechos = []
@@ -384,6 +385,205 @@ def escribir_armado(filas):
     return lineas + ["", "![Armado de waves](armado.png)", ""]
 
 
+def exportar_excel(filas, filas_armado):
+    """Exporta todas las tablas de experimentos y gráficos interactivos a un archivo Excel (.xlsx)."""
+    try:
+        import openpyxl
+        from openpyxl.chart import BarChart, LineChart, Reference
+        from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+        from openpyxl.utils import get_column_letter
+    except ImportError:
+        print(
+            "Aviso: 'openpyxl' no está instalado (pip install openpyxl). "
+            "Se omite la generación de resultados.xlsx."
+        )
+        return None
+
+    wb = openpyxl.Workbook()
+    # Quitamos la hoja por defecto para crear una por cada serie
+    wb.remove(wb.active)
+
+    fill_header = PatternFill(start_color="1E3A5F", end_color="1E3A5F", fill_type="solid")
+    fill_zebra = PatternFill(start_color="F4F7FA", end_color="F4F7FA", fill_type="solid")
+    fill_green = PatternFill(start_color="E6F4EA", end_color="E6F4EA", fill_type="solid")
+
+    font_title = Font(name="Calibri", size=14, bold=True, color="1E3A5F")
+    font_header = Font(name="Calibri", size=11, bold=True, color="FFFFFF")
+    font_green = Font(name="Calibri", size=11, bold=True, color="137333")
+    borde_fino = Side(border_style="thin", color="D0D7DE")
+    borde = Border(left=borde_fino, right=borde_fino, top=borde_fino, bottom=borde_fino)
+
+    # 1. Crear una pestaña comparativa (Orden vs Cercanía) con gráficos por cada serie de SERIES
+    for serie, (titulo, _clave, _valores, _) in SERIES.items():
+        ws = wb.create_sheet(title=f"Serie_{serie}"[:31])
+        ws["A1"] = f"Experimento: {titulo}"
+        ws["A1"].font = font_title
+
+        encabezados = [
+            titulo,
+            "Celdas (W×H)",
+            "Nodos Dígrafo",
+            "Productos",
+            "Pedidos",
+            "Waves",
+            "Distancia Orden",
+            "Distancia Cercanía",
+            "Ahorro Distancia (%)",
+            "Expandidos Orden",
+            "Expandidos Cercanía",
+            "Tiempo Orden (ms)",
+            "Tiempo Cercanía (ms)",
+            "Turnos Orden",
+            "Turnos Cercanía",
+            "Esperas Orden",
+            "Esperas Cercanía",
+        ]
+        ws.append([])
+        ws.append(encabezados)
+        for col_i in range(1, len(encabezados) + 1):
+            c = ws.cell(row=3, column=col_i)
+            c.fill = fill_header
+            c.font = font_header
+            c.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        ws.row_dimensions[3].height = 28
+
+        sub_orden = {f["valor"]: f for f in filas if f["serie"] == serie and f["estrategia"] == "ORDEN"}
+        sub_cerc = {f["valor"]: f for f in filas if f["serie"] == serie and f["estrategia"] == "CERCANIA"}
+        valores_ordenados = [f["valor"] for f in filas if f["serie"] == serie and f["estrategia"] == "ORDEN"]
+
+        for idx_fila, val in enumerate(valores_ordenados, start=4):
+            fo = sub_orden.get(val, {})
+            fc = sub_cerc.get(val, {})
+            datos_fila = [
+                val,
+                fo.get("celdas", 0),
+                fo.get("nodos", 0),
+                fo.get("productos", 0),
+                fo.get("pedidos", 0),
+                fo.get("waves", 0),
+                fo.get("distancia", 0),
+                fc.get("distancia", 0),
+                f"=(G{idx_fila}-H{idx_fila})/G{idx_fila}" if fo.get("distancia", 0) else 0.0,
+                fo.get("expansiones", 0),
+                fc.get("expansiones", 0),
+                fo.get("t_rutas_ms", 0.0),
+                fc.get("t_rutas_ms", 0.0),
+                fo.get("turnos", 0),
+                fc.get("turnos", 0),
+                fo.get("esperas", 0),
+                fc.get("esperas", 0),
+            ]
+            ws.append(datos_fila)
+            for col_i in range(1, len(datos_fila) + 1):
+                celda = ws.cell(row=idx_fila, column=col_i)
+                celda.border = borde
+                if idx_fila % 2 == 1:
+                    celda.fill = fill_zebra
+                if col_i == 9:
+                    celda.number_format = "0.0%"
+                    celda.fill = fill_green
+                    celda.font = font_green
+                elif col_i in (12, 13):
+                    celda.number_format = "0.00"
+                elif col_i > 1:
+                    celda.number_format = "#,##0"
+
+        max_row = 3 + len(valores_ordenados)
+        if max_row >= 4:
+            # Gráfico 1: Distancia Orden vs Cercanía
+            ch_dist = BarChart() if serie == "localizacion" else LineChart()
+            ch_dist.title = f"Distancia Total según {titulo}"
+            ch_dist.y_axis.title = "Pasos"
+            ch_dist.x_axis.title = titulo
+            ch_dist.add_data(Reference(ws, min_col=7, min_row=3, max_col=8, max_row=max_row), titles_from_data=True)
+            ch_dist.set_categories(Reference(ws, min_col=1, min_row=4, max_row=max_row))
+            ch_dist.width = 15
+            ch_dist.height = 10
+            ws.add_chart(ch_dist, f"B{max_row + 3}")
+
+            # Gráfico 2: Nodos Expandidos por Dijkstra
+            ch_exp = BarChart() if serie == "localizacion" else LineChart()
+            ch_exp.title = f"Nodos Expandidos según {titulo}"
+            ch_exp.y_axis.title = "Nodos Expandidos"
+            ch_exp.x_axis.title = titulo
+            ch_exp.add_data(Reference(ws, min_col=10, min_row=3, max_col=11, max_row=max_row), titles_from_data=True)
+            ch_exp.set_categories(Reference(ws, min_col=1, min_row=4, max_row=max_row))
+            ch_exp.width = 15
+            ch_exp.height = 10
+            ws.add_chart(ch_exp, f"I{max_row + 3}")
+
+            # Gráfico 3: Tiempo de cálculo de rutas (ms)
+            ch_ms = BarChart() if serie == "localizacion" else LineChart()
+            ch_ms.title = f"Tiempo de Ruteo (ms) según {titulo}"
+            ch_ms.y_axis.title = "Tiempo (ms)"
+            ch_ms.x_axis.title = titulo
+            ch_ms.add_data(Reference(ws, min_col=12, min_row=3, max_col=13, max_row=max_row), titles_from_data=True)
+            ch_ms.set_categories(Reference(ws, min_col=1, min_row=4, max_row=max_row))
+            ch_ms.width = 15
+            ch_ms.height = 10
+            ws.add_chart(ch_ms, f"P{max_row + 3}")
+
+    # 2. Pestaña de Tiempos por Etapa (Dígrafo, Kosaraju, Matriz, Waves)
+    ws_etapas = wb.create_sheet(title="Tiempos_Etapas")
+    ws_etapas["A1"] = "Tiempos de Ejecución por Etapa del Sistema (ms)"
+    ws_etapas["A1"].font = font_title
+    ws_etapas.append([])
+    cols_etapas = [
+        "Serie", "Valor", "Celdas", "Nodos", "Aristas",
+        "Dígrafo (ms)", "Kosaraju (ms)", "Matriz Distancias (ms)",
+        "Pares Matriz", "Armado Waves (ms)", "Candidatos Evaluados"
+    ]
+    ws_etapas.append(cols_etapas)
+    for col_i in range(1, len(cols_etapas) + 1):
+        c = ws_etapas.cell(row=3, column=col_i)
+        c.fill = fill_header
+        c.font = font_header
+        c.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+
+    fila_idx = 4
+    for f in filas:
+        if f["estrategia"] != "CERCANIA":
+            continue
+        ws_etapas.append([
+            f["serie"], f["valor"], f["celdas"], f["nodos"], f["aristas"],
+            f["t_grafo_ms"], f["t_kosaraju_ms"], f["t_matriz_ms"],
+            f["pares_matriz"], f["t_waves_ms"], f["candidatos_evaluados"]
+        ])
+        for col_i in range(1, len(cols_etapas) + 1):
+            ws_etapas.cell(row=fila_idx, column=col_i).border = borde
+        fila_idx += 1
+
+    # 3. Pestaña de Comparación de Armado de Waves
+    if filas_armado:
+        ws_arm = wb.create_sheet(title="Comparativa_Armado_Waves")
+        ws_arm["A1"] = "Comparación de Estrategias de Armado de Waves (Cercanía vs Pasillo vs Prioridad)"
+        ws_arm["A1"].font = font_title
+        ws_arm.append([])
+        cols_arm = list(filas_armado[0].keys())
+        ws_arm.append(cols_arm)
+        for col_i in range(1, len(cols_arm) + 1):
+            c = ws_arm.cell(row=3, column=col_i)
+            c.fill = fill_header
+            c.font = font_header
+            c.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        for idx_a, fa in enumerate(filas_armado, start=4):
+            ws_arm.append([fa[k] for k in cols_arm])
+            for col_i in range(1, len(cols_arm) + 1):
+                ws_arm.cell(row=idx_a, column=col_i).border = borde
+
+    # Ajustar ancho de columnas en todas las hojas
+    for sheet in wb.worksheets:
+        sheet.freeze_panes = "A4"
+        for col in sheet.columns:
+            letra = get_column_letter(col[0].column)
+            largo = max(len(str(celda.value or "")) for celda in col[:25])
+            sheet.column_dimensions[letra].width = max(14, min(32, largo + 4))
+
+    ruta_xlsx = SALIDA / "resultados.xlsx"
+    wb.save(ruta_xlsx)
+    return ruta_xlsx
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -418,6 +618,8 @@ def main():
         escritor.writeheader()
         escritor.writerows(filas)
 
+    filas_armado = medir_armado()
+
     md = [
         "# Resultados experimentales",
         "",
@@ -429,11 +631,16 @@ def main():
     for serie, (titulo, *_rest) in SERIES.items():
         md += tabla_md(filas, serie, titulo)
     md += tabla_etapas(filas)
-    md += escribir_armado(medir_armado())
+    md += escribir_armado(filas_armado)
     (SALIDA / "resultados.md").write_text("\n".join(md), encoding="utf-8")
 
     for ruta in graficar(filas):
         print("Gráfico:", ruta.relative_to(RAIZ))
+
+    ruta_excel = exportar_excel(filas, filas_armado)
+    if ruta_excel is not None:
+        print("Excel generado en:", ruta_excel.relative_to(RAIZ))
+
     print("Resultados en", (SALIDA / "resultados.csv").relative_to(RAIZ))
 
 

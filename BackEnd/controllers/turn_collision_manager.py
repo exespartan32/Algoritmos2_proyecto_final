@@ -30,9 +30,22 @@ class TurnAndCollisionManager:
         self.total_esperas_aplicadas: int = 0
         self.total_desvios_recalculados: int = 0
 
+    @staticmethod
+    def _esta_fijo_en_celda(picker: Picker) -> bool:
+        """Indica si el picker está detenido recogiendo mercadería, buscando ruta o descargando."""
+        if picker.turnos_pausa > 0 or picker.turnos_busqueda > 0:
+            return True
+        if not picker.ruta_asignada:
+            return True
+        return False
+
     def detectar_cruce_o_colision(self, p1: Picker, p2: Picker) -> bool:
         sig_p1 = p1.ruta_asignada[0] if p1.ruta_asignada else p1.posicion_actual
         sig_p2 = p2.ruta_asignada[0] if p2.ruta_asignada else p2.posicion_actual
+
+        # Si ambos están quietos en sus propias celdas (distintas), no hay colisión
+        if sig_p1 == p1.posicion_actual and sig_p2 == p2.posicion_actual:
+            return sig_p1 == sig_p2
 
         # Misma celda de destino en el siguiente turno
         if sig_p1 == sig_p2:
@@ -44,20 +57,29 @@ class TurnAndCollisionManager:
 
         return False
 
-    def _buscar_celda_evasion_lateral(
+    def _buscar_mejor_desvio_lateral(
         self,
         picker: Picker,
         celdas_prohibidas: Set[CoordXY],
         grafo: Any,
-    ) -> Optional[CoordXY]:
-        """Busca una celda adyacente libre en el dígrafo para destrabar un cruce de frente."""
+    ) -> Optional[List[CoordXY]]:
+        """Evalúa todas las celdas adyacentes libres y devuelve la ruta desviada más corta."""
+        if self._esta_fijo_en_celda(picker):
+            return None
+
         vecinos = Pathfinding._obtener_vecinos(
             grafo, picker.posicion_actual, paso_tiempo=0, picker_id=picker.id_picker
         )
+        mejor_ruta: Optional[List[CoordXY]] = None
         for v in vecinos:
-            if v not in celdas_prohibidas:
-                return v
-        return None
+            if v in celdas_prohibidas:
+                continue
+            ruta_candidata = Pathfinding.desviar_por(picker, v, grafo)
+            if ruta_candidata and (
+                mejor_ruta is None or len(ruta_candidata) < len(mejor_ruta)
+            ):
+                mejor_ruta = ruta_candidata
+        return mejor_ruta
 
     def resolver_conflicto(
         self,
@@ -68,6 +90,15 @@ class TurnAndCollisionManager:
         ocupadas_actuales: Optional[Set[CoordXY]] = None,
     ) -> None:
         if not picker_cedente.ruta_asignada and not picker_prioritario.ruta_asignada:
+            return
+
+        # Si el cedente está fijo cargando/buscando y el prioritario no, invertimos roles
+        if self._esta_fijo_en_celda(picker_cedente) and not self._esta_fijo_en_celda(
+            picker_prioritario
+        ):
+            picker_prioritario, picker_cedente = picker_cedente, picker_prioritario
+
+        if self._esta_fijo_en_celda(picker_cedente):
             return
 
         sig_prio = (
@@ -101,35 +132,29 @@ class TurnAndCollisionManager:
             )
 
         if es_cruce_frontal:
-            celda_escape = self._buscar_celda_evasion_lateral(
+            nueva_ruta = self._buscar_mejor_desvio_lateral(
                 picker_cedente, prohibidas, grafo
             )
-            if celda_escape is not None:
-                nueva_ruta = Pathfinding.desviar_por(
-                    picker_cedente, celda_escape, grafo
+            if nueva_ruta:
+                celda_escape = nueva_ruta[0]
+                picker_cedente.ruta_asignada = nueva_ruta
+                self.total_desvios_recalculados += 1
+                self.eventos_colision.append(
+                    f"[Turno {paso_actual}] Cruce frontal resuelto: {picker_cedente.id_picker} "
+                    f"se aparta hacia {celda_escape} para dar paso a {picker_prioritario.id_picker}."
                 )
-                if nueva_ruta:
-                    picker_cedente.ruta_asignada = nueva_ruta
-                    self.total_desvios_recalculados += 1
-                    self.eventos_colision.append(
-                        f"[Turno {paso_actual}] Cruce frontal resuelto: {picker_cedente.id_picker} "
-                        f"se aparta hacia {celda_escape} para dar paso a {picker_prioritario.id_picker}."
-                    )
-                    return
+                return
 
-            prohibidas_prio = (ocupadas_actuales or set()) | {
-                sig_ced,
-                picker_cedente.posicion_actual,
-            }
-            escape_prio = self._buscar_celda_evasion_lateral(
-                picker_prioritario, prohibidas_prio, grafo
-            )
-            if escape_prio is not None and picker_prioritario.ruta_asignada:
-                nueva_ruta = Pathfinding.desviar_por(
-                    picker_prioritario, escape_prio, grafo
+            if not self._esta_fijo_en_celda(picker_prioritario):
+                prohibidas_prio = (ocupadas_actuales or set()) | {
+                    sig_ced,
+                    picker_cedente.posicion_actual,
+                }
+                nueva_ruta_prio = self._buscar_mejor_desvio_lateral(
+                    picker_prioritario, prohibidas_prio, grafo
                 )
-                if nueva_ruta:
-                    picker_prioritario.ruta_asignada = nueva_ruta
+                if nueva_ruta_prio:
+                    picker_prioritario.ruta_asignada = nueva_ruta_prio
                     self.total_desvios_recalculados += 1
                     return
 
@@ -253,22 +278,21 @@ class TurnAndCollisionManager:
         ]
         ids_en_marcha = {id(p) for p in pickers_activos}
 
-        # Quienes están cargando en el rack o buscando ruta no pueden moverse de su celda,
-        # por lo que tienen prioridad física en su posición actual para que los demás los rodeen.
+        # Orden de prioridad:
+        # 1. Pickers detenidos cargando en rack o inicializando búsqueda (no pueden moverse de su celda).
+        # 2. Pickers que llevan más turnos esperando bloqueados.
+        # 3. Pickers que están más cerca de terminar su recorrido.
         pickers_ordenados = sorted(
             pickers_activos,
             key=lambda p: (
-                -(1 if (p.turnos_pausa > 0 or p.turnos_busqueda > 0) else 0),
+                -(1 if self._esta_fijo_en_celda(p) else 0),
                 -p.turnos_bloqueado,
                 len(p.ruta_asignada),
                 p.id_picker,
             ),
         )
 
-        ocupadas_actuales = {p.posicion_actual for p in pickers_activos} | set(
-            estacionados
-        )
-        ocupadas_actuales |= set(estela_de)
+        ocupadas_base = {p.posicion_actual for p in pickers_activos} | set(estacionados)
 
         # Primera pasada: resolución de cruces y colisiones entre pares
         for i in range(len(pickers_ordenados)):
@@ -276,8 +300,17 @@ class TurnAndCollisionManager:
                 p_prio = pickers_ordenados[i]
                 p_ced = pickers_ordenados[j]
                 if self.detectar_cruce_o_colision(p_prio, p_ced):
+                    estela_ajena = {
+                        c
+                        for c, pid in estela_de.items()
+                        if pid != p_ced.id_picker
+                    }
                     self.resolver_conflicto(
-                        p_prio, p_ced, grafo, paso_actual, ocupadas_actuales
+                        p_prio,
+                        p_ced,
+                        grafo,
+                        paso_actual,
+                        ocupadas_base | estela_ajena,
                     )
 
         por_id = {p.id_picker: p for p in pickers}
@@ -334,18 +367,17 @@ class TurnAndCollisionManager:
         }
         for p in pickers_ordenados:
             if (
-                not p.ruta_asignada
+                self._esta_fijo_en_celda(p)
                 or p.ruta_asignada[0] != p.posicion_actual
                 or p.turnos_bloqueado < self.turnos_para_ceder
             ):
                 continue
-            mejor: Optional[List[CoordXY]] = None
-            for vecino in Pathfinding._obtener_vecinos(grafo, p.posicion_actual, 0):
-                if vecino in reservadas or vecino in ocupadas_actuales:
-                    continue
-                ruta = Pathfinding.desviar_por(p, vecino, grafo)
-                if ruta and (mejor is None or len(ruta) < len(mejor)):
-                    mejor = ruta
+            estela_ajena = {
+                c for c, pid in estela_de.items() if pid != p.id_picker
+            }
+            mejor = self._buscar_mejor_desvio_lateral(
+                p, reservadas | ocupadas_base | estela_ajena, grafo
+            )
             if mejor is not None:
                 reservadas.discard(p.posicion_actual)
                 reservadas.add(mejor[0])
@@ -372,6 +404,17 @@ class TurnAndCollisionManager:
         for p in pickers:
             if p.id_wave_actual is None and p.cola_waves_asignadas:
                 p.iniciar_siguiente_tarea_en_cola()
+                # Si el primer producto ya está exactamente en su celda inicial:
+                if (
+                    p.objetivos_pendientes
+                    and p.posicion_actual in p.objetivos_pendientes
+                ):
+                    p.objetivos_pendientes.remove(p.posicion_actual)
+                    if self.turnos_recogida:
+                        p.ruta_asignada[0:0] = [
+                            p.posicion_actual
+                        ] * self.turnos_recogida
+                        p.turnos_pausa = self.turnos_recogida
 
         self.validar_movimiento_simultaneo(pickers, paso_actual, grafo)
 
