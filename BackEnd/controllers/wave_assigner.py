@@ -173,31 +173,9 @@ class WaveAssigner:
                     equipo_elegido = equipo
 
             # Si no se pudo armar equipo colaborativo, prueba con un solo picker viable
+            # Si no se pudo armar equipo colaborativo, prueba con un solo picker viable
             if not equipo_elegido:
-                if candidatos_cercanos.capacidad_carga_kg >= w.peso_total_kg:
-                    equipo_elegido = [candidatos_cercanos]
-                else:
-                    for pk in candidatos_cercanos:
-                        if pk.capacidad_carga_kg >= w.peso_total_kg:
-                            equipo_elegido = [pk]
-                            break
-                    if not equipo_elegido:
-                        factible, equipo_multi = (
-                            WaveBuilder.es_repartible_en_equipo_pickers(
-                                w.pedidos,
-                                candidatos_cercanos,
-                                warehouse,
-                                self.max_pickers_por_wave,
-                            )
-                        )
-                        if factible and equipo_multi:
-                            equipo_elegido = equipo_multi
-
-            if not equipo_elegido:
-                resultado["waves_sin_picker_disponible"].append(w.id_wave)
-                continue
-
-            if not equipo_elegido:
+                # CORRECCIÓN: Agregar [0] para acceder al elemento de la lista
                 if candidatos_cercanos[0].capacidad_carga_kg >= w.peso_total_kg:
                     equipo_elegido = [candidatos_cercanos[0]]
                 else:
