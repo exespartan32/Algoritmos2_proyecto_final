@@ -57,6 +57,7 @@ class App(UIElements, PanelesVistas, DialogosVistas):
         self.dialogo = None
         self.mensaje = "Elegí un escenario de la biblioteca o creá uno nuevo."
         self.reproduciendo = False
+        self.reproduccion_iniciada = False
         self.acumulado = 0.0
         self.velocidad = 1
         self.sim = None
@@ -99,6 +100,11 @@ class App(UIElements, PanelesVistas, DialogosVistas):
         self.nombre = nombre
         self.pagina = "sim"
         self.reproduciendo = False
+        self.reproduccion_iniciada = bool(
+            sim.en_curso
+            and sim.tanda_actual
+            and sim.estado.paso > sim.tanda_actual["paso_inicio"]
+        )
         self.seleccion = set()
         self.picker_foco = (
             sim.warehouse.pickers[0].id_picker if sim.warehouse.pickers else None
@@ -117,23 +123,26 @@ class App(UIElements, PanelesVistas, DialogosVistas):
                 self.productos_por_celda.get((p.x, p.y), 0) + 1
             )
 
-    def _a_usar_estrategia_armado(self, clave: str):
+    def _a_cambiar_armado(self):
+        if self.sim.waves_iniciadas:
+            return
         c = self.sim.config
+        opciones = tuple(ESTRATEGIAS_ARMADO)
+        actual = c["estrategia_waves"]
+        indice = opciones.index(actual) + 1 if actual in opciones else 0
+        ya_generadas = bool(self.sim.waves)
+        dialogo = self.dialogo
         self.sim.configurar(
             c["wave_max_pedidos"],
             c["wave_max_productos"],
             c["max_pickers_por_wave"],
-            clave,
+            opciones[indice % len(opciones)],
         )
-        waves = self.sim.generar_waves()
-        self.seleccion = set()
-        self.comparacion = None
-        self.pestana, self.pag_tabla = "Waves", 0
-        efectiva = self.sim.estado.gestor_waves.estrategia_armado
-        self.mensaje = (
-            f"Waves generadas ({len(waves)}) usando: {ESTRATEGIAS_ARMADO[efectiva]}."
-        )
-        self.dialogo = "waves"
+        if ya_generadas:
+            self._a_generar_waves()
+            self.dialogo = dialogo
+        else:
+            self.mensaje = "Estrategia de armado seleccionada. Generá las waves para aplicarla."
 
     def importar_con_dialogo(self):
         import tkinter as tk
@@ -403,6 +412,8 @@ class App(UIElements, PanelesVistas, DialogosVistas):
         waves = self.sim.generar_waves()
         self.seleccion = set()
         self.comparacion = None
+        self.armado = None
+        self.wave_foco = None
         self.pestana, self.pag_tabla = "Waves", 0
         descartados = len(self.sim.estado.gestor_waves.pedidos_descartados)
         self.mensaje = f"{len(waves)} waves generadas correctamente."
@@ -428,9 +439,12 @@ class App(UIElements, PanelesVistas, DialogosVistas):
         ids = [w["id"] for w in self.waves_pendientes() if w["id"] in self.seleccion]
         if not ids:
             raise ValueError("Marcá al menos una wave pendiente.")
+        estaba_en_curso = self.sim.en_curso
         tanda = self.sim.iniciar_waves(
             ids, self.sim.estrategia, self.sim.pickers_por_wave
         )
+        if not estaba_en_curso:
+            self.reproduccion_iniciada = False
         self.seleccion = set()
         self.dialogo = None
         self.comparacion = None
@@ -464,6 +478,10 @@ class App(UIElements, PanelesVistas, DialogosVistas):
         )
         self.dialogo = "comparar"
 
+    @property
+    def puede_continuar(self):
+        return self.sim.en_curso and self.reproduccion_iniciada and not self.reproduciendo
+
     def _a_iniciar(self):
         if not self.sim.en_curso:
             if self.seleccion:
@@ -475,6 +493,7 @@ class App(UIElements, PanelesVistas, DialogosVistas):
                 self._a_generar_waves()
                 return
         self.reproduciendo = True
+        self.reproduccion_iniciada = True
         self.acumulado = 0.0
 
     def _a_continuar(self):
@@ -489,6 +508,7 @@ class App(UIElements, PanelesVistas, DialogosVistas):
         self.reproduciendo = False
         if not self.mover(self.sim.avanzar):
             raise ValueError("No hay pickers trabajando.")
+        self.reproduccion_iniciada = True
 
     def _a_atras(self):
         self.reproduciendo = False
@@ -571,19 +591,26 @@ class App(UIElements, PanelesVistas, DialogosVistas):
         waves = [w["id"] for w in self.sim.resumen_waves()]
         if not waves:
             raise ValueError("Primero generá las waves.")
-        id_wave = id_wave if id_wave in waves else waves[0]
+        if id_wave not in waves:
+            id_wave = next((wid for wid in waves if wid in self.seleccion), waves[0])
+        datos = self.sim.explicar_armado(id_wave)
+        if not datos["pasos"]:
+            raise ValueError(f"No hay pasos de armado registrados para {id_wave}.")
+        volver_a_waves = self.dialogo == "waves" or (
+            self.armado is not None and self.armado["volver_a_waves"]
+        )
         self.reproduciendo = False
         self.dialogo = None
         self.armado = {
-            "datos": self.sim.explicar_armado(id_wave),
+            "datos": datos,
             "paso": 0,
             "inicio": time.perf_counter(),
             "auto": True,
+            "volver_a_waves": volver_a_waves,
         }
         self.wave_foco = id_wave
         self.mapa_ampliado = False
         self.mapa.area = pygame.Rect(20, 186, 740, 690)
-        datos = self.armado["datos"]
         celdas = [c for p in datos["pasos"] for c in p.get("celdas", [])]
         if datos["ruta"]:
             celdas += datos["ruta"]["camino"]
@@ -607,6 +634,8 @@ class App(UIElements, PanelesVistas, DialogosVistas):
             self._mover_armado(1)
 
     def _a_salir_armado(self):
+        if self.armado and self.armado["volver_a_waves"]:
+            self.dialogo = "waves"
         self.armado = None
         self.mensaje = "Fin de la explicación del armado."
 
@@ -693,6 +722,21 @@ class App(UIElements, PanelesVistas, DialogosVistas):
             self.boton("Eliminar", 1352, y + 10, 120, ("eliminar", ruta))
         self.paginador("pag_biblioteca", len(archivos), por_pagina, 1330, 832)
 
+    def boton_armado(self, x, y, ancho):
+        m = self.sim
+        configurada = m.config["estrategia_waves"]
+        gestor = m.estado.gestor_waves if m.waves else None
+        efectiva = gestor.estrategia_armado if gestor else configurada
+        armado = OPCIONES_ESTRATEGIA_ARMADO.get(efectiva, efectiva).split(" (", 1)[0]
+        if configurada == "AUTO":
+            armado = f"{armado} (auto)" if gestor else "Automática (pendiente)"
+        etiqueta = f"Armado de waves: {armado}"
+        if m.waves_iniciadas:
+            self.caja(x, y, ancho, 34, AZUL_CLARO)
+            self.texto(etiqueta, x + 12, y + 8, 16, max_ancho=ancho - 24)
+        else:
+            self.boton(etiqueta, x, y, ancho, "cambiar_armado")
+
     def barra_simulacion(self):
         m = self.sim
         self.texto(self.nombre, 220, 26, 17, GRIS, max_ancho=200)
@@ -703,14 +747,7 @@ class App(UIElements, PanelesVistas, DialogosVistas):
             414,
             "estrategia",
         )
-        configurada = m.config["estrategia_waves"]
-        gestor = m.estado.gestor_waves if m.waves else None
-        efectiva = gestor.estrategia_armado if gestor else configurada
-        armado = OPCIONES_ESTRATEGIA_ARMADO.get(efectiva, efectiva).split(" (", 1)[0]
-        if configurada == "AUTO":
-            armado = f"{armado} (automática)" if gestor else "Automática (pendiente)"
-        self.caja(852, 18, 342, 34, AZUL_CLARO)
-        self.texto(f"Armado de waves: {armado}", 864, 26, 16, max_ancho=318)
+        self.boton_armado(852, 18, 342)
         self.boton("Guardar sesión", 1210, 18, 150, "guardar")
         self.boton("Inicio", 1370, 18, 120, "inicio")
         hay_waves = bool(m.waves)
@@ -735,9 +772,12 @@ class App(UIElements, PanelesVistas, DialogosVistas):
             x += w + 8
         en_curso = m.en_curso
         fila2 = [
-            ("Iniciar", 105, "iniciar", hay_waves and not self.reproduciendo),
+            (
+                "Iniciar", 105, "iniciar",
+                hay_waves and not self.reproduciendo and not self.puede_continuar,
+            ),
             ("Pausar", 105, "pausar", self.reproduciendo),
-            ("Continuar", 115, "continuar", en_curso and not self.reproduciendo),
+            ("Continuar", 115, "continuar", self.puede_continuar),
             ("Paso adelante >", 155, "adelante", en_curso),
             ("< Paso atrás", 140, "atras", bool(m.historial)),
             ("Reiniciar", 115, "reiniciar", m.tanda_actual is not None),

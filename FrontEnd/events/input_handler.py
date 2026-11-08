@@ -61,7 +61,8 @@ def manejar_evento(app, evento):
         if evento.key == pygame.K_ESCAPE:
             if app.armado and not app.dialogo:
                 app.accion("salir_armado")
-            app.cerrar_dialogo()
+            else:
+                app.cerrar_dialogo()
         elif (
             app.armado
             and not app.dialogo
@@ -91,6 +92,9 @@ def manejar_evento(app, evento):
             elif evento.key == pygame.K_LEFT:
                 app.accion("atras")
             elif evento.key == pygame.K_SPACE:
-                app.accion("pausar" if app.reproduciendo else "iniciar")
+                if app.reproduciendo:
+                    app.accion("pausar")
+                else:
+                    app.accion("continuar" if app.puede_continuar else "iniciar")
             elif evento.key == pygame.K_r:
                 app.accion("reiniciar")

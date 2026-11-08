@@ -193,7 +193,7 @@ class PanelesVistas:
         marcadas = {i for i, w in enumerate(waves) if w["id"] == self.wave_foco}
         self._tabla(
             x,
-            y + 28,
+            y + 44,
             [
                 ("Wave", 0),
                 ("Estado", 85),

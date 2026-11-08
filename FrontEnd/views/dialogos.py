@@ -2,7 +2,6 @@
 
 from pathlib import Path
 import pygame
-from BackEnd.controllers.wave_manager import ESTRATEGIAS_ARMADO
 from BackEnd.controllers.simulador import NOMBRE_ESTRATEGIA
 from FrontEnd.views.ui_elements import (
     ANCHO,
@@ -173,6 +172,7 @@ class DialogosVistas:
         m = self.sim
         self.texto("Seleccionar waves", x, y, 26, negrita=True)
         self.boton("Ver cómo se armó", x + w - 400, y - 2, 230, "ver_armado")
+        self.boton_armado(x + w - 342, y + 38, 342)
         libres = sum(1 for p in m.warehouse.pickers if p.id_wave_actual is None)
         self.texto(
             f"Pickers libres: {libres} de {len(m.warehouse.pickers)} · estrategia: {NOMBRE_ESTRATEGIA[m.estrategia]}",
@@ -180,7 +180,7 @@ class DialogosVistas:
             y + 42,
             16,
             GRIS,
-            max_ancho=w,
+            max_ancho=w - 358,
         )
         waves = m.resumen_waves()
         por_pagina = 12
@@ -239,7 +239,7 @@ class DialogosVistas:
             "Se arman las waves con cada estrategia a partir de los mismos pedidos, "
             "manteniendo la estrategia de recorrido actual ("
             + NOMBRE_ESTRATEGIA[self.sim.estrategia]
-            + "). Podés elegir la mejor automáticamente o seleccionar una manualmente.",
+            + "). La tabla compara los resultados de cada criterio de armado.",
             x,
             y + 44,
             w - 20,
@@ -253,24 +253,15 @@ class DialogosVistas:
             "PASILLO": "Por pasillo",
             "PRIORIDAD": "Solo prioridad",
         }
-        mejor_global = min(
-            claves,
-            key=lambda k: (
-                comp[k]["distancia"],
-                comp[k]["turnos"],
-                comp[k]["pasillos_por_wave"],
-            ),
-        )
         yy = y + 115
         self.texto("Métrica", x, yy, 16, GRIS, True)
         for j, clave in enumerate(claves):
-            etiqueta_col = columnas[clave] + (" ★" if clave == mejor_global else "")
             self.texto(
-                etiqueta_col,
+                columnas[clave],
                 x + 360 + j * 170,
                 yy,
                 16,
-                VERDE if clave == mejor_global else GRIS,
+                GRIS,
                 True,
             )
         for i, (etiqueta, campo) in enumerate(self.FILAS_ARMADO):
@@ -289,26 +280,6 @@ class DialogosVistas:
                     VERDE if es_mejor else TINTA,
                     es_mejor,
                 )
-
-        # Botones para elegir automáticamente la mejor o forzar cualquiera de las 3
-        y_botones = yy + 40 + len(self.FILAS_ARMADO) * 28
-        self.boton(
-            f"Auto-elegir mejor ({columnas[mejor_global]})",
-            x,
-            y_botones,
-            330,
-            ("usar_estrategia_armado", "AUTO"),
-            marcado=True,
-        )
-        for j, clave in enumerate(claves):
-            self.boton(
-                f"Usar {columnas[clave]}",
-                x + 350 + j * 170,
-                y_botones,
-                155,
-                ("usar_estrategia_armado", clave),
-                marcado=(clave == mejor_global),
-            )
 
     def dialogo_comparar(self, x, y, w):
         self.texto("Comparar estrategias de recorrido", x, y, 26, negrita=True)
