@@ -1,4 +1,5 @@
 import sys
+import threading
 import time
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
@@ -11,27 +12,21 @@ if TYPE_CHECKING:
 Coord = Tuple[int, int]
 
 
-@staticmethod
-def elegir_mejor_estrategia_armado(
-    sim: "Simulador",
-) -> Tuple[str, Dict[str, Dict[str, Any]]]:
-    """Compara previamente las 3 estrategias de armado y devuelve la mejor y el reporte."""
-    comparativa = EvaluadorEstrategias.comparar_armado(sim)
-    mejor_clave = min(
-        comparativa.keys(),
-        key=lambda k: (
-            comparativa[k]["distancia"],
-            comparativa[k]["turnos"],
-            comparativa[k]["pasillos_por_wave"],
-            comparativa[k]["tiempo_armado_ms"],
-        ),
-    )
-    return mejor_clave, comparativa
+CRITERIOS_ARMADO = (
+    ("pedidos_preparados", "más pedidos preparados", True),
+    ("distancia", "menor distancia planificada", False),
+    ("turnos", "menos turnos", False),
+    ("pasillos_por_wave", "menos pasillos por wave", False),
+)
 
 
 def _mantener_ventana_activa(paso: int) -> None:
     """Refresca la cola de eventos de Pygame durante simulaciones largas en segundo plano."""
-    if paso % 80 == 0 and "pygame" in sys.modules:
+    if (
+        paso % 80 == 0
+        and "pygame" in sys.modules
+        and threading.current_thread() is threading.main_thread()
+    ):
         pygame_mod = sys.modules["pygame"]
         if pygame_mod.display.get_init():
             pygame_mod.event.pump()
@@ -39,6 +34,28 @@ def _mantener_ventana_activa(paso: int) -> None:
 
 class EvaluadorEstrategias:
     """Ejecuta comparaciones de ruteo, comparaciones de armado y trazas explicativas."""
+
+    @staticmethod
+    def clasificar_armado(comparativa):
+        """Devuelve la estrategia elegida y el primer criterio que rompe el empate."""
+        candidatas = list(comparativa)
+        for campo, motivo, mayor in CRITERIOS_ARMADO:
+            mejor = (max if mayor else min)(comparativa[c][campo] for c in candidatas)
+            candidatas = [c for c in candidatas if comparativa[c][campo] == mejor]
+            if len(candidatas) == 1:
+                return candidatas[0], f"{motivo} ({mejor})"
+        return (
+            candidatas[0],
+            "empate en los criterios; se conserva el orden de evaluación",
+        )
+
+    @staticmethod
+    def elegir_mejor_estrategia_armado(
+        sim: "Simulador",
+    ) -> Tuple[str, Dict[str, Dict[str, Any]]]:
+        comparativa = EvaluadorEstrategias.comparar_armado(sim)
+        mejor, _ = EvaluadorEstrategias.clasificar_armado(comparativa)
+        return mejor, comparativa
 
     @staticmethod
     def comparar_estrategias(
@@ -128,7 +145,12 @@ class EvaluadorEstrategias:
             clon._pre_waves = None
             clon.historial, clon._inicio_tanda, clon.acciones = [], {}, []
 
-            waves = clon.generar_waves()
+            try:
+                waves = clon.generar_waves()
+            except ValueError:
+                if clon.estado.gestor_waves is None or clon.waves:
+                    raise
+                waves = []
             gestor = clon.estado.gestor_waves
             evaluados = sum(
                 paso.get("candidatos_evaluados", 0)
@@ -147,7 +169,11 @@ class EvaluadorEstrategias:
                 sum(p.prioridad for p in w.pedidos) / len(w.pedidos) for w in waves
             ]
 
-            tanda = clon.iniciar_waves([w.id_wave for w in waves], sim.estrategia)
+            tanda = (
+                clon.iniciar_waves([w.id_wave for w in waves], sim.estrategia)
+                if waves
+                else {"planes": []}
+            )
             clon.historial = []
             pasos = 0
             while pasos < MAX_PASOS_TANDA * 4 and clon.avanzar(guardar_historial=False):

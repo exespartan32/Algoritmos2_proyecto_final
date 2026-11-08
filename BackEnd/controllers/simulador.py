@@ -303,22 +303,33 @@ class Simulador:
     # ------------------------------------------------------------------
     # Generación y asignación de waves
     # ------------------------------------------------------------------
-    def generar_waves(self, auto_seleccionar_mejor: bool = False) -> List[Any]:
+    def generar_waves(
+        self,
+        auto_seleccionar_mejor: bool = False,
+        estrategia_guardada: Optional[str] = None,
+    ) -> List[Any]:
         self._volver_antes_de_waves()
         self._pre_waves = self._copiar(self.estado)
         wh = self.warehouse
 
-        estrategia_elegida = self.config["estrategia_waves"]
-        if auto_seleccionar_mejor or estrategia_elegida == "AUTO":
+        self.ultima_comparacion_armado = None
+        estrategia_elegida = estrategia_guardada or self.config["estrategia_waves"]
+        if (
+            estrategia_guardada is not None
+            and estrategia_guardada not in ESTRATEGIAS_ARMADO
+        ):
+            raise ValueError("Estrategia guardada inválida.")
+        if estrategia_guardada is None and (
+            auto_seleccionar_mejor or estrategia_elegida == "AUTO"
+        ):
             mejor_clave, comp = EvaluadorEstrategias.elegir_mejor_estrategia_armado(
                 self
             )
             self.ultima_comparacion_armado = comp
             estrategia_elegida = mejor_clave
+            _, motivo = EvaluadorEstrategias.clasificar_armado(comp)
             self._evento(
-                f"Auto-selección de armado: gana '{ESTRATEGIAS_ARMADO[mejor_clave]}' "
-                f"(distancia total proyectada: {comp[mejor_clave]['distancia']} pasos "
-                f"en {comp[mejor_clave]['turnos']} turnos)."
+                f"Armado automático: {ESTRATEGIAS_ARMADO[mejor_clave]} por {motivo}."
             )
 
         self.estrategia_waves_efectiva = estrategia_elegida
@@ -342,12 +353,12 @@ class Simulador:
         )
         for error in gestor.errores_validacion:
             self._evento(error)
-        self._registrar("generar_waves")
         if not waves:
             raise ValueError(
                 "No se pudo armar ninguna wave. "
                 + ("; ".join(gestor.errores_validacion) or "No hay pedidos pendientes.")
             )
+        self._registrar("generar_waves", False, estrategia_elegida)
         return waves
 
     def _construir_plan(
