@@ -635,7 +635,7 @@ def exportar_excel(filas, filas_armado, filas_invalidos):
 
         encabezados = [
             titulo,
-            "Celdas (W×H)",
+            "Celdas (WxH)",
             "Nodos Dígrafo",
             "Productos",
             "Pedidos",
