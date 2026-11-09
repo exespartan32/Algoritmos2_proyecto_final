@@ -55,6 +55,7 @@ class App(UIElements, PanelesVistas, DialogosVistas):
         self.mensaje = "Elegí un escenario de la biblioteca o creá uno nuevo."
         self.reproduciendo = False
         self.reproduccion_iniciada = False
+        self.sesion_guardada = False
         self.acumulado = 0.0
         self.velocidad = 1
         self.sim = None
@@ -65,11 +66,11 @@ class App(UIElements, PanelesVistas, DialogosVistas):
         self.seleccion = set()
         self.picker_foco = None
         self.wave_foco = None
-        self.ver_exploracion = True
         self.comparacion = None
         self.formulario = None
         self.ultimo_clic = (0, 0)
         self.mapa_ampliado = False
+        self.ver_estela = True
         self.armado = None
         self.animacion = {}
         self.angulos = {}
@@ -97,6 +98,7 @@ class App(UIElements, PanelesVistas, DialogosVistas):
         self.nombre = nombre
         self.pagina = "sim"
         self.reproduciendo = False
+        self.sesion_guardada = False
         self.reproduccion_iniciada = bool(
             sim.en_curso
             and sim.tanda_actual
@@ -497,6 +499,9 @@ class App(UIElements, PanelesVistas, DialogosVistas):
         if not self.sim.en_curso:
             raise ValueError("No hay pickers trabajando.")
         self.reproduciendo = True
+        if self.sesion_guardada:
+            self.sesion_guardada = False
+            self.mensaje = "Simulación reanudada."
 
     def _a_pausar(self):
         self.reproduciendo = False
@@ -516,14 +521,18 @@ class App(UIElements, PanelesVistas, DialogosVistas):
         self.reproduciendo = False
         if not self.mover(self.sim.reiniciar, 0):
             raise ValueError("Todavía no se inició ninguna tanda.")
+        self.sesion_guardada = False
         self.mensaje = "Tanda reiniciada: stock restaurado."
 
     def _a_velocidad(self):
         self.velocidad = (self.velocidad + 1) % len(VELOCIDADES)
 
     def _a_guardar(self):
+        if self.sesion_guardada:
+            return
         self.reproduciendo = False
         ruta = self.biblioteca.guardar_sesion(self.sim, self.nombre)
+        self.sesion_guardada = True
         self.mensaje = f"Sesión guardada como {ruta.name}."
 
     def _a_pestana(self, nombre):
@@ -636,11 +645,11 @@ class App(UIElements, PanelesVistas, DialogosVistas):
         self.armado = None
         self.mensaje = "Fin de la explicación del armado."
 
+    def _a_estela(self):
+        self.ver_estela = not self.ver_estela
+
     def _a_ampliar(self):
         self.mapa_ampliado = not self.mapa_ampliado
-
-    def _a_exploracion(self):
-        self.ver_exploracion = not self.ver_exploracion
 
     def _a_mapa(self):
         celda = self.mapa.celda_en(self.ultimo_clic)
@@ -745,7 +754,7 @@ class App(UIElements, PanelesVistas, DialogosVistas):
             "estrategia",
         )
         self.boton_armado(852, 18, 342)
-        self.boton("Guardar sesión", 1210, 18, 150, "guardar")
+        self.boton("Guardar sesión", 1210, 18, 150, "guardar", not self.sesion_guardada)
         self.boton("Inicio", 1370, 18, 120, "inicio")
         hay_waves = bool(m.waves)
         iniciadas = m.waves_iniciadas
@@ -755,13 +764,8 @@ class App(UIElements, PanelesVistas, DialogosVistas):
             ("Generar waves", 150, "generar_waves", not iniciadas),
             ("Seleccionar waves", 170, "elegir_waves", hay_waves),
             ("Comparar estrategias", 195, "comparar", hay_waves),
-            (
-                "Exploración: " + ("sí" if self.ver_exploracion else "no"),
-                160,
-                "exploracion",
-                True,
-            ),
             ("Comparar armado", 172, "comparar_armado", True),
+            ("Estela: sí" if self.ver_estela else "Estela: no", 115, "estela", True),
         ]
         x = 20
         for etiqueta, w, accion, habilitado in fila1:
@@ -790,6 +794,8 @@ class App(UIElements, PanelesVistas, DialogosVistas):
         for etiqueta, w, accion, habilitado in fila2:
             self.boton(etiqueta, x, 104, w, accion, habilitado)
             x += w + 8
+        if self.sesion_guardada:
+            self.texto("Sesión guardada correctamente", x + 12, 112, 16, VERDE, True)
         tanda = m.tanda_actual
         estado = (
             "reproduciendo"
@@ -831,8 +837,11 @@ class App(UIElements, PanelesVistas, DialogosVistas):
             self.pantalla_simulacion()
         if self.dialogo:
             self.dialogo_actual()
-        self.caja(0, ALTO - 34, ANCHO, 34, BLANCO, None)
-        self.texto(self.mensaje, 20, ALTO - 27, 16, AZUL, max_ancho=ANCHO - 40)
+        pie = self.caja(0, ALTO - 34, ANCHO, 34, AZUL_CLARO, None)
+        self.caja(20, pie.centery - 10, 4, 20, AZUL, None)
+        tam = 20
+        y = pie.centery - self.fuente(tam, True).get_height() // 2
+        self.texto(self.mensaje, 34, y, tam, TINTA, True, max_ancho=ANCHO - 54)
         self.presentar()
 
     def presentar(self):

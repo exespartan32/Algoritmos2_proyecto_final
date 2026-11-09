@@ -1,146 +1,105 @@
-# Wave Picking · Algoritmos II
+# Sistema de Wave Picking
 
-Sistema para simular y gestionar la preparación de pedidos en un almacén:
-modela el almacén como un **dígrafo de pasillos**, agrupa los pedidos en
-**waves**, calcula los **recorridos** de los pickers con dos estrategias y los
-**simula** paso a paso en una aplicación visual hecha con Pygame.
+**Proyecto semestral de Algoritmos y Estructuras de Datos II**
 
-## Instalación
+**Integrantes**
 
-Requiere **Python 3.10 o superior** (probado con 3.12 y 3.13).
+Laureano Petri, Exequiel Mayorga, Leonel Chadi y Martín Merlo.
+
+El sistema simula la preparación de pedidos en un almacén. Agrupa pedidos en *waves*, asigna operarios (*pickers*), calcula sus rutas y ejecuta la recogida y el despacho por turnos. La interfaz permite seguir cómo se forma una wave, observar la búsqueda de un camino y comparar las estrategias bajo las mismas condiciones.
+
+## Instalación y ejecución
+
+Se requiere Python 3.10 o superior. Ejecutá estos comandos en PowerShell desde la raíz del repositorio.
 
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe gui.py
 ```
 
-En Linux o macOS: `python3 -m venv .venv && .venv/bin/pip install -r requirements.txt`.
+En Windows también se puede abrir [iniciar_gui.bat](iniciar_gui.bat) después de instalar la dependencia. En Linux o macOS se usa `.venv/bin/python` en lugar de `.\.venv\Scripts\python.exe`. El paquete `pygame-ce` proporciona la ventana y el dibujo mediante `import pygame`. El selector de archivos usa Tkinter. También se puede arrastrar un JSON sobre la ventana.
 
-`requirements.txt` solo tiene `pygame`. Para los gráficos de los experimentos
-hace falta además `matplotlib` (opcional).
+También se puede abrir un escenario directamente o ejecutar el flujo por consola.
 
-## Ejecución
-
-| Qué | Comando |
-|---|---|
-| Interfaz gráfica | `python gui.py` (o doble clic en `iniciar_gui.bat`) |
-| Abrir un escenario directo | `python gui.py --escenario BackEnd/data/escenario_basico.json` |
-| Versión de consola | `python main.py -i escenario_grande.json -w WAVE_01,WAVE_02` |
-| Tests | `python -m pytest tests` (o `python -m unittest discover -t . -s tests`) |
-| Experimentos del informe | `python experimentos/ejecutar_experimentos.py` |
-
-## Cómo se usa la interfaz (demostración)
-
-1. **Crear o cargar un warehouse.** En *Inicio*, *Crear escenario* abre el
-   generador automático o importa un JSON. También se puede arrastrar un JSON
-   a la ventana. La biblioteca guarda escenarios y sesiones.
-2. **Ver los productos.** La pestaña *Productos* muestra ubicación `<x,y,z>`,
-   peso y stock. Con un clic en el mapa se ve qué hay en cada celda.
-3. **Crear o cargar pedidos.** Los pedidos vienen en el escenario. Con
-   *Nuevo pedido* se agregan otros (por ejemplo `P001x2, P004x1`).
-4. **Generar waves.** *Capacidad de waves* define el máximo de pedidos y de
-   unidades, y la estrategia de armado (Cercanía, Por pasillo o Solo
-   prioridad). *Comparar armado* prueba las tres. *Generar waves* las arma.
-   *Ver cómo se armó* muestra la wave paso a paso: los productos del
-   pedido raíz pintados, los candidatos con su ponderado, el pedido que
-   gana y el camino que lo une con la wave, el motivo del cierre y la ruta
-   que va a hacer el picker (con la exploración de Dijkstra). Se controla
-   con *< Paso*, *Paso >*, *Pausar*, las flechas, la barra espaciadora y Esc.
-5. **Seleccionar waves.** Se marcan una o varias y se pulsa *Asignar e
-   iniciar*. Cada wave va al picker libre más cercano, o se reparte entre
-   varios con *Pickers por wave*. Las que no tienen picker quedan en espera.
-6. **Ejecutar y ver los algoritmos.** El mapa se acerca y aleja con la rueda
-   del mouse y se mueve arrastrando. En el mapa se ven la ruta planificada,
-   los destinos numerados en orden de visita y las celdas que exploró
-   Dijkstra (celeste).
-7. **Recorrido del picker.** Cada picker camina de celda en celda, girando
-   hacia donde va, con su nombre arriba y el borde de su color. Al recibir una wave
-   se queda unos turnos "buscando ruta": se ve cómo Dijkstra explora el mapa
-   hasta quedarse con el camino, mientras los demás pickers siguen trabajando.
-   Para verlo más lento, bajá la velocidad. Se frena 4 turnos a cargar, mirando al rack, y 3 a descargar. Deja una "estela" de 2 turnos
-   donde nadie puede entrar, así no se camina pegado a otro. Para usar un
-   dibujo propio, poné `FrontEnd/sprites/picker.png` (fondo transparente,
-   mirando hacia arriba).
-   Se controla con *Iniciar*, *Pausar*, *Continuar*, *Paso adelante* (→),
-   *Paso atrás* (←) y *Reiniciar*. La barra espaciadora pausa y continúa.
-8. **Productos recogidos.** La pestaña *Pickers* muestra la carga, lo
-   recogido y lo que falta. *Eventos* registra cada recogida y descarga.
-9. **Comparar estrategias.** *Estrategia* alterna entre *Orden de pedidos*
-   y *Cercanía*. *Comparar estrategias* corre las mismas waves con las dos.
-10. **Métricas.** La pestaña *Métricas* muestra la distancia, los nodos
-    visitados, las aristas, los nodos explorados y el tiempo de cada picker.
-11. **Persistencia.** *Guardar sesión* deja un archivo en la biblioteca. Al
-    abrirlo, la simulación sigue en el mismo turno.
-
-## Estructura
-
-```
-BackEnd/
-  models/        warehouse.py (Warehouse, Digrafo, NodoGrafo), entities.py (Producto, Pedido, Wave, Picker…)
-  utils/         graph_builder.py (JSON → dígrafo + Kosaraju), file_parser.py,
-                 scenario_generator.py (generador determinista), validador_escenario.py
-  data_structures/ max_heap_pedidos.py (Max-Heap propio)
-  controllers/   wave_manager.py (waves), path_finding.py (Dijkstra y estrategias),
-                 turn_collision_manager.py (turnos y colisiones), simulador.py (orquestador)
-  data/          escenarios de ejemplo y de prueba (JSON)
-FrontEnd/
-  views/         pygame_engine.py (pantallas), mapa.py, ui_elements.py
-  events/        input_handler.py (mouse y teclado)
-  sprites/       node_sprite.py, picker_sprite.py
-  services/      biblioteca.py (escenarios y sesiones guardadas)
-tests/           pruebas automáticas (grafo, algoritmos, simulador, generador, interfaz)
-experimentos/    script de experimentos (tablas y gráficos en docs/experimentos)
-docs/            ARQUITECTURA.md, EXPLICACION_GRAFO.md, INFORME.md, experimentos/
+```powershell
+.\.venv\Scripts\python.exe gui.py --escenario biblioteca/escenario_basico.json
+.\.venv\Scripts\python.exe main.py -i biblioteca/escenario_basico.json -w WAVE_01
 ```
 
-La lógica algorítmica (BackEnd) está separada de la interfaz (FrontEnd). La
-interfaz solo usa `Simulador`, que encadena
-**Warehouse → Productos/Pedidos → WaveManager → Pathfinding → Simulación**.
+En consola, `-w` admite varios identificadores separados por comas. Si se omite, el programa solicita la selección. La consola exporta el estado del almacén a `BackEnd/data/estado_guardado.json`. Para guardar una sesión interactiva con historial se usa **Guardar sesión** en la interfaz.
 
-## Formato del escenario (JSON)
+## Demostración de la interfaz
 
-```json
-{
-  "warehouse": {
-    "dimensiones": {"ancho_x": 18, "largo_y": 16},
-    "puertas": [{"id": "PUERTA_OUT_1", "tipo": "OUTBOUND", "ubicacion": {"x": 4, "y": 0}}],
-    "zonas_despacho": [{"id": "ZONA_A", "puerta_id": "PUERTA_OUT_1", "ubicacion": {"x": 2, "y": 1},
-                        "ancho": 5, "alto": 2, "peso_max_kg": 500}],
-    "racks": [{"id": "R1", "ubicacion": {"x": 3, "y": 5}, "ancho": 2, "alto": 6}],
-    "pasillos": [{"id": "PAS_V0", "ubicacion": {"x": 0, "y": 5}, "ancho": 3, "alto": 6, "sentido": "N"}]
-  },
-  "pickers": [{"id": "PK_01", "posicion_inicial": {"x": 1, "y": 3}, "capacidad_carga_kg": 150}],
-  "productos": [{"id": "P001", "nombre": "Monitor", "rack_id": "R1", "ubicacion": {"x": 3, "y": 5, "z": 1},
-                 "cantidad_disponible": 20, "peso_kg": 6.5}],
-  "pedidos": [{"id": "PED_01", "prioridad": 5, "items": [{"producto_id": "P001", "cantidad": 2}]}],
-  "configuracion": {"wave_max_pedidos": 3, "wave_max_productos": 15}
-}
+1. **Abrir un almacén.** Cargar [escenario_basico.json](biblioteca/escenario_basico.json) desde la biblioteca. **Crear escenario** permite importar un JSON o configurar el generador automático.
+2. **Inspeccionar el escenario.** En **Productos** se ve el stock, el peso unitario y la ubicación `(x, y, z)` de cada producto. Se puede seleccionar una celda, acercar el mapa con la rueda o desplazarlo arrastrando. **Nuevo pedido** admite una prioridad y una lista como `P001x2, P004x1`.
+3. **Generar las waves.** En **Capacidad de waves** se definen los límites. El selector **Armado de waves** alterna entre Automática, Cercanía en el dígrafo, Por pasillo y Solo prioridad. Tras generar, el selector muestra el criterio aplicado. **Ver cómo se armó** presenta el pedido raíz, los candidatos y el cierre del grupo.
+4. **Comparar.** En **Seleccionar waves**, marcar las waves pendientes y pulsar **Comparar estrategias** para comparar sus recorridos. **Comparar armado** prueba los tres criterios de agrupamiento y explica debajo de la tabla qué criterio decidió el resultado o si hubo empate.
+5. **Simular la recogida.** Usar **Asignar e iniciar** para asignar la selección y **Iniciar** para reproducir la tanda. La búsqueda de Dijkstra se representa en el mapa con las celdas exploradas, la ruta y las paradas numeradas. **Pickers** muestra lo recogido y lo pendiente. **Eventos** registra recogidas, descargas y conflictos de tráfico.
+6. **Controlar y retomar.** Se puede pausar, continuar, avanzar o retroceder un turno y reiniciar la tanda. Las flechas izquierda y derecha recorren los pasos y Espacio controla la reproducción. **Guardar sesión** confirma el guardado y se vuelve a habilitar al continuar o reiniciar. La sesión se reabre desde la biblioteca.
+
+## Modelo, algoritmos y decisiones
+
+**Representación del almacén.** El JSON define racks, puertas, zonas de despacho y pasillos mediante coordenadas y dimensiones. El origen `(0, 0)` está abajo a la izquierda. Cada celda transitable es un nodo del dígrafo y cada arista representa un movimiento ortogonal permitido. La lista de adyacencia almacena solo los vecinos disponibles. Los productos tienen coordenadas `(x, y, z)` y el picker los recoge desde una celda de pasillo adyacente.
+
+**Validación.** Se comprueban tipos, rangos, identificadores, geometría, referencias de productos y pedidos y posiciones de los pickers. El constructor calcula los accesos a racks y despachos y usa Kosaraju para analizar las componentes fuertemente conexas. Un escenario sin un recorrido válido de ida y vuelta para los accesos necesarios puede rechazarse antes de iniciar la simulación.
+
+**Armado de waves.** Un Max-Heap propio permite extraer el pedido de mayor prioridad para abrir una wave. Cada candidato se evalúa con los límites de pedidos, unidades, stock, zona de despacho y capacidad de carga. El stock se reserva durante el armado. La vista registra los productos al recogerlos y el inventario se descuenta al confirmar la descarga del pedido.
+
+| Criterio de armado | Qué favorece |
+| --- | --- |
+| Cercanía en el dígrafo | Pedidos con menor costo marginal respecto de las ubicaciones ya incluidas. Usa las distancias del dígrafo y considera la altura. |
+| Por pasillo | Pedidos que incorporan menos pasillos nuevos a la wave. |
+| Solo prioridad | Pedidos factibles con mayor prioridad, con desempate por identificador. |
+| Automática | Compara los tres criterios sobre copias del escenario. Prioriza menor distancia planificada, luego menos turnos, menos pasillos por wave y menor tiempo de armado. |
+
+**Recorrido y simulación.** Dijkstra usa un Min-Heap propio. **Orden de pedidos** planifica tramos según la secuencia de los pedidos y **Cercanía** usa una búsqueda multidestino para visitar la ubicación pendiente más próxima. Según la capacidad y disponibilidad, una wave puede repartirse entre varios pickers. La simulación avanza por turnos y puede aplicar esperas o desvíos cuando detecta un conflicto de movimiento.
+
+**Costo y alcance.** Para `V` celdas transitables y `E` aristas, la lista de adyacencia ocupa `O(V + E)`. Los recorridos de Kosaraju toman `O(V + E)`, sin contar el ordenamiento de las componentes. En el grafo ralo del almacén, una búsqueda de Dijkstra con montículo tiene un costo de referencia de `O((V + E) log V)`. El tiempo de una wave también depende de los candidatos de armado, de la cantidad de tramos y de los posibles recálculos. Cercanía es una heurística de orden de visita y no garantiza el recorrido global óptimo.
+
+**Persistencia e interfaz.** La sesión gráfica conserva los datos iniciales, la configuración y el registro de acciones en JSON. Al abrirla se reconstruye la ejecución. La interfaz separa el tiempo visual del turno lógico y reutiliza el fondo del mapa mientras la vista permanece igual.
+
+## Escenarios y casos de prueba
+
+Los ejemplos están en [biblioteca/](biblioteca/). Los archivos básicos y generados permiten variar el tamaño del almacén y la carga de trabajo.
+
+| Escenario | Tamaño | Productos | Pedidos | Pickers |
+| --- | --- | ---: | ---: | ---: |
+| [Básico](biblioteca/escenario_basico.json) | 18 × 16 | 8 | 3 | 2 |
+| [Grande](biblioteca/escenario_grande.json) | 60 × 40 | 170 | 40 | 4 |
+| [Generado chico](biblioteca/escenario_gen_chico.json) | 10 × 29 | 30 | 12 | 2 |
+| [Generado mediano](biblioteca/escenario_gen_mediano.json) | 26 × 37 | 200 | 40 | 4 |
+| [Generado cerca de despacho](biblioteca/escenario_gen_cerca_despacho.json) | 26 × 37 | 200 | 40 | 4 |
+| [Generado grande](biblioteca/escenario_gen_grande.json) | 42 × 85 | 600 | 150 | 6 |
+
+Para revisar casos específicos se pueden abrir los escenarios de [congestión](biblioteca/escenario_prueba_congestion.json), [asimetría direccional](biblioteca/escenario_prueba_asimetria_direccional.json) y [falta de stock](biblioteca/escenario_prueba_sin_stock_falta_despacho.json). Los casos de [inconsistencia de datos](biblioteca/escenario_prueba_inconsistencia_datos.json), [trampa topológica](biblioteca/escenario_prueba_trampa_topologica.json) y [violación estructural](biblioteca/escenario_prueba_violacion_estructural.json) sirven para demostrar mensajes de rechazo.
+
+## Experimentos y resultados
+
+El [script de experimentos](experimentos/ejecutar_experimentos.py) parte de una configuración reproducible. Varía la cantidad de estantes, pedidos, productos o pasillos y la distribución de los productos. Las comparaciones registran distancia planificada, nodos visitados y explorados, expansiones, tiempo de cálculo, turnos y esperas. La pestaña **Métricas** distingue los pasos efectivos de la simulación de la distancia planificada.
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install matplotlib openpyxl
+.\.venv\Scripts\python.exe experimentos/ejecutar_experimentos.py --rapido
 ```
 
-- El eje `y` crece hacia arriba y el origen `(0,0)` está abajo a la izquierda.
-- Toda celda que no sea rack, zona o puerta es pasillo. Si no se declara, es
-  de doble sentido (`AMBOS`).
-- Cada rack tiene un lado de 2 celdas y se recoge desde el costado largo.
-- El sentido de un pasillo puede ser `N`, `S`, `E`, `O`, `AMBOS` o `NINGUNO`.
+`--rapido` limita a tres valores las series de recorrido. Para ejecutarlas completas se puede omitir. Las dependencias de este bloque son opcionales y se usan para exportar gráficos PNG con `matplotlib` y el libro Excel con `openpyxl`. El script actualiza los resultados en [docs/experimentos/](docs/experimentos/).
 
-## Escenarios de prueba
+- [Tablas y resultados](docs/experimentos/resultados.md)
+- [CSV de recorridos](docs/experimentos/resultados.csv) y [CSV de armado](docs/experimentos/armado.csv)
+- [Libro Excel con comparaciones](docs/experimentos/resultados.xlsx) y [gráfico de escalabilidad](docs/experimentos/escalabilidad.png)
 
-En `BackEnd/data`:
+En la corrida publicada de **10 pedidos**, Cercanía redujo la distancia planificada de **458 a 300 pasos**, pero registró **15 esperas** frente a **4** de Orden. La comparación muestra por qué conviene leer varias métricas antes de elegir una estrategia. Los tiempos de ejecución pueden variar al repetir el experimento.
 
-| Archivo | Tamaño | Productos | Pedidos | Pickers |
-|---|---|---|---|---|
-| `escenario_basico.json` | 18 × 16 | 8 | 3 | 2 |
-| `escenario_grande.json` | 60 × 40 | 170 | 40 | 4 |
-| `escenario_gen_chico.json` | 10 × 29 | 30 | 12 | 2 |
-| `escenario_gen_mediano.json` | 26 × 37 | 200 | 40 | 4 |
-| `escenario_gen_cerca_despacho.json` | 26 × 37 | 200 | 40 | 4 |
-| `escenario_gen_grande.json` | 42 × 85 | 600 | 150 | 6 |
+## Organización del código
 
-## Documentación
-
-- `docs/ARQUITECTURA.md`: módulos, diagrama de clases y flujo de una simulación.
-- `docs/UML.md`: UML completo (vista general, modelo, lógica e interfaz), con imágenes en `docs/uml/`.
-- `docs/EXPLICACION_GRAFO.md`: el modelo del almacén (dígrafo, accesos, Kosaraju).
-- `docs/INFORME.md`: análisis algorítmico, complejidad, experimentos y respuestas
-  a las preguntas del enunciado.
-- `docs/experimentos/`: resultados (CSV y tablas) y gráficos.
+| Ruta | Responsabilidad |
+| --- | --- |
+| [BackEnd/models/](BackEnd/models/) | Almacén, entidades, catálogo y estados del dominio. |
+| [BackEnd/data_structures/](BackEnd/data_structures/) | Dígrafo de pasillos y Max-Heap de pedidos. |
+| [BackEnd/utils/](BackEnd/utils/) | Lectura y validación de JSON, construcción del grafo y generación de escenarios. |
+| [BackEnd/controllers/](BackEnd/controllers/) | Armado, asignación, rutas, colisiones, simulación y comparación de estrategias. |
+| [FrontEnd/](FrontEnd/) | Pantallas, mapa, paneles, eventos de entrada y biblioteca de sesiones. |
+| [gui.py](gui.py) y [main.py](main.py) | Puntos de entrada para la interfaz gráfica y la consola. |
+| [biblioteca/](biblioteca/) | Escenarios de ejemplo, casos de prueba y sesiones de la interfaz. |
+| [experimentos/](experimentos/) y [docs/experimentos/](docs/experimentos/) | Script de medición y resultados publicados. |

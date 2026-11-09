@@ -38,6 +38,10 @@ def _validar(data):
         if type(valor) not in (int, float) or not math.isfinite(valor) or valor <= 0:
             raise ValueError("Peso o capacidad inválidos.")
 
+    def no_negativo(valor):
+        if type(valor) not in (int, float) or not math.isfinite(valor) or valor < 0:
+            raise ValueError("Peso o capacidad inválidos.")
+
     wh = data["warehouse"]
     entero(wh["dimensiones"]["ancho_x"], 1, 200)
     entero(wh["dimensiones"]["largo_y"], 1, 200)
@@ -73,7 +77,7 @@ def _validar(data):
             vistos.add(item["producto_id"])
 
     for picker in data["pickers"]:
-        positivo(picker["capacidad_carga_kg"])
+        no_negativo(picker["capacidad_carga_kg"])
         for eje in ("x", "y"):
             entero(picker["posicion_inicial"][eje], 0, 199)
 
@@ -168,14 +172,16 @@ def _validar(data):
             or coord in posiciones
             or coord in bloqueadas
             or not (0 <= coord[0] < w and 0 <= coord[1] < h)
-            or pk["capacidad_carga_kg"] <= 0
+            or pk["capacidad_carga_kg"] < 0
         ):
             raise ValueError("Picker inválido.")
         pickers_vistos.add(pk["id"])
         posiciones.add(coord)
 
-    if not data["pickers"]:
-        raise ValueError("Se necesita al menos un picker.")
+    if not data["pickers"] or not any(
+        pk["capacidad_carga_kg"] > 0 for pk in data["pickers"]
+    ):
+        raise ValueError("Se necesita al menos un picker con capacidad mayor a 0.")
 
     cfg = data.get("configuracion", {})
     if cfg.get("wave_max_pedidos", 3) < 1 or cfg.get("wave_max_productos", 15) < 1:
@@ -186,3 +192,13 @@ def _validar(data):
         for z in wh["zonas_despacho"]
     ):
         raise ValueError("Debe existir al menos un despacho con puerta de salida.")
+
+    # Verificación de conectividad topológica mediante Kosaraju (GraphBuilder)
+    from BackEnd.utils.graph_builder import GraphBuilder
+
+    wh_obj = GraphBuilder.construir_warehouse_desde_dict(data)
+    if wh_obj.advertencias:
+        raise ValueError(
+            "Escenario inválido por desconexión topológica: "
+            + " ".join(wh_obj.advertencias)
+        )

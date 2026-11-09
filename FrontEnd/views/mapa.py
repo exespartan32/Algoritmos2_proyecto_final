@@ -227,7 +227,7 @@ class VistaMapa:
         buscando = app.busquedas_activas()
         explorados = (
             set(plan["explorados"])
-            if plan and app.ver_exploracion and enfocado["id"] not in buscando
+            if plan and enfocado["id"] not in buscando
             else set()
         )
         resaltadas = app.celdas_resaltadas()
@@ -269,8 +269,8 @@ class VistaMapa:
 
         for p in pickers:
             color = color_picker(indices[p["id"]])
-            hecho = p["recorrido"][-400:]
-            if len(hecho) > 1:
+            if app.ver_estela and len(p["recorrido"]) > 1:
+                hecho = p["recorrido"][-400:]
                 pygame.draw.lines(
                     lienzo,
                     _aclarar(color, 0.6),
