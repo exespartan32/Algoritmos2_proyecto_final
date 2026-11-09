@@ -1,0 +1,182 @@
+{
+  "warehouse": {
+    "dimensiones": { "ancho_x": 10, "largo_y": 12 },
+    "puertas": [
+      {
+        "id": "PUERTA_OUT",
+        "tipo": "OUTBOUND",
+        "ubicacion": { "x": 4, "y": 0 }
+      }
+    ],
+    "zonas_despacho": [
+      {
+        "id": "ZONA_A",
+        "puerta_id": "PUERTA_OUT",
+        "ubicacion": { "x": 3, "y": 1 },
+        "ancho": 3,
+        "alto": 2,
+        "peso_max_kg": 1000.0
+      }
+    ],
+    "racks": [
+      { "id": "R1", "ubicacion": { "x": 1, "y": 4 }, "ancho": 2, "alto": 6 },
+      { "id": "R2", "ubicacion": { "x": 4, "y": 4 }, "ancho": 2, "alto": 6 },
+      { "id": "R3", "ubicacion": { "x": 7, "y": 4 }, "ancho": 2, "alto": 6 }
+    ],
+    "pasillos": [
+      {
+        "id": "PAS_H_INF",
+        "ubicacion": { "x": 0, "y": 3 },
+        "ancho": 10,
+        "alto": 1,
+        "sentido": "AMBOS"
+      },
+      {
+        "id": "PAS_H_SUP",
+        "ubicacion": { "x": 0, "y": 10 },
+        "ancho": 10,
+        "alto": 2,
+        "sentido": "AMBOS"
+      },
+      {
+        "id": "PAS_V0",
+        "ubicacion": { "x": 0, "y": 4 },
+        "ancho": 1,
+        "alto": 6,
+        "sentido": "N"
+      },
+      {
+        "id": "PAS_V1",
+        "ubicacion": { "x": 3, "y": 4 },
+        "ancho": 1,
+        "alto": 6,
+        "sentido": "AMBOS"
+      },
+      {
+        "id": "PAS_V2",
+        "ubicacion": { "x": 6, "y": 4 },
+        "ancho": 1,
+        "alto": 6,
+        "sentido": "AMBOS"
+      },
+      {
+        "id": "PAS_V3",
+        "ubicacion": { "x": 9, "y": 4 },
+        "ancho": 1,
+        "alto": 6,
+        "sentido": "S"
+      }
+    ]
+  },
+  "pickers": [
+    {
+      "id": "PK_01",
+      "posicion_inicial": { "x": 2, "y": 3 },
+      "capacidad_carga_kg": 100.0
+    },
+    {
+      "id": "PK_02",
+      "posicion_inicial": { "x": 3, "y": 3 },
+      "capacidad_carga_kg": 100.0
+    },
+    {
+      "id": "PK_03",
+      "posicion_inicial": { "x": 6, "y": 3 },
+      "capacidad_carga_kg": 100.0
+    },
+    {
+      "id": "PK_04",
+      "posicion_inicial": { "x": 7, "y": 3 },
+      "capacidad_carga_kg": 100.0
+    }
+  ],
+  "productos": [
+    {
+      "id": "P001",
+      "nombre": "Prod A1",
+      "rack_id": "R1",
+      "ubicacion": { "x": 2, "y": 5, "z": 1 },
+      "cantidad_disponible": 20,
+      "peso_kg": 2.0
+    },
+    {
+      "id": "P002",
+      "nombre": "Prod A2",
+      "rack_id": "R1",
+      "ubicacion": { "x": 2, "y": 8, "z": 1 },
+      "cantidad_disponible": 20,
+      "peso_kg": 2.0
+    },
+    {
+      "id": "P003",
+      "nombre": "Prod B1",
+      "rack_id": "R2",
+      "ubicacion": { "x": 4, "y": 6, "z": 1 },
+      "cantidad_disponible": 20,
+      "peso_kg": 2.0
+    },
+    {
+      "id": "P004",
+      "nombre": "Prod B2",
+      "rack_id": "R2",
+      "ubicacion": { "x": 5, "y": 7, "z": 1 },
+      "cantidad_disponible": 20,
+      "peso_kg": 2.0
+    },
+    {
+      "id": "P005",
+      "nombre": "Prod C1",
+      "rack_id": "R3",
+      "ubicacion": { "x": 7, "y": 5, "z": 1 },
+      "cantidad_disponible": 20,
+      "peso_kg": 2.0
+    },
+    {
+      "id": "P006",
+      "nombre": "Prod C2",
+      "rack_id": "R3",
+      "ubicacion": { "x": 7, "y": 9, "z": 1 },
+      "cantidad_disponible": 20,
+      "peso_kg": 2.0
+    }
+  ],
+  "pedidos": [
+    {
+      "id": "PED_01",
+      "prioridad": 5,
+      "estado": "PENDIENTE",
+      "items": [
+        { "producto_id": "P002", "cantidad": 1 },
+        { "producto_id": "P005", "cantidad": 1 }
+      ]
+    },
+    {
+      "id": "PED_02",
+      "prioridad": 5,
+      "estado": "PENDIENTE",
+      "items": [
+        { "producto_id": "P001", "cantidad": 1 },
+        { "producto_id": "P006", "cantidad": 1 }
+      ]
+    },
+    {
+      "id": "PED_03",
+      "prioridad": 4,
+      "estado": "PENDIENTE",
+      "items": [
+        { "producto_id": "P003", "cantidad": 1 },
+        { "producto_id": "P004", "cantidad": 1 }
+      ]
+    },
+    {
+      "id": "PED_04",
+      "prioridad": 4,
+      "estado": "PENDIENTE",
+      "items": [
+        { "producto_id": "P004", "cantidad": 1 },
+        { "producto_id": "P001", "cantidad": 1 }
+      ]
+    }
+  ],
+  "configuracion": { "wave_max_pedidos": 1, "wave_max_productos": 10 }
+}
