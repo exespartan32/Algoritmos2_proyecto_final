@@ -227,7 +227,7 @@ class VistaMapa:
         buscando = app.busquedas_activas()
         explorados = (
             set(plan["explorados"])
-            if plan and app.ver_exploracion and enfocado["id"] not in buscando
+            if plan and enfocado["id"] not in buscando
             else set()
         )
         resaltadas = app.celdas_resaltadas()

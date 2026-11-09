@@ -66,7 +66,6 @@ class App(UIElements, PanelesVistas, DialogosVistas):
         self.seleccion = set()
         self.picker_foco = None
         self.wave_foco = None
-        self.ver_exploracion = True
         self.comparacion = None
         self.formulario = None
         self.ultimo_clic = (0, 0)
@@ -648,9 +647,6 @@ class App(UIElements, PanelesVistas, DialogosVistas):
     def _a_ampliar(self):
         self.mapa_ampliado = not self.mapa_ampliado
 
-    def _a_exploracion(self):
-        self.ver_exploracion = not self.ver_exploracion
-
     def _a_mapa(self):
         celda = self.mapa.celda_en(self.ultimo_clic)
         if celda is None:
@@ -764,12 +760,6 @@ class App(UIElements, PanelesVistas, DialogosVistas):
             ("Generar waves", 150, "generar_waves", not iniciadas),
             ("Seleccionar waves", 170, "elegir_waves", hay_waves),
             ("Comparar estrategias", 195, "comparar", hay_waves),
-            (
-                "Exploración: " + ("sí" if self.ver_exploracion else "no"),
-                160,
-                "exploracion",
-                True,
-            ),
             ("Comparar armado", 172, "comparar_armado", True),
         ]
         x = 20
