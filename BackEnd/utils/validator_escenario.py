@@ -1,4 +1,4 @@
-"""Validación de estructura, rangos y geometría de un escenario JSON."""
+"""Validación de estructura, rangos, geometría y conectividad topológica de un escenario JSON."""
 
 import math
 
@@ -90,7 +90,7 @@ def _validar(data):
     ):
         raise ValueError("Dimensiones permitidas: de 1 a 200 celdas.")
 
-    ocupadas, ids = set(), set()
+    ocupadas_obstaculos, ocupadas_pasillos, ids = set(), set(), set()
     for grupo in ("racks", "puertas", "zonas_despacho", "pasillos"):
         for obj in wh.get(grupo, []):
             if obj["id"] in ids:
@@ -99,10 +99,25 @@ def _validar(data):
             rect = celdas(obj)
             if not rect or any(x < 0 or y < 0 or x >= w or y >= h for x, y in rect):
                 raise ValueError("Elemento fuera del mapa: " + obj["id"])
-            if grupo != "pasillos" and ocupadas.intersection(rect):
-                raise ValueError("Elementos superpuestos: " + obj["id"])
+
             if grupo != "pasillos":
-                ocupadas.update(rect)
+                if ocupadas_obstaculos.intersection(rect):
+                    raise ValueError("Elementos superpuestos: " + obj["id"])
+                ocupadas_obstaculos.update(rect)
+            else:
+                # Regla 3.5: Un pasillo no puede solaparse con racks, puertas ni zonas de despacho
+                if ocupadas_obstaculos.intersection(rect):
+                    raise ValueError(
+                        f"El pasillo '{obj['id']}' se superpone con un rack, puerta o zona de despacho."
+                    )
+                # Regla 3.5: Dos pasillos declarados con sentido único no pueden solaparse entre sí
+                if obj["sentido"] != "AMBOS" and ocupadas_pasillos.intersection(rect):
+                    raise ValueError(
+                        f"El pasillo '{obj['id']}' se superpone con otro pasillo declarado."
+                    )
+                if obj["sentido"] != "AMBOS":
+                    ocupadas_pasillos.update(rect)
+
             if grupo == "racks" and 2 not in (obj["ancho"], obj["alto"]):
                 raise ValueError("Un lado del rack debe medir 2.")
             if grupo == "puertas":
@@ -121,6 +136,7 @@ def _validar(data):
                 raise ValueError("Sentido inválido.")
 
     puertas = {p["id"]: p for p in wh["puertas"]}
+    puertas_con_zona = set()
     for zona in wh["zonas_despacho"]:
         puerta = puertas.get(zona["puerta_id"])
         if not puerta or zona["peso_max_kg"] <= 0:
@@ -128,6 +144,36 @@ def _validar(data):
         px, py = celdas(puerta)[0]
         if not any(abs(x - px) + abs(y - py) == 1 for x, y in celdas(zona)):
             raise ValueError("La zona debe ser adyacente a su puerta.")
+        puertas_con_zona.add(zona["puerta_id"])
+
+    # Regla 3.3 y 16: Frente a cada puerta debe haber siempre una zona de despacho asociada
+    puertas_sin_zona = set(puertas.keys()) - puertas_con_zona
+    if puertas_sin_zona:
+        raise ValueError(
+            "Toda puerta debe tener una zona de despacho asociada enfrente. Faltan en: "
+            + ", ".join(sorted(puertas_sin_zona))
+        )
+
+    # Regla 3.2: Cada celda de un rack debe tener su cara expuesta a una celda de pasillo
+    for r in wh["racks"]:
+        rx, ry, rw, rh = r["ubicacion"]["x"], r["ubicacion"]["y"], r["ancho"], r["alto"]
+        for x, y in celdas(r):
+            if rw == 2 and rh != 2:
+                vecino_cara = (x - 1, y) if x == rx else (x + 1, y)
+                vecinos_validos = [vecino_cara]
+            elif rh == 2 and rw != 2:
+                vecino_cara = (x, y - 1) if y == ry else (x, y + 1)
+                vecinos_validos = [vecino_cara]
+            else:
+                vecinos_validos = [(x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)]
+
+            if not any(
+                0 <= vx < w and 0 <= vy < h and (vx, vy) not in ocupadas_obstaculos
+                for vx, vy in vecinos_validos
+            ):
+                raise ValueError(
+                    f"La celda ({x},{y}) del rack '{r['id']}' no tiene una cara expuesta a un pasillo transitable."
+                )
 
     racks = {r["id"]: set(celdas(r)) for r in wh["racks"]}
     productos, ubicaciones = {}, set()
@@ -156,9 +202,6 @@ def _validar(data):
             if item["producto_id"] not in productos or item["cantidad"] <= 0:
                 raise ValueError("Ítem de pedido inválido.")
 
-    bloqueadas = set().union(
-        *(set(celdas(a)) for g in ("racks", "puertas", "zonas_despacho") for a in wh[g])
-    )
     pickers_vistos, posiciones = set(), set()
     for pk in data["pickers"]:
         pos = pk["posicion_inicial"]
@@ -166,7 +209,7 @@ def _validar(data):
         if (
             pk["id"] in pickers_vistos
             or coord in posiciones
-            or coord in bloqueadas
+            or coord in ocupadas_obstaculos
             or not (0 <= coord[0] < w and 0 <= coord[1] < h)
             or pk["capacidad_carga_kg"] <= 0
         ):
@@ -186,3 +229,13 @@ def _validar(data):
         for z in wh["zonas_despacho"]
     ):
         raise ValueError("Debe existir al menos un despacho con puerta de salida.")
+
+    # Regla 16: Conectividad fuerte (ida y vuelta desde despacho a productos y pickers)
+    from BackEnd.utils.graph_builder import GraphBuilder
+
+    wh_obj = GraphBuilder.construir_warehouse_desde_dict(data)
+    if wh_obj.advertencias:
+        raise ValueError(
+            "Escenario inválido por desconexión topológica: "
+            + " ".join(wh_obj.advertencias)
+        )

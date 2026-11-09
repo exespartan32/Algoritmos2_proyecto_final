@@ -1,0 +1,7 @@
+caso,regla_pdf,estado,tiempo_ms,mensaje_error
+1_Racks_Solapados,Sección 3.1 y 16: Dos elementos no pueden solaparse,RECHAZADO OK,0.153,Elementos superpuestos: R_SOLAPADO
+2_Rack_Sin_Lado_2,Sección 3.2 y 16: Todo rack debe tener un lado igual a 2,RECHAZADO OK,0.142,Un lado del rack debe medir 2.
+3_Puerta_Fuera_Del_Borde,Sección 3.3 y 16: Las puertas deben ubicarse sobre el borde,RECHAZADO OK,0.155,Puerta fuera del borde.
+4_Producto_Fuera_De_Rack,Sección 4 y 16: Todo producto debe estar ubicado dentro de un rack,RECHAZADO OK,0.25,Producto fuera de su rack.
+5_Picker_En_Obstaculo,Sección 3.6: La posición inicial del picker debe ser una celda de pasillo,RECHAZADO OK,0.297,Picker inválido.
+6_Trampa_Topologica_Sin_Retorno,Sección 8 y 16 (Kosaraju SCC): Sin camino de regreso a Zona de Despacho,RECHAZADO OK,2.133,Escenario inválido por desconexión topológica (sin camino de ida y vuelta para picker): 

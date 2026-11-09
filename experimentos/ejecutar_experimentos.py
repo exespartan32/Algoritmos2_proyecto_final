@@ -1,10 +1,12 @@
-"""Suite de experimentos para evaluar tiempos y calidad de rutas del sistema.
+"""Suite de experimentos para evaluar tiempos, calidad de rutas y validación de escenarios.
 
-Genera escenarios con el generador determinista variando un parámetro por vez
+Genera escenarios con el generador determinista variando un parámetro por vez,
+evalúa la detección de escenarios inválidos (geométricos y topológicos con Kosaraju)
 y mide cada etapa. Escribe:
 
-- docs/experimentos/resultados.xlsx  (libro Excel con tablas formateadas y gráficos nativos)
+- docs/experimentos/resultados.xlsx  (libro Excel con tablas formateadas, validación y gráficos nativos)
 - docs/experimentos/resultados.csv   (una fila por escenario y estrategia)
+- docs/experimentos/invalidos.csv    (resultados de rechazo de escenarios inválidos)
 - docs/experimentos/resultados.md    (tablas en Markdown para el informe)
 - docs/experimentos/*.png            (gráficos, si está instalado matplotlib)
 
@@ -12,6 +14,7 @@ Uso:  python experimentos/ejecutar_experimentos.py [--rapido]
 """
 
 import argparse
+from copy import deepcopy
 import csv
 from pathlib import Path
 import statistics
@@ -24,6 +27,7 @@ sys.path.insert(0, str(RAIZ))
 from BackEnd.controllers.simulador import Simulador  # noqa: E402
 from BackEnd.utils.graph_builder import GraphBuilder  # noqa: E402
 from BackEnd.utils.scenario_generator import ScenarioGenerator  # noqa: E402
+from BackEnd.utils.validator_escenario import validar_escenario  # noqa: E402
 
 SALIDA = RAIZ / "docs" / "experimentos"
 
@@ -80,6 +84,215 @@ ARMADO = [
     ("localizacion", "CERCA_DESPACHO"),
     ("localizacion", "POR_RACK"),
 ]
+
+
+def _escenario_base_valido():
+    """Devuelve una plantilla mínima válida sobre la cual inyectar fallas controladas."""
+    return {
+        "warehouse": {
+            "dimensiones": {"ancho_x": 18, "largo_y": 16},
+            "puertas": [
+                {
+                    "id": "PUERTA_OUT_1",
+                    "tipo": "OUTBOUND",
+                    "ubicacion": {"x": 4, "y": 0},
+                }
+            ],
+            "zonas_despacho": [
+                {
+                    "id": "ZONA_A",
+                    "puerta_id": "PUERTA_OUT_1",
+                    "ubicacion": {"x": 2, "y": 1},
+                    "ancho": 5,
+                    "alto": 2,
+                    "peso_max_kg": 500.0,
+                }
+            ],
+            "racks": [
+                {"id": "R1", "ubicacion": {"x": 3, "y": 5}, "ancho": 2, "alto": 6},
+                {"id": "R2", "ubicacion": {"x": 8, "y": 5}, "ancho": 2, "alto": 6},
+            ],
+            "pasillos": [
+                {
+                    "id": "PAS_V0",
+                    "ubicacion": {"x": 0, "y": 5},
+                    "ancho": 3,
+                    "alto": 6,
+                    "sentido": "N",
+                },
+                {
+                    "id": "PAS_V1",
+                    "ubicacion": {"x": 5, "y": 5},
+                    "ancho": 3,
+                    "alto": 6,
+                    "sentido": "S",
+                },
+                {
+                    "id": "PAS_V2",
+                    "ubicacion": {"x": 10, "y": 5},
+                    "ancho": 8,
+                    "alto": 6,
+                    "sentido": "N",
+                },
+                {
+                    "id": "PAS_H_INF",
+                    "ubicacion": {"x": 0, "y": 3},
+                    "ancho": 18,
+                    "alto": 2,
+                    "sentido": "AMBOS",
+                },
+                {
+                    "id": "PAS_H_SUP",
+                    "ubicacion": {"x": 0, "y": 11},
+                    "ancho": 18,
+                    "alto": 5,
+                    "sentido": "AMBOS",
+                },
+            ],
+        },
+        "pickers": [
+            {
+                "id": "PK_01",
+                "posicion_inicial": {"x": 1, "y": 3},
+                "capacidad_carga_kg": 150.0,
+            }
+        ],
+        "productos": [
+            {
+                "id": "P001",
+                "nombre": "Monitor 27",
+                "rack_id": "R1",
+                "ubicacion": {"x": 3, "y": 5, "z": 1},
+                "cantidad_disponible": 20,
+                "peso_kg": 6.5,
+            }
+        ],
+        "pedidos": [
+            {
+                "id": "PED_01",
+                "prioridad": 5,
+                "estado": "PENDIENTE",
+                "items": [{"producto_id": "P001", "cantidad": 1}],
+            }
+        ],
+        "configuracion": {"wave_max_pedidos": 3, "wave_max_productos": 15},
+    }
+
+
+def medir_escenarios_invalidos():
+    """Evalúa los casos inválidos geométricos y topológicos para documentar su rechazo."""
+    casos = []
+
+    # Caso 1: Solapamiento de elementos (Rack fuera de rango o superpuesto)
+    c1 = _escenario_base_valido()
+    c1["warehouse"]["racks"].append(
+        {"id": "R_SOLAPADO", "ubicacion": {"x": 3, "y": 5}, "ancho": 2, "alto": 6}
+    )
+    casos.append(
+        (
+            "1_Racks_Solapados",
+            "Sección 3.1 y 16: Dos elementos no pueden solaparse",
+            c1,
+        )
+    )
+
+    # Caso 2: Rack cuyo ancho y alto son distintos de 2
+    c2 = _escenario_base_valido()
+    c2["warehouse"]["racks"][0]["ancho"] = 3
+    casos.append(
+        (
+            "2_Rack_Sin_Lado_2",
+            "Sección 3.2 y 16: Todo rack debe tener un lado igual a 2",
+            c2,
+        )
+    )
+
+    # Caso 3: Puerta fuera del borde del Warehouse
+    c3 = _escenario_base_valido()
+    c3["warehouse"]["puertas"][0]["ubicacion"] = {"x": 4, "y": 2}
+    casos.append(
+        (
+            "3_Puerta_Fuera_Del_Borde",
+            "Sección 3.3 y 16: Las puertas deben ubicarse sobre el borde",
+            c3,
+        )
+    )
+
+    # Caso 4: Producto ubicado fuera de las coordenadas de su rack
+    c4 = _escenario_base_valido()
+    c4["productos"][0]["ubicacion"] = {"x": 1, "y": 5, "z": 1}
+    casos.append(
+        (
+            "4_Producto_Fuera_De_Rack",
+            "Sección 4 y 16: Todo producto debe estar ubicado dentro de un rack",
+            c4,
+        )
+    )
+
+    # Caso 5: Picker inicializado sobre un obstáculo (dentro de un rack)
+    c5 = _escenario_base_valido()
+    c5["pickers"][0]["posicion_inicial"] = {"x": 3, "y": 6}
+    casos.append(
+        (
+            "5_Picker_En_Obstaculo",
+            "Sección 3.6: La posición inicial del picker debe ser una celda de pasillo",
+            c5,
+        )
+    )
+
+    # Caso 6: Trampa topológica (todos los pasillos verticales van hacia el Norte sin retorno a ZONA_A)
+    c6 = _escenario_base_valido()
+    for pas in c6["warehouse"]["pasillos"]:
+        if pas["id"].startswith("PAS_V"):
+            pas["sentido"] = "N"
+    casos.append(
+        (
+            "6_Trampa_Topologica_Sin_Retorno",
+            "Sección 8 y 16 (Kosaraju SCC): Sin camino de regreso a Zona de Despacho",
+            c6,
+        )
+    )
+
+    resultados_inv = []
+    for nombre, regla, datos in casos:
+        t0 = time.perf_counter()
+        rechazado = False
+        motivo = "ADMITIDO (ERROR: debía rechazarse)"
+        try:
+            validar_escenario(deepcopy(datos))
+            wh = GraphBuilder.construir_warehouse_desde_dict(deepcopy(datos))
+            if wh.advertencias:
+                raise ValueError("; ".join(wh.advertencias))
+        except ValueError as exc:
+            rechazado = True
+            motivo = str(exc)
+        t_ms = round((time.perf_counter() - t0) * 1000, 3)
+        resultados_inv.append(
+            {
+                "caso": nombre,
+                "regla_pdf": regla,
+                "estado": "RECHAZADO OK" if rechazado else "FALLO VALIDACION",
+                "tiempo_ms": t_ms,
+                "mensaje_error": motivo,
+            }
+        )
+        print(f"invalido {nombre:32s} -> {resultados_inv[-1]['estado']} ({t_ms:.3f} ms)")
+    return resultados_inv
+
+
+def tabla_invalidos_md(filas_inv):
+    lineas = [
+        "### Validación de escenarios inválidos y trampas topológicas (Secciones 3, 16 y 23.6)",
+        "",
+        "| Caso de prueba | Regla del enunciado verificada | Resultado | Tiempo (ms) | Mensaje de error capturado (`ValueError`) |",
+        "|---|---|---|---|---|",
+    ]
+    for f in filas_inv:
+        lineas.append(
+            f"| `{f['caso']}` | {f['regla_pdf']} | **{f['estado']}** | {f['tiempo_ms']:.3f} | {f['mensaje_error']} |"
+        )
+    lineas.append("")
+    return lineas
 
 
 def medir(params, repeticiones=5):
@@ -385,8 +598,8 @@ def escribir_armado(filas):
     return lineas + ["", "![Armado de waves](armado.png)", ""]
 
 
-def exportar_excel(filas, filas_armado):
-    """Exporta todas las tablas de experimentos y gráficos interactivos a un archivo Excel (.xlsx)."""
+def exportar_excel(filas, filas_armado, filas_invalidos):
+    """Exporta todas las tablas de experimentos, validación de inválidos y gráficos nativos a un archivo Excel (.xlsx)."""
     try:
         import openpyxl
         from openpyxl.chart import BarChart, LineChart, Reference
@@ -400,16 +613,17 @@ def exportar_excel(filas, filas_armado):
         return None
 
     wb = openpyxl.Workbook()
-    # Quitamos la hoja por defecto para crear una por cada serie
     wb.remove(wb.active)
 
     fill_header = PatternFill(start_color="1E3A5F", end_color="1E3A5F", fill_type="solid")
     fill_zebra = PatternFill(start_color="F4F7FA", end_color="F4F7FA", fill_type="solid")
     fill_green = PatternFill(start_color="E6F4EA", end_color="E6F4EA", fill_type="solid")
+    fill_red = PatternFill(start_color="FCE8E6", end_color="FCE8E6", fill_type="solid")
 
     font_title = Font(name="Calibri", size=14, bold=True, color="1E3A5F")
     font_header = Font(name="Calibri", size=11, bold=True, color="FFFFFF")
     font_green = Font(name="Calibri", size=11, bold=True, color="137333")
+    font_red = Font(name="Calibri", size=11, bold=True, color="C5221F")
     borde_fino = Side(border_style="thin", color="D0D7DE")
     borde = Border(left=borde_fino, right=borde_fino, top=borde_fino, bottom=borde_fino)
 
@@ -490,7 +704,6 @@ def exportar_excel(filas, filas_armado):
 
         max_row = 3 + len(valores_ordenados)
         if max_row >= 4:
-            # Gráfico 1: Distancia Orden vs Cercanía
             ch_dist = BarChart() if serie == "localizacion" else LineChart()
             ch_dist.title = f"Distancia Total según {titulo}"
             ch_dist.y_axis.title = "Pasos"
@@ -501,7 +714,6 @@ def exportar_excel(filas, filas_armado):
             ch_dist.height = 10
             ws.add_chart(ch_dist, f"B{max_row + 3}")
 
-            # Gráfico 2: Nodos Expandidos por Dijkstra
             ch_exp = BarChart() if serie == "localizacion" else LineChart()
             ch_exp.title = f"Nodos Expandidos según {titulo}"
             ch_exp.y_axis.title = "Nodos Expandidos"
@@ -512,7 +724,6 @@ def exportar_excel(filas, filas_armado):
             ch_exp.height = 10
             ws.add_chart(ch_exp, f"I{max_row + 3}")
 
-            # Gráfico 3: Tiempo de cálculo de rutas (ms)
             ch_ms = BarChart() if serie == "localizacion" else LineChart()
             ch_ms.title = f"Tiempo de Ruteo (ms) según {titulo}"
             ch_ms.y_axis.title = "Tiempo (ms)"
@@ -571,13 +782,53 @@ def exportar_excel(filas, filas_armado):
             for col_i in range(1, len(cols_arm) + 1):
                 ws_arm.cell(row=idx_a, column=col_i).border = borde
 
+    # 4. Pestaña de Validación de Escenarios Inválidos (Geométricos y Kosaraju SCC)
+    if filas_invalidos:
+        ws_inv = wb.create_sheet(title="Validacion_Invalidos")
+        ws_inv["A1"] = "Batería de Pruebas de Rechazo de Escenarios Inválidos y Trampas Topológicas"
+        ws_inv["A1"].font = font_title
+        ws_inv.append([])
+        cols_inv = [
+            "Caso de Prueba",
+            "Regla del PDF Verificada",
+            "Resultado",
+            "Tiempo Detección (ms)",
+            "Mensaje de Error Capturado (ValueError)",
+        ]
+        ws_inv.append(cols_inv)
+        for col_i in range(1, len(cols_inv) + 1):
+            c = ws_inv.cell(row=3, column=col_i)
+            c.fill = fill_header
+            c.font = font_header
+            c.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        ws_inv.row_dimensions[3].height = 28
+
+        for idx_i, fi in enumerate(filas_invalidos, start=4):
+            ws_inv.append([
+                fi["caso"],
+                fi["regla_pdf"],
+                fi["estado"],
+                fi["tiempo_ms"],
+                fi["mensaje_error"],
+            ])
+            for col_i in range(1, len(cols_inv) + 1):
+                celda = ws_inv.cell(row=idx_i, column=col_i)
+                celda.border = borde
+                if col_i == 3:
+                    es_ok = fi["estado"] == "RECHAZADO OK"
+                    celda.fill = fill_green if es_ok else fill_red
+                    celda.font = font_green if es_ok else font_red
+                    celda.alignment = Alignment(horizontal="center", vertical="center")
+                elif col_i == 4:
+                    celda.number_format = "0.000"
+
     # Ajustar ancho de columnas en todas las hojas
     for sheet in wb.worksheets:
         sheet.freeze_panes = "A4"
         for col in sheet.columns:
             letra = get_column_letter(col[0].column)
             largo = max(len(str(celda.value or "")) for celda in col[:25])
-            sheet.column_dimensions[letra].width = max(14, min(32, largo + 4))
+            sheet.column_dimensions[letra].width = max(14, min(48, largo + 4))
 
     ruta_xlsx = SALIDA / "resultados.xlsx"
     wb.save(ruta_xlsx)
@@ -619,6 +870,12 @@ def main():
         escritor.writerows(filas)
 
     filas_armado = medir_armado()
+    filas_invalidos = medir_escenarios_invalidos()
+
+    with open(SALIDA / "invalidos.csv", "w", newline="", encoding="utf-8") as f:
+        escritor = csv.DictWriter(f, fieldnames=list(filas_invalidos[0]))
+        escritor.writeheader()
+        escritor.writerows(filas_invalidos)
 
     md = [
         "# Resultados experimentales",
@@ -632,12 +889,13 @@ def main():
         md += tabla_md(filas, serie, titulo)
     md += tabla_etapas(filas)
     md += escribir_armado(filas_armado)
+    md += tabla_invalidos_md(filas_invalidos)
     (SALIDA / "resultados.md").write_text("\n".join(md), encoding="utf-8")
 
     for ruta in graficar(filas):
         print("Gráfico:", ruta.relative_to(RAIZ))
 
-    ruta_excel = exportar_excel(filas, filas_armado)
+    ruta_excel = exportar_excel(filas, filas_armado, filas_invalidos)
     if ruta_excel is not None:
         print("Excel generado en:", ruta_excel.relative_to(RAIZ))
 
