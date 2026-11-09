@@ -269,8 +269,8 @@ class VistaMapa:
 
         for p in pickers:
             color = color_picker(indices[p["id"]])
-            hecho = p["recorrido"][-400:]
-            if len(hecho) > 1:
+            if app.ver_estela and len(p["recorrido"]) > 1:
+                hecho = p["recorrido"][-400:]
                 pygame.draw.lines(
                     lienzo,
                     _aclarar(color, 0.6),

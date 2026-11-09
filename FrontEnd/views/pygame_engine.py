@@ -70,6 +70,7 @@ class App(UIElements, PanelesVistas, DialogosVistas):
         self.formulario = None
         self.ultimo_clic = (0, 0)
         self.mapa_ampliado = False
+        self.ver_estela = True
         self.armado = None
         self.animacion = {}
         self.angulos = {}
@@ -644,6 +645,9 @@ class App(UIElements, PanelesVistas, DialogosVistas):
         self.armado = None
         self.mensaje = "Fin de la explicación del armado."
 
+    def _a_estela(self):
+        self.ver_estela = not self.ver_estela
+
     def _a_ampliar(self):
         self.mapa_ampliado = not self.mapa_ampliado
 
@@ -761,6 +765,7 @@ class App(UIElements, PanelesVistas, DialogosVistas):
             ("Seleccionar waves", 170, "elegir_waves", hay_waves),
             ("Comparar estrategias", 195, "comparar", hay_waves),
             ("Comparar armado", 172, "comparar_armado", True),
+            ("Estela: sí" if self.ver_estela else "Estela: no", 115, "estela", True),
         ]
         x = 20
         for etiqueta, w, accion, habilitado in fila1:
