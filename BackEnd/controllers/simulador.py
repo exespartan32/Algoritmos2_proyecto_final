@@ -254,6 +254,27 @@ class Simulador:
         )
         self._registrar("configurar", *valores, estrategia_waves)
 
+    def cambiar_estrategia_armado(self, nueva_estrategia: str) -> List[Any]:
+        """
+        Cambia la estrategia de armado (AUTO, CERCANIA, PASILLO, PRIORIDAD)
+        y regenera las waves automáticamente si ya estaban generadas.
+        """
+        if nueva_estrategia not in OPCIONES_ESTRATEGIA_ARMADO:
+            raise ValueError(f"Estrategia de armado '{nueva_estrategia}' desconocida.")
+
+        habia_waves = self.estado.gestor_waves is not None
+
+        self.configurar(
+            self.config["wave_max_pedidos"],
+            self.config["wave_max_productos"],
+            self.config["max_pickers_por_wave"],
+            nueva_estrategia,
+        )
+
+        if habia_waves:
+            return self.generar_waves()
+        return []
+
     @staticmethod
     def interpretar_items(texto: str) -> List[Tuple[str, int]]:
         items: Dict[str, int] = {}
@@ -477,7 +498,6 @@ class Simulador:
         wh = self.warehouse
         estrategia = tanda["estrategia"]
         posiciones = {p.id_picker: p.posicion_actual for p in wh.pickers}
-
         resultado = gestor.asignar_y_ejecutar_waves_seleccionadas(
             ids, wh, ESTRATEGIAS[estrategia], tanda.get("pickers_por_wave", 1)
         )
@@ -487,112 +507,17 @@ class Simulador:
         for asig in resultado["asignaciones"]:
             wave = gestor.waves_por_id[asig["id_wave"]]
             tanda["waves"].append(wave.id_wave)
-            resultados_ruta = asig.get("resultados_ruta_por_picker", {})
 
             for pid in asig["ids_pickers"]:
                 picker = pickers[pid]
                 tarea_ruta = asig["rutas_por_picker"][pid]
-                res_precalculado = resultados_ruta.get(pid)
 
-                tarea = TareaWavePicker(
-                    id_wave=wave.id_wave,
-                    id_zona_despacho=wave.id_zona_despacho,
-                    destino_despacho_pasillo=(
-                        tarea_ruta[-1] if tarea_ruta else posiciones[pid]
-                    ),
-                    pedidos_asignados=wave.pedidos_por_picker.get(pid, []),
-                    destinos_recoleccion_pasillo=[
-                        Pathfinding.obtener_celda_acceso_pasillo(
-                            c, wh.grafo_pasillos, wh
-                        )
-                        for c in wave.destinos_xy_por_picker.get(pid, [])
-                    ],
-                    peso_lote_kg=wave.peso_por_picker.get(pid, 0.0),
-                    ruta_calculada=tarea_ruta,
-                    resultado_ruta=res_precalculado,
-                )
-
-                plan = self._construir_plan(
-                    wh, wave, picker, tarea, estrategia, res=res_precalculado
-                )
-                plan["ruta"] = list(tarea_ruta)
-                plan["pedidos"] = list(tarea.pedidos_asignados)
-                plan["distancia_inicial"] = asig["distancias_picker_a_wave"].get(pid, 0)
-
-                celdas = len(set(plan["orden_exploracion"]))
-                turnos = max(
-                    TURNOS_BUSQUEDA_MIN,
-                    min(TURNOS_BUSQUEDA_MAX, -(-celdas // CELDAS_POR_TURNO_BUSQUEDA)),
-                )
-                plan["turnos_busqueda"] = turnos
-                picker.ruta_asignada[0:0] = [picker.posicion_actual] * turnos
-                picker.turnos_busqueda = turnos
-                self.estado.planes[pid] = plan
-
-                resumen = {
-                    k: plan[k]
-                    for k in (
-                        "wave",
-                        "distancia",
-                        "aristas",
-                        "nodos_visitados",
-                        "nodos_explorados",
-                        "expansiones",
-                        "tiempo_ms",
-                    )
-                }
-                resumen["picker"] = pid
-                tanda["planes"].append(resumen)
-
-                por_celda: Dict[Coord, List[Tuple[str, int, str]]] = {}
-                for id_ped in tarea.pedidos_asignados:
-                    pedido = wh.buscar_pedido_O1(id_ped)
-                    pedido.estado = EstadoPedido.EN_PREPARACION
-                    for item in pedido.items:
-                        prod = wh.buscar_producto_O1(item.producto_id)
-                        celda = Pathfinding.obtener_celda_acceso_pasillo(
-                            prod.coordenadas_xy, wh.grafo_pasillos, wh
-                        )
-                        por_celda.setdefault(celda, []).append(
-                            (item.producto_id, item.cantidad, id_ped)
-                        )
-
-                self.estado.por_recoger[pid] = por_celda
-                picker.productos_recogidos = {}
-                self.estado.pasos_movidos.setdefault(pid, 0)
-                self.estado.esperas.setdefault(pid, 0)
-                self._evento(
-                    f"{pid} toma {wave.id_wave} ({NOMBRE_ESTRATEGIA[estrategia]}): "
-                    f"{plan['distancia']} pasos planificados, {plan['nodos_explorados']} nodos explorados."
-                )
-                self._recoger(picker)
-
-    def _asignar(self, tanda: Dict[str, Any], ids: List[str]) -> None:
-        gestor = self.estado.gestor_waves
-        wh = self.warehouse
-        estrategia = tanda["estrategia"]
-        posiciones = {p.id_picker: p.posicion_actual for p in wh.pickers}
-        resultado = gestor.asignar_y_ejecutar_waves_seleccionadas(
-            ids, wh, ESTRATEGIAS[estrategia], tanda.get("pickers_por_wave", 1)
-        )
-        tanda["en_espera"] = list(resultado["waves_sin_picker_disponible"])
-        pickers = {p.id_picker: p for p in wh.pickers}
-
-        for asig in resultado["asignaciones"]:
-            wave = gestor.waves_por_id[asig["id_wave"]]
-            tanda["waves"].append(wave.id_wave)
-            resultados_ruta = asig.get("resultados_ruta_por_picker", {})
-
-            for pid in asig["ids_pickers"]:
-                picker = pickers[pid]
-                tarea_ruta = asig["rutas_por_picker"][pid]
-                
                 # 1. Definir los destinos según la estrategia
                 destinos_finales = [
                     Pathfinding.obtener_celda_acceso_pasillo(c, wh.grafo_pasillos, wh)
                     for c in wave.destinos_xy_por_picker.get(pid, [])
                 ]
-                
+
                 if estrategia == "ORDEN":
                     destinos_finales = []
                     for id_ped in wave.pedidos_por_picker.get(pid, []):
@@ -615,23 +540,23 @@ class Simulador:
                     destinos_recoleccion_pasillo=destinos_finales,
                     peso_lote_kg=wave.peso_por_picker.get(pid, 0.0),
                     ruta_calculada=tarea_ruta,
-                    resultado_ruta=None
+                    resultado_ruta=None,
                 )
-                
-                # 3. Recalcular la ruta
+
+                # 2. Recalcular la ruta
                 plan = self._construir_plan(
                     wh, wave, picker, tarea, estrategia, res=None
                 )
-                
-                # 4. Asignar la ruta definitiva
+
+                # 3. Asignar la ruta definitiva
                 ruta_definitiva = list(plan["ruta"])
                 plan["ruta"] = ruta_definitiva
                 picker.ruta_asignada = list(ruta_definitiva)
-                
+
                 plan["pedidos"] = list(tarea.pedidos_asignados)
                 plan["distancia_inicial"] = asig["distancias_picker_a_wave"].get(pid, 0)
 
-                # 5. RESTAURACIÓN: Lógica de turnos de búsqueda para la expansión visual
+                # 4. Lógica de turnos de búsqueda para la expansión visual
                 celdas = len(set(plan["orden_exploracion"]))
                 turnos = max(
                     TURNOS_BUSQUEDA_MIN,
@@ -1056,6 +981,7 @@ class Simulador:
             "generar_waves": self.generar_waves,
             "iniciar_waves": self.iniciar_waves,
             "cambiar_estrategia": self.cambiar_estrategia,
+            "cambiar_estrategia_armado": self.cambiar_estrategia_armado,
             "avanzar": None,
             "retroceder": self.retroceder,
             "reiniciar": self.reiniciar,
