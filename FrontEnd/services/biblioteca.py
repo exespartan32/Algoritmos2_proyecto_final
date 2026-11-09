@@ -57,6 +57,8 @@ class Biblioteca:
     def abrir(ruta) -> Simulador:
         datos = Biblioteca.leer(ruta)
         validar_escenario({k: v for k, v in datos.items() if not k.startswith("_")})
+        if "_sesion" not in datos:
+            datos.setdefault("configuracion", {}).setdefault("estrategia_waves", "AUTO")
         return Simulador(datos)
 
     def importar(self, ruta) -> Path:

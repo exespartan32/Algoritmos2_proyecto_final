@@ -5,10 +5,7 @@ import time
 import pygame
 
 from BackEnd.controllers.simulador import NOMBRE_ESTRATEGIA, Simulador
-from BackEnd.controllers.wave_manager import (
-    ESTRATEGIAS_ARMADO,
-    OPCIONES_ESTRATEGIA_ARMADO,
-)
+from BackEnd.controllers.wave_manager import OPCIONES_ESTRATEGIA_ARMADO
 from BackEnd.utils.scenario_generator import LOCALIZACIONES
 from FrontEnd.events.input_handler import manejar_evento
 from FrontEnd.services.biblioteca import Biblioteca
@@ -127,7 +124,7 @@ class App(UIElements, PanelesVistas, DialogosVistas):
         if self.sim.waves_iniciadas:
             return
         c = self.sim.config
-        opciones = tuple(ESTRATEGIAS_ARMADO)
+        opciones = tuple(OPCIONES_ESTRATEGIA_ARMADO)
         actual = c["estrategia_waves"]
         indice = opciones.index(actual) + 1 if actual in opciones else 0
         ya_generadas = bool(self.sim.waves)
@@ -729,7 +726,7 @@ class App(UIElements, PanelesVistas, DialogosVistas):
         efectiva = gestor.estrategia_armado if gestor else configurada
         armado = OPCIONES_ESTRATEGIA_ARMADO.get(efectiva, efectiva).split(" (", 1)[0]
         if configurada == "AUTO":
-            armado = f"{armado} (auto)" if gestor else "Automática (pendiente)"
+            armado = f"{armado} (auto)" if gestor else "Automática"
         etiqueta = f"Armado de waves: {armado}"
         if m.waves_iniciadas:
             self.caja(x, y, ancho, 34, AZUL_CLARO)

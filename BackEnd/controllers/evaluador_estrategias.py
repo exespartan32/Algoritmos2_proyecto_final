@@ -11,24 +11,6 @@ if TYPE_CHECKING:
 Coord = Tuple[int, int]
 
 
-@staticmethod
-def elegir_mejor_estrategia_armado(
-    sim: "Simulador",
-) -> Tuple[str, Dict[str, Dict[str, Any]]]:
-    """Compara previamente las 3 estrategias de armado y devuelve la mejor y el reporte."""
-    comparativa = EvaluadorEstrategias.comparar_armado(sim)
-    mejor_clave = min(
-        comparativa.keys(),
-        key=lambda k: (
-            comparativa[k]["distancia"],
-            comparativa[k]["turnos"],
-            comparativa[k]["pasillos_por_wave"],
-            comparativa[k]["tiempo_armado_ms"],
-        ),
-    )
-    return mejor_clave, comparativa
-
-
 def _mantener_ventana_activa(paso: int) -> None:
     """Refresca la cola de eventos de Pygame durante simulaciones largas en segundo plano."""
     if paso % 80 == 0 and "pygame" in sys.modules:
@@ -39,6 +21,23 @@ def _mantener_ventana_activa(paso: int) -> None:
 
 class EvaluadorEstrategias:
     """Ejecuta comparaciones de ruteo, comparaciones de armado y trazas explicativas."""
+
+    @staticmethod
+    def elegir_mejor_estrategia_armado(
+        sim: "Simulador",
+    ) -> Tuple[str, Dict[str, Dict[str, Any]]]:
+        """Compara las tres estrategias de armado y devuelve la mejor y el reporte."""
+        comparativa = EvaluadorEstrategias.comparar_armado(sim)
+        mejor_clave = min(
+            comparativa,
+            key=lambda k: (
+                comparativa[k]["distancia"],
+                comparativa[k]["turnos"],
+                comparativa[k]["pasillos_por_wave"],
+                comparativa[k]["tiempo_armado_ms"],
+            ),
+        )
+        return mejor_clave, comparativa
 
     @staticmethod
     def comparar_estrategias(
