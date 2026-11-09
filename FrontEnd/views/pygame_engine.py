@@ -837,8 +837,11 @@ class App(UIElements, PanelesVistas, DialogosVistas):
             self.pantalla_simulacion()
         if self.dialogo:
             self.dialogo_actual()
-        self.caja(0, ALTO - 34, ANCHO, 34, BLANCO, None)
-        self.texto(self.mensaje, 20, ALTO - 27, 16, AZUL, max_ancho=ANCHO - 40)
+        pie = self.caja(0, ALTO - 34, ANCHO, 34, AZUL_CLARO, None)
+        self.caja(20, pie.centery - 10, 4, 20, AZUL, None)
+        tam = 20
+        y = pie.centery - self.fuente(tam, True).get_height() // 2
+        self.texto(self.mensaje, 34, y, tam, TINTA, True, max_ancho=ANCHO - 54)
         self.presentar()
 
     def presentar(self):
