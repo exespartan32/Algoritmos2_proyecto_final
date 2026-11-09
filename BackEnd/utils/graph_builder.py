@@ -137,7 +137,11 @@ class GraphBuilder:
             (pk["id"], (pk["posicion_inicial"]["x"], pk["posicion_inicial"]["y"]))
             for pk in data.get("pickers", [])
         ]
-        advertencias.extend(GraphBuilder.validar_grafo(wh, posiciones_pickers))
+        errores_conectividad = GraphBuilder.validar_grafo(wh, posiciones_pickers)
+        if errores_conectividad:
+            raise ValueError(
+                "Escenario inválido por desconexión topológica (sin camino de ida y vuelta para picker): "
+            )
         wh.advertencias = advertencias
 
         # 7. Configuración, pedidos y pickers
