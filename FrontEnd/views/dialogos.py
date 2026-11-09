@@ -281,6 +281,33 @@ class DialogosVistas:
                     es_mejor,
                 )
 
+        # Mismo orden de criterios que usa la selección automática del simulador.
+        candidatas = claves
+        criterios = (
+            ("distancia", "la menor distancia planificada", "pasos"),
+            ("turnos", "la menor cantidad de turnos", "turnos"),
+            ("pasillos_por_wave", "el menor promedio de pasillos por wave", "pasillos"),
+            ("tiempo_armado_ms", "el menor tiempo de armado", "ms"),
+        )
+        for i, (campo, motivo, unidad) in enumerate(criterios):
+            minimo = min(comp[clave][campo] for clave in candidatas)
+            candidatas = [clave for clave in candidatas if comp[clave][campo] == minimo]
+            if len(candidatas) == 1:
+                titulo = f"Mejor en esta comparación: {columnas[candidatas[0]]}"
+                prefijo = "El desempate se resolvió por" if i else "Obtuvo"
+                detalle = f"{prefijo} {motivo} ({minimo} {unidad})."
+                break
+        else:
+            nombres = " y ".join(columnas[clave] for clave in candidatas)
+            titulo = f"Empate: {nombres}"
+            detalle = "Las estrategias empatadas obtuvieron el mismo resultado en los cuatro criterios de selección."
+
+        fin = yy + 30 + len(self.FILAS_ARMADO) * 28
+        self.texto(titulo, x, fin + 18, 18, negrita=True)
+        self.parrafo(detalle, x, fin + 46, w - 20, 16)
+        if self.sesion_guardada:
+            self.texto("Sesión guardada correctamente", x, fin + 94, 16, VERDE, True)
+
     def dialogo_comparar(self, x, y, w):
         self.texto("Comparar estrategias de recorrido", x, y, 26, negrita=True)
         self.parrafo(

@@ -55,6 +55,7 @@ class App(UIElements, PanelesVistas, DialogosVistas):
         self.mensaje = "Elegí un escenario de la biblioteca o creá uno nuevo."
         self.reproduciendo = False
         self.reproduccion_iniciada = False
+        self.sesion_guardada = False
         self.acumulado = 0.0
         self.velocidad = 1
         self.sim = None
@@ -97,6 +98,7 @@ class App(UIElements, PanelesVistas, DialogosVistas):
         self.nombre = nombre
         self.pagina = "sim"
         self.reproduciendo = False
+        self.sesion_guardada = False
         self.reproduccion_iniciada = bool(
             sim.en_curso
             and sim.tanda_actual
@@ -497,6 +499,9 @@ class App(UIElements, PanelesVistas, DialogosVistas):
         if not self.sim.en_curso:
             raise ValueError("No hay pickers trabajando.")
         self.reproduciendo = True
+        if self.sesion_guardada:
+            self.sesion_guardada = False
+            self.mensaje = "Simulación reanudada."
 
     def _a_pausar(self):
         self.reproduciendo = False
@@ -516,14 +521,18 @@ class App(UIElements, PanelesVistas, DialogosVistas):
         self.reproduciendo = False
         if not self.mover(self.sim.reiniciar, 0):
             raise ValueError("Todavía no se inició ninguna tanda.")
+        self.sesion_guardada = False
         self.mensaje = "Tanda reiniciada: stock restaurado."
 
     def _a_velocidad(self):
         self.velocidad = (self.velocidad + 1) % len(VELOCIDADES)
 
     def _a_guardar(self):
+        if self.sesion_guardada:
+            return
         self.reproduciendo = False
         ruta = self.biblioteca.guardar_sesion(self.sim, self.nombre)
+        self.sesion_guardada = True
         self.mensaje = f"Sesión guardada como {ruta.name}."
 
     def _a_pestana(self, nombre):
@@ -745,7 +754,7 @@ class App(UIElements, PanelesVistas, DialogosVistas):
             "estrategia",
         )
         self.boton_armado(852, 18, 342)
-        self.boton("Guardar sesión", 1210, 18, 150, "guardar")
+        self.boton("Guardar sesión", 1210, 18, 150, "guardar", not self.sesion_guardada)
         self.boton("Inicio", 1370, 18, 120, "inicio")
         hay_waves = bool(m.waves)
         iniciadas = m.waves_iniciadas
@@ -790,6 +799,8 @@ class App(UIElements, PanelesVistas, DialogosVistas):
         for etiqueta, w, accion, habilitado in fila2:
             self.boton(etiqueta, x, 104, w, accion, habilitado)
             x += w + 8
+        if self.sesion_guardada:
+            self.texto("Sesión guardada correctamente", x + 12, 112, 16, VERDE, True)
         tanda = m.tanda_actual
         estado = (
             "reproduciendo"
