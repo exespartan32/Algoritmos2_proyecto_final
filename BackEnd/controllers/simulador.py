@@ -409,13 +409,18 @@ class Simulador:
         estrategia: Optional[str] = None,
         pickers_por_wave: Optional[int] = None,
     ) -> Dict[str, Any]:
+        """Inicia las waves seleccionadas delegando la asignación al WaveAssigner."""
         gestor = self.estado.gestor_waves
         if gestor is None:
             raise ValueError("Primero generá las waves.")
+
         estrategia = estrategia or self.estrategia
         if estrategia not in ESTRATEGIAS:
             raise ValueError("Estrategia desconocida.")
+
         en_espera = {w for t in self.estado.tandas for w in t["en_espera"]}
+
+        # Filtra las waves pendientes válidas usando el diccionario waves_por_id
         pendientes = [
             w
             for w in dict.fromkeys(ids_waves)
@@ -423,10 +428,13 @@ class Simulador:
             and gestor.waves_por_id[w].estado == EstadoWave.PENDIENTE
             and w not in en_espera
         ]
+
         if not pendientes:
             raise ValueError("Elegí al menos una wave pendiente.")
+
         if not gestor.obtener_pickers_libres(self.warehouse.pickers):
             raise ValueError("No hay pickers libres. Esperá a que terminen su wave.")
+
         if pickers_por_wave is not None and not 1 <= int(pickers_por_wave) <= 10:
             raise ValueError("Pickers por wave: de 1 a 10.")
 
@@ -442,14 +450,18 @@ class Simulador:
             "pickers_por_wave": int(pickers_por_wave or self.pickers_por_wave),
             "planes": [],
         }
+
         self._asignar(tanda, pendientes)
+
         if not tanda["waves"]:
             self.estado = self.historial.pop()
             raise ValueError(
                 "Ninguna wave pudo asignarse: no hay pickers libres con capacidad suficiente."
             )
+
         for wid in tanda["en_espera"]:
             self._evento(f"{wid} queda en espera hasta que se libere un picker.")
+
         self.estado.tandas.append(tanda)
         self._inicio_tanda[len(self.estado.tandas) - 1] = (
             antes,
@@ -459,6 +471,101 @@ class Simulador:
             "iniciar_waves", list(ids_waves), estrategia, tanda["pickers_por_wave"]
         )
         return tanda
+
+    def _asignar(self, tanda: Dict[str, Any], ids: List[str]) -> None:
+        gestor = self.estado.gestor_waves
+        wh = self.warehouse
+        estrategia = tanda["estrategia"]
+        posiciones = {p.id_picker: p.posicion_actual for p in wh.pickers}
+
+        resultado = gestor.asignar_y_ejecutar_waves_seleccionadas(
+            ids, wh, ESTRATEGIAS[estrategia], tanda.get("pickers_por_wave", 1)
+        )
+        tanda["en_espera"] = list(resultado["waves_sin_picker_disponible"])
+        pickers = {p.id_picker: p for p in wh.pickers}
+
+        for asig in resultado["asignaciones"]:
+            wave = gestor.waves_por_id[asig["id_wave"]]
+            tanda["waves"].append(wave.id_wave)
+            resultados_ruta = asig.get("resultados_ruta_por_picker", {})
+
+            for pid in asig["ids_pickers"]:
+                picker = pickers[pid]
+                tarea_ruta = asig["rutas_por_picker"][pid]
+                res_precalculado = resultados_ruta.get(pid)
+
+                tarea = TareaWavePicker(
+                    id_wave=wave.id_wave,
+                    id_zona_despacho=wave.id_zona_despacho,
+                    destino_despacho_pasillo=(
+                        tarea_ruta[-1] if tarea_ruta else posiciones[pid]
+                    ),
+                    pedidos_asignados=wave.pedidos_por_picker.get(pid, []),
+                    destinos_recoleccion_pasillo=[
+                        Pathfinding.obtener_celda_acceso_pasillo(
+                            c, wh.grafo_pasillos, wh
+                        )
+                        for c in wave.destinos_xy_por_picker.get(pid, [])
+                    ],
+                    peso_lote_kg=wave.peso_por_picker.get(pid, 0.0),
+                    ruta_calculada=tarea_ruta,
+                    resultado_ruta=res_precalculado,
+                )
+
+                plan = self._construir_plan(
+                    wh, wave, picker, tarea, estrategia, res=res_precalculado
+                )
+                plan["ruta"] = list(tarea_ruta)
+                plan["pedidos"] = list(tarea.pedidos_asignados)
+                plan["distancia_inicial"] = asig["distancias_picker_a_wave"].get(pid, 0)
+
+                celdas = len(set(plan["orden_exploracion"]))
+                turnos = max(
+                    TURNOS_BUSQUEDA_MIN,
+                    min(TURNOS_BUSQUEDA_MAX, -(-celdas // CELDAS_POR_TURNO_BUSQUEDA)),
+                )
+                plan["turnos_busqueda"] = turnos
+                picker.ruta_asignada[0:0] = [picker.posicion_actual] * turnos
+                picker.turnos_busqueda = turnos
+                self.estado.planes[pid] = plan
+
+                resumen = {
+                    k: plan[k]
+                    for k in (
+                        "wave",
+                        "distancia",
+                        "aristas",
+                        "nodos_visitados",
+                        "nodos_explorados",
+                        "expansiones",
+                        "tiempo_ms",
+                    )
+                }
+                resumen["picker"] = pid
+                tanda["planes"].append(resumen)
+
+                por_celda: Dict[Coord, List[Tuple[str, int, str]]] = {}
+                for id_ped in tarea.pedidos_asignados:
+                    pedido = wh.buscar_pedido_O1(id_ped)
+                    pedido.estado = EstadoPedido.EN_PREPARACION
+                    for item in pedido.items:
+                        prod = wh.buscar_producto_O1(item.producto_id)
+                        celda = Pathfinding.obtener_celda_acceso_pasillo(
+                            prod.coordenadas_xy, wh.grafo_pasillos, wh
+                        )
+                        por_celda.setdefault(celda, []).append(
+                            (item.producto_id, item.cantidad, id_ped)
+                        )
+
+                self.estado.por_recoger[pid] = por_celda
+                picker.productos_recogidos = {}
+                self.estado.pasos_movidos.setdefault(pid, 0)
+                self.estado.esperas.setdefault(pid, 0)
+                self._evento(
+                    f"{pid} toma {wave.id_wave} ({NOMBRE_ESTRATEGIA[estrategia]}): "
+                    f"{plan['distancia']} pasos planificados, {plan['nodos_explorados']} nodos explorados."
+                )
+                self._recoger(picker)
 
     def _asignar(self, tanda: Dict[str, Any], ids: List[str]) -> None:
         gestor = self.estado.gestor_waves

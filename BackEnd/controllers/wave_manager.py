@@ -13,6 +13,17 @@ from BackEnd.models.warehouse import Warehouse
 CoordXY = Tuple[int, int]
 
 
+@property
+def waves(self) -> List[Dict[str, Any]]:
+    return self.waves_generadas
+
+
+@property
+def wave_generadas(self) -> List[Dict[str, Any]]:
+    # Alias de compatibilidad por si se accede en singular
+    return self.waves_generadas
+
+
 class WaveManager:
     """Fachada que coordina el armado de waves (WaveBuilder) y su asignación (WaveAssigner)."""
 

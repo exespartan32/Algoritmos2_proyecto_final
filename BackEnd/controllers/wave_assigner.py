@@ -154,13 +154,48 @@ class WaveAssigner:
             )
 
             equipo_elegido: List[Picker] = []
+
+            # REGLA CASO 3 (Paper): Si hay 1 sola wave y sobran pickers libres, acelerar colaborativamente
+            if len(waves_elegidas) == 1 and len(candidatos_cercanos) > 1:
+                meta_pickers = min(
+                    len(candidatos_cercanos), len(w.pedidos), self.max_pickers_por_wave
+                )
+            else:
+                meta_pickers = int(pickers_por_wave)
+
             cantidad = max(
-                1, min(int(pickers_por_wave), len(w.pedidos), len(candidatos_cercanos))
+                1, min(meta_pickers, len(w.pedidos), len(candidatos_cercanos))
             )
+
             if cantidad > 1:
                 equipo = candidatos_cercanos[:cantidad]
                 if self.equipo_puede_cargar(w.pedidos, equipo, warehouse):
                     equipo_elegido = equipo
+
+            # Si no se pudo armar equipo colaborativo, prueba con un solo picker viable
+            if not equipo_elegido:
+                if candidatos_cercanos.capacidad_carga_kg >= w.peso_total_kg:
+                    equipo_elegido = [candidatos_cercanos]
+                else:
+                    for pk in candidatos_cercanos:
+                        if pk.capacidad_carga_kg >= w.peso_total_kg:
+                            equipo_elegido = [pk]
+                            break
+                    if not equipo_elegido:
+                        factible, equipo_multi = (
+                            WaveBuilder.es_repartible_en_equipo_pickers(
+                                w.pedidos,
+                                candidatos_cercanos,
+                                warehouse,
+                                self.max_pickers_por_wave,
+                            )
+                        )
+                        if factible and equipo_multi:
+                            equipo_elegido = equipo_multi
+
+            if not equipo_elegido:
+                resultado["waves_sin_picker_disponible"].append(w.id_wave)
+                continue
 
             if not equipo_elegido:
                 if candidatos_cercanos[0].capacidad_carga_kg >= w.peso_total_kg:
